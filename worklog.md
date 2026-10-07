@@ -114,3 +114,18 @@ Work Log:
 Stage Summary:
 - Trade Setups tab now answers the user's ask at a glance: big Entry zone, red Stop loss, blue Targets with %/R — no hunting through small grid cells
 - No data-layer changes needed; engine levels were already correct, only presentation was rebuilt
+---
+Task ID: 8
+Agent: Z.ai Code (main)
+Task: Trade confirmation — display a confirmation when price reaches the entry levels (user request)
+
+Work Log:
+- Added confirmation tracking to SetupBoard: localStorage-backed map (tw_confirmed) keyed "SYMBOL:side" → {at, price}; a sync effect after each 45s poll records the FIRST poll that sees state LIVE, fires a shadcn toast once, un-dismisses the panel, and DELETES the entry when state leaves LIVE (auto re-arm for the next crossing)
+- Built ConfirmationCard (replaces the old simple banner): pulsing ✓ badge, "TRADE CONFIRMED — BTC/USD LONG", confirmation timestamp + live price, 3-point checklist (✓ price inside entry zone · ✓ stop not breached · ✓ R:R gate passed 1:x at T1), color-coded plan recap (Entry/SL/TP1-3), suggested position size from account+risk inputs, ⧉ Copy confirmation + dismiss buttons, aria-live="polite"
+- Chip updates everywhere: ZoneWatch strip → "LONG/SHORT CONFIRMED"; TradePlanCard state chip → "✓ CONFIRMED — IN ENTRY ZONE"; entry row sub shows "✓ confirmed {time} — price inside entry zone" (confirmedAt passed down)
+- Toast: "✅ BTC LONG CONFIRMED — Price … reached the entry zone … · SL … · TP1 …" via existing use-toast (Toaster already mounted)
+- E2E (agent-browser, mocked LIVE zone): card + toast + chip all render; fires ONCE across re-polls (no dup toast); dismiss hides card; unmocking real data re-arms automatically (store → {}, chips → WAITING); mobile 390px + desktop 1280px both clean; zero console errors; lint clean
+
+Stage Summary:
+- Users now get an unmistakable trade confirmation the moment price touches the entry levels — panel at top, toast, strip chip and card chip all flip to CONFIRMED, with timestamp + checklist + one-click copy
+- Confirmation state survives refresh via localStorage and self-heals: leaves zone → re-armed; no stale confirmations possible
