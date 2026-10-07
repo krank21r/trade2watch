@@ -288,3 +288,19 @@ Work Log:
 
 Stage Summary:
 - Trade Confirmed tab live on local + production; confirmation lifecycle (LIVE card → exit → history) fully browser-verified; watchlist shared across both setup tabs
+
+---
+Task ID: 14
+Agent: Z.ai Code (orchestrator)
+Task: Make Trade Confirmed also track stocks (AAPL/TSLA/NVDA) — user asked "it should also check for AAPL TSLA NVDA stocks also. does it show?"
+
+Work Log:
+- Root cause: Trade Confirmed tab only watched tw_watchlist, whose default was crypto-only ['BTC','ETH','SOL'] — stocks were never checked unless manually added. API/engine already fully supported stocks (verified live: AAPL/TSLA/NVDA return setups with long/short states)
+- Created src/lib/watchlist.ts: DEFAULT_WATCHLIST = ['BTC','ETH','SOL','AAPL','TSLA','NVDA'], loadWatchlist() migrates browsers still holding the old crypto-only default (only when user never customized), saveWatchlist() sanitize+persist; MAX 8, SYM_RE validation
+- SetupBoard + ConfirmedBoard now share loadWatchlist/saveWatchlist; persist effect guarded by wlLoaded ref so the initial default state never clobbers the stored list on mount
+- /api/setups default symbols param now 'BTC,ETH,SOL,AAPL,TSLA,NVDA' (frontend always passes explicit list anyway)
+- E2E local: simulated user's stored 'BTC,ETH,SOL' → reload auto-migrated to 6 symbols; routed mock **/api/setups** with TSLA short LIVE (price 377.61, zone 376.11–379.11) → SetupBoard fired SHORT CONFIRMED banner AND Trade Confirmed tab rendered full TSLA stock card (1d timeframe, EDGE ONLY, IN ZONE, ladder, R:R, copy plan); unroute + reset logs → live data restored, 0 live, zero console/page errors
+- Lint clean; commit 8e63295 pushed; Vercel deploy READY ~30s; prod verified: /api/setups stocks live (AAPL 336.67 / TSLA 377.81 / NVDA 237.47) and prod Trade Confirmed tab watching 6 symbols
+
+Stage Summary:
+- Trade Confirmed now checks crypto AND stocks by default on local + production; existing browsers self-migrate on next visit; NVDA real short zone was within ~1.2% of price at verification time
