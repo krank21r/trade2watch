@@ -254,3 +254,21 @@ Work Log:
 
 Stage Summary:
 - Redesign CONFIRMED DONE and live-verified on both themes; no regressions, no errors, data flowing
+
+---
+Task ID: 11 (GitHub push) + 12 (Vercel deploy)
+Agent: Z.ai Code (orchestrator)
+Task: Push project to github.com/krank21r/trade2watch and deploy production to Vercel (trade2watch project, kranthi21r-gmailcoms-projects scope)
+
+Work Log:
+- 11: remote origin added; remote had user's earlier prototype commit (b290239: tradewatch.html/notes/chart.webp/vercel-deploy) → merged with --allow-unrelated-histories, resolved .gitignore add/add (kept project version); pushed main (5bcd706) with upstream tracking; token stored in ~/.git-credentials (chmod 600)
+- 12 prep: created vercel.json (framework nextjs, buildCommand "prisma generate && next build", installCommand "bun install"); added serverless SQLite bootstrap ensureTables() in src/lib/db.ts (raw DDL CREATE TABLE IF NOT EXISTS SignalRun + 3 indexes, only activates when DATABASE_URL starts with file:/tmp) wired into all 3 signals API routes; committed 7d0896c + pushed
+- 12 auth: Vercel CLI unusable with team-scoped token ("User not found" on /v2/user) → deployed via REST API instead: validated token via /v9/projects, set DATABASE_URL=file:/tmp/t2w.db env (all targets) via /v9/projects/{id}/env, wrote /home/z/.deploy/vercel-deploy.py (manifest from git ls-files minus .env/db/vercel-deploy/upstream/tool-results → sha1 → POST /v2/files → POST /v13/deployments target=production with projectSettings → poll /v13/deployments/{id})
+- 12 deploy 1 (dpl_BPJ2u3StaSiW8VYuDFKCvWf42SQ3): 113 files 945KB uploaded, READY in 42s; trade2watch.vercel.app 200 serving real app; /api/signals → {"runs":[]} proving DB bootstrap works; BUT /api/setups failed for crypto: Binance HTTP 451 (geo-block of US serverless IPs)
+- 12 fix: providers.ts multi-host Binance fallback (BINANCE_HOSTS: api.binance.com → data-api.binance.vision → api-gcp.binance.com, sticky last-good host 10 min, inside cache miss); verified binance.vision mirrors locally; committed b210a57 + pushed; redeployed (dpl trade2watch-mk547g7td) READY 42s
+- 12 verify production: /api/setups BTC,ETH,SOL live ($83,474 BTC via mirror) + AAPL $336.04 Yahoo OK; agent-browser E2E on https://trade2watch.vercel.app — AI Signals desk renders, Trade Setups live data, light+dark themes clean, zero page errors; browser closed
+
+Stage Summary:
+- GitHub: full app pushed, histories merged, upstream set (future pushes = git push)
+- Vercel: production live at trade2watch.vercel.app via REST-API deployment pipeline (/home/z/.deploy/vercel-deploy.py reusable for redeploy); env DATABASE_URL=file:/tmp/t2w.db
+- Known limitation: AI signal LLM pipeline uses sandbox-internal Z.ai gateway (internal-api.z.ai) — run feature errors on Vercel until a public API key config is added; setups/quotes/news/history all fully functional
