@@ -272,3 +272,19 @@ Stage Summary:
 - GitHub: full app pushed, histories merged, upstream set (future pushes = git push)
 - Vercel: production live at trade2watch.vercel.app via REST-API deployment pipeline (/home/z/.deploy/vercel-deploy.py reusable for redeploy); env DATABASE_URL=file:/tmp/t2w.db
 - Known limitation: AI signal LLM pipeline uses sandbox-internal Z.ai gateway (internal-api.z.ai) — run feature errors on Vercel until a public API key config is added; setups/quotes/news/history all fully functional
+
+---
+Task ID: 13
+Agent: Z.ai Code (orchestrator)
+Task: Add "✅ Trade Confirmed" tab — dedicated page showing only trades whose entry is confirmed (price inside entry zone)
+
+Work Log:
+- Created src/components/confirmed/ConfirmedBoard.tsx: polls /api/setups (45s) with the SHARED watchlist (localStorage tw_watchlist — now persisted by SetupBoard too), detects sides with state==='LIVE', renders confirmation cards (ping ✓ disc, LONG/SHORT CONFIRMED chip, PREFERRED/EDGE ONLY/COUNTER-TREND tag, IN ZONE pulse chip, confirmed-at time + in-zone duration, full plan ladder: entry zone accent/stop/targets/runner, R:R badge, sizing from tw_acct/tw_risk read-only, Copy plan button)
+- Confirmation event log tw_confirmed_log (localStorage, max 24): append on first LIVE sighting + toast; mark exitedAt when price leaves zone; "Earlier — confirmed then price moved on" history section with per-event rows + Clear history; empty state, skeleton, error banner, tabular-nums, focus rings, motion stagger
+- page.tsx: 3 tabs now — Trade Setups (default) / ✅ Trade Confirmed / ⚡ AI Signals; status dot warn for setups, bull otherwise ('Entry confirmations' label on confirmed tab)
+- SetupBoard: restored+persisted shared watchlist (tw_watchlist) in mount/persist effects
+- Verified via agent-browser + network route mocks (pattern must be **/api/setups** — '/api/setups*' did NOT intercept): mock LIVE BTC long + ETH short → 2 cards + toasts; switched BTC to WAITING → 1 live + BTC row in Earlier history; unroute → real data restored
+- Lint clean; committed ec49b7b; deployed to Vercel READY in ~30s; production serving new tab
+
+Stage Summary:
+- Trade Confirmed tab live on local + production; confirmation lifecycle (LIVE card → exit → history) fully browser-verified; watchlist shared across both setup tabs
