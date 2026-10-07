@@ -34,6 +34,7 @@ function Section({
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between gap-3 py-3 text-left group"
         aria-expanded={open}
+        suppressHydrationWarning
       >
         <span className="flex flex-col">
           <span className={`text-[13px] font-bold group-hover:text-[#f5b544] transition-colors ${C.text}`}>{title}</span>

@@ -142,6 +142,7 @@ export function SignalCard({ run }: { run: SignalRunDetail }) {
                       localStorage.setItem('tw_acct', e.target.value)
                     } catch {}
                   }}
+                  suppressHydrationWarning
                   className="bg-[#1a2030] border border-[#232b3d] rounded-lg px-2.5 py-2 text-sm w-40 text-[#e6e9f0] outline-none focus:border-[#f5b544]"
                 />
               </label>
@@ -159,6 +160,7 @@ export function SignalCard({ run }: { run: SignalRunDetail }) {
                       localStorage.setItem('tw_risk', e.target.value)
                     } catch {}
                   }}
+                  suppressHydrationWarning
                   className="bg-[#1a2030] border border-[#232b3d] rounded-lg px-2.5 py-2 text-sm w-32 text-[#e6e9f0] outline-none focus:border-[#f5b544]"
                 />
               </label>

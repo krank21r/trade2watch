@@ -182,6 +182,7 @@ export function SignalDashboard() {
                 <button
                   key={m}
                   onClick={() => setMarket(m)}
+                  suppressHydrationWarning
                   className={`flex-1 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
                     market === m
                       ? 'bg-[#1a2030] text-[#f5b544] border-[rgba(245,181,68,.45)]'
@@ -201,6 +202,7 @@ export function SignalDashboard() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !busy && !starting) startRun(symbol, market)
                 }}
+                suppressHydrationWarning
                 placeholder={market === 'crypto' ? 'BTC, ETH, SOL…' : 'AAPL, TSLA, NVDA…'}
                 className="bg-[#1a2030] border border-[#232b3d] rounded-lg px-3 py-2.5 text-base font-bold tracking-wide text-[#e6e9f0] outline-none focus:border-[#f5b544] w-full"
               />
@@ -214,6 +216,7 @@ export function SignalDashboard() {
                     setSymbol(q.symbol)
                     setMarket(q.market)
                   }}
+                  suppressHydrationWarning
                   className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
                     symbol === q.symbol
                       ? 'bg-[rgba(74,158,255,.15)] text-[#4a9eff] border-[rgba(74,158,255,.4)]'
@@ -228,6 +231,7 @@ export function SignalDashboard() {
             <button
               onClick={() => startRun(symbol, market)}
               disabled={busy || starting}
+              suppressHydrationWarning
               className="w-full py-3 rounded-full text-sm font-bold text-[#0b0e14] transition-opacity disabled:opacity-50"
               style={{ background: '#f5b544' }}
             >
@@ -257,6 +261,7 @@ export function SignalDashboard() {
                   <button
                     key={h.id}
                     onClick={() => openRun(h.id)}
+                    suppressHydrationWarning
                     className={`w-full text-left px-5 py-3 border-b border-dashed border-white/5 last:border-0 hover:bg-[#1a2030] transition-colors ${run?.id === h.id ? 'bg-[#1a2030]' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-2">

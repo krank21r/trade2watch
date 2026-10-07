@@ -25,6 +25,7 @@ export default function Home() {
             key={t.key}
             onClick={() => setTab(t.key)}
             aria-current={tab === t.key ? 'page' : undefined}
+            suppressHydrationWarning
             className={`px-4 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
               tab === t.key
                 ? 'bg-[#1a2030] text-[#f5b544] border-[rgba(245,181,68,.45)]'

@@ -64,3 +64,16 @@ Work Log:
 
 Stage Summary:
 - AI Signals desk fully operational at / (default tab); 7 signal runs persisted in SQLite; engine robust to vendor rate limits; lint clean; dev.log clean
+
+---
+Task ID: 5
+Agent: Z.ai Code (main)
+Task: Fix hydration mismatch console error (fdprocessedid)
+
+Work Log:
+- Diagnosed: fdprocessedid attribute is NOT in served SSR HTML (curl grep = 0) nor in our source — injected browser-side by the preview environment's form-processing wrapper / a form-filler extension before React hydration, on every <button>/<input>; matches React's documented "extension messes with HTML" case
+- Fix: added suppressHydrationWarning to all instrumented interactive elements — page.tsx tab buttons; SignalDashboard market toggles, symbol input, quick picks, run button, history rows; SignalCard sizing inputs; ReportsPanel section toggles
+- bun run lint clean; browser verification: zero console hydration warnings, tabs/history/run-detail/sizing all functional
+
+Stage Summary:
+- Hydration console noise eliminated without behavior change; app state and interactions unaffected
