@@ -77,3 +77,23 @@ Work Log:
 
 Stage Summary:
 - Hydration console noise eliminated without behavior change; app state and interactions unaffected
+
+---
+Task ID: 6
+Agent: Z.ai Code (main)
+Task: Rebuild the Trade Setups page as a live, auto-generated setup board
+
+Work Log:
+- Checked the page first (Agent Browser): found the legacy iframe app firing a FALSE alert — "Ethereum reached SHORT zone — $2,548 ≥ $1,930" while ETH was 31% ABOVE the stale invalidation ($1,975); root causes: setupJson hand-written 2026-08-11 (BTC $62–66k vs real $83k) + zoneState() with no invalidUp/invalidDown check
+- Built src/lib/setups/generate.ts — deterministic, LLM-free setup generator over the existing market layer (Binance klines + Yahoo): zones anchored on swing-pivot S/R / range edges (never on price), ATR(14) zone widths + stops, R:R house gate (T1 ≥ 2×risk, T2 ≥ 3.5×risk), bias from regime (trending → PREFERRED side, ranging → both EDGE ONLY), levels table with reasons, gauge bounds
+- Fixed the original app's fatal flaw: new evalSideState() checks VOID (beyond invalidation) BEFORE "zone live" — exported as single source of truth; zones regenerate every poll so levels never go stale
+- Added GET /api/setups?symbols=... (multi-symbol, crypto/stock auto-detect via CRYPTO_HINT + Yahoo search, per-symbol error isolation, 30s response cache)
+- Built src/components/setups/SetupBoard.tsx — T2W visual language: watchlist chips + add-symbol + quick picks, live-zone banners (fire ONLY when price is genuinely inside a zone, dismissible), ZoneWatch strip (per-asset state chips + distances), asset detail (regime badge, RSI/ATR chips, price gauge with zone bands + live caret), preferred-first setup cards, risk-first sizing synced to tw_acct/tw_risk localStorage, key levels list, disclaimer footer + legacy link (/app.html)
+- page.tsx: replaced stale iframe tab with <SetupBoard /> (legacy view still reachable via footer link)
+- Bug fixes during verification: fmtPrice small-price support (PEPE showed $0.0000 → now 4 significant digits); SideCard inferred long/short from strategy text (broke for trend strategies) → explicit kind prop; zone px±2.5 ATR floor overrode structural anchors → removed, zones now sit AT range edges like the original app; levels label wrapping (w-16 → w-28 nowrap)
+- Wrote scripts/verify-setups.ts — 23 deterministic checks, ALL PASS (geometry, state machine incl. the reproduced old-app false-alarm regression, micro-price coins)
+- E2E (Agent Browser): BTC/ETH/SOL live chips honest (WAITING · % distances); mocked LIVE zone via network route → green banner + LONG ZONE LIVE chip + caret in zone band, dismiss works; sizing exact ($10k@1% → 0.1229 BTC / 1.0554 ETH / 2.9822 ETH short); AAPL stock flow (LONG BIAS, TRENDING UP, 1d); mobile 390px stacks; AI Signals tab unaffected; console clean after fixes
+
+Stage Summary:
+- Trade Setups tab is now a self-updating board: no hand-maintained JSON, no false alarms, zones always reflect current market structure
+- Legacy static app preserved at /app.html (linked from the board footer) — its zoneState bug lives only there, documented

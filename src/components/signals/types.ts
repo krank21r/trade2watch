@@ -104,6 +104,11 @@ export const STAGE_ORDER = ['queued', 'data', 'analysts', 'debate', 'plan', 'ris
 
 export function fmtPrice(x: number | null | undefined, currency = 'USD'): string {
   if (x === null || x === undefined || !Number.isFinite(x)) return '—'
-  const num = x >= 1000 ? Math.round(x).toLocaleString('en-US') : String(Math.round(x * 100) / 100)
+  let num: string
+  if (x >= 1000) num = Math.round(x).toLocaleString('en-US')
+  else if (x >= 1) num = String(Math.round(x * 100) / 100)
+  else if (x >= 0.01) num = String(Math.round(x * 10000) / 10000)
+  else if (x > 0) num = String(parseFloat(x.toPrecision(4))) // micro-price coins (PEPE etc.)
+  else num = '0'
   return currency === 'USD' ? `$${num}` : `${num} ${currency}`
 }

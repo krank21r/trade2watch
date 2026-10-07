@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
+import { SetupBoard } from '@/components/setups/SetupBoard'
 
-type Tab = 'classic' | 'signals'
+type Tab = 'setups' | 'signals'
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>('signals')
@@ -18,7 +19,7 @@ export default function Home() {
         {(
           [
             { key: 'signals', label: '⚡ AI Signals' },
-            { key: 'classic', label: 'Trade Setups' },
+            { key: 'setups', label: 'Trade Setups' },
           ] as Array<{ key: Tab; label: string }>
         ).map((t) => (
           <button
@@ -46,13 +47,10 @@ export default function Home() {
 
       {/* content */}
       <main className="flex-1 min-h-0 relative">
-        {tab === 'classic' ? (
-          <iframe
-            src="/app.html"
-            title="Trade2watch — Multi-Asset Trade Setup Dashboard"
-            className="absolute inset-0 h-full w-full border-0"
-            allow="autoplay"
-          />
+        {tab === 'setups' ? (
+          <div className="absolute inset-0 overflow-y-auto">
+            <SetupBoard />
+          </div>
         ) : (
           <div className="absolute inset-0 overflow-y-auto">
             <SignalDashboard />
