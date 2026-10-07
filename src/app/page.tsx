@@ -3,14 +3,16 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { TrendingUp } from 'lucide-react'
+import { ConfirmedBoard } from '@/components/confirmed/ConfirmedBoard'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
 import { SetupBoard } from '@/components/setups/SetupBoard'
 import { ThemeToggle } from '@/components/theme-toggle'
 
-type Tab = 'setups' | 'signals'
+type Tab = 'setups' | 'confirmed' | 'signals'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'setups', label: 'Trade Setups' },
+  { key: 'confirmed', label: '✅ Trade Confirmed' },
   { key: 'signals', label: '⚡ AI Signals' },
 ]
 
@@ -78,9 +80,9 @@ export default function Home() {
           <span className="hidden sm:inline-flex items-center gap-1.5">
             <span
               className="inline-block w-2 h-2 rounded-full animate-pulse"
-              style={{ background: tab === 'signals' ? 'var(--bull)' : 'var(--warn)' }}
+              style={{ background: tab === 'setups' ? 'var(--warn)' : 'var(--bull)' }}
             />
-            {tab === 'signals' ? 'AI desk ready' : 'Live setups'}
+            {tab === 'setups' ? 'Live setups' : tab === 'confirmed' ? 'Entry confirmations' : 'AI desk ready'}
           </span>
           <ThemeToggle />
         </div>
@@ -97,7 +99,7 @@ export default function Home() {
             transition={{ duration: 0.22, ease: 'easeOut' }}
             className="absolute inset-0 overflow-y-auto"
           >
-            {tab === 'setups' ? <SetupBoard /> : <SignalDashboard />}
+            {tab === 'setups' ? <SetupBoard /> : tab === 'confirmed' ? <ConfirmedBoard /> : <SignalDashboard />}
           </motion.div>
         </AnimatePresence>
       </main>

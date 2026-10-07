@@ -459,6 +459,13 @@ export function SetupBoard() {
     mounted.current = true
     setAcct(lsGet('tw_acct', ''))
     setRiskPct(lsGet('tw_risk', '1'))
+    // restore the shared watchlist (also used by the Trade Confirmed board)
+    const wlArr = lsGet('tw_watchlist', '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter((x) => /^[A-Z0-9.\-]{1,10}$/.test(x))
+      .slice(0, 8)
+    if (wlArr.length) setSymbols(wlArr)
     const c = loadConfirms()
     confirmsRef.current = c
     setConfirms(c)
@@ -488,6 +495,15 @@ export function SetupBoard() {
     const t = setInterval(load, POLL_MS)
     return () => clearInterval(t)
   }, [load])
+
+  // persist watchlist so the Trade Confirmed board tracks the same symbols
+  useEffect(() => {
+    try {
+      localStorage.setItem('tw_watchlist', symbols.join(','))
+    } catch {
+      /* private mode */
+    }
+  }, [symbols])
 
   // confirmation tracker — when price reaches an entry zone, record it once,
   // fire a toast, and re-arm automatically if the zone is left/voided
