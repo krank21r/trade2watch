@@ -41,6 +41,29 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* Trade2watch trading-terminal palette (semantic tokens, theme-aware) */
+  --color-tv-bg: var(--tv-bg);
+  --color-tv-panel: var(--tv-panel);
+  --color-tv-panel2: var(--tv-panel2);
+  --color-tv-line: var(--tv-line);
+  --color-tv-line-strong: var(--tv-line-strong);
+  --color-tv-ink: var(--tv-ink);
+  --color-tv-muted: var(--tv-muted);
+  --color-tv-muted2: var(--tv-muted2);
+  --color-tv-div: var(--tv-div);
+  --color-tv-inset: var(--tv-inset);
+  --color-bull: var(--bull);
+  --color-bear: var(--bear);
+  --color-warn: var(--warn);
+  --color-info: var(--info);
+  --color-bull-soft: var(--bull-soft);
+  --color-bull-line: var(--bull-line);
+  --color-bear-soft: var(--bear-soft);
+  --color-bear-line: var(--bear-line);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-line: var(--warn-line);
+  --color-info-soft: var(--info-soft);
+  --color-info-line: var(--info-line);
 }
 
 :root {
@@ -76,6 +99,30 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Trade2watch terminal palette — LIGHT */
+  --tv-bg: #f2f4f8;
+  --tv-panel: #ffffff;
+  --tv-panel2: #eef1f6;
+  --tv-line: #dde3ec;
+  --tv-line-strong: #b9c2d2;
+  --tv-ink: #1e2637;
+  --tv-muted: #5d6a82;
+  --tv-muted2: #9099ab;
+  --tv-div: rgba(30, 38, 55, 0.08);
+  --tv-inset: rgba(30, 38, 55, 0.05);
+  --bull: #0a8f7f;
+  --bear: #d9453d;
+  --warn: #a8760c;
+  --info: #1c6fd8;
+  --bull-soft: rgba(10, 143, 127, 0.12);
+  --bull-line: rgba(10, 143, 127, 0.38);
+  --bear-soft: rgba(217, 69, 61, 0.11);
+  --bear-line: rgba(217, 69, 61, 0.38);
+  --warn-soft: rgba(168, 118, 12, 0.1);
+  --warn-line: rgba(168, 118, 12, 0.35);
+  --info-soft: rgba(28, 111, 216, 0.1);
+  --info-line: rgba(28, 111, 216, 0.35);
 }
 
 .dark {
@@ -110,6 +157,30 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Trade2watch terminal palette — DARK (original TradingView-style values) */
+  --tv-bg: #0b0e14;
+  --tv-panel: #131722;
+  --tv-panel2: #1a2030;
+  --tv-line: #232b3d;
+  --tv-line-strong: #3a4560;
+  --tv-ink: #e6e9f0;
+  --tv-muted: #8b93a7;
+  --tv-muted2: #5a6377;
+  --tv-div: rgba(255, 255, 255, 0.06);
+  --tv-inset: rgba(26, 32, 48, 0.6);
+  --bull: #26a69a;
+  --bear: #ef5350;
+  --warn: #f5b544;
+  --info: #4a9eff;
+  --bull-soft: rgba(38, 166, 154, 0.14);
+  --bull-line: rgba(38, 166, 154, 0.45);
+  --bear-soft: rgba(239, 83, 80, 0.13);
+  --bear-line: rgba(239, 83, 80, 0.45);
+  --warn-soft: rgba(245, 181, 68, 0.1);
+  --warn-line: rgba(245, 181, 68, 0.4);
+  --info-soft: rgba(74, 158, 255, 0.13);
+  --info-line: rgba(74, 158, 255, 0.4);
 }
 
 @layer base {
@@ -120,3 +191,5 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* theme palette bump */

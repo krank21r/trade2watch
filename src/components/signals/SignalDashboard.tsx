@@ -1,17 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { SignalCard } from './SignalCard'
 import { PipelinePanel } from './PipelinePanel'
 import { ReportsPanel } from './ReportsPanel'
 import { fmtPrice, type SignalRunDetail, type SignalRunRow } from './types'
-
-const C = {
-  panel: 'bg-[#131722] border-[#232b3d]',
-  panel2: 'bg-[#1a2030] border-[#232b3d]',
-  muted: 'text-[#8b93a7]',
-  text: 'text-[#e6e9f0]',
-}
 
 const QUICK_PICKS: Array<{ symbol: string; market: 'crypto' | 'stock'; label: string }> = [
   { symbol: 'BTC', market: 'crypto', label: 'BTC' },
@@ -25,22 +19,22 @@ const QUICK_PICKS: Array<{ symbol: string; market: 'crypto' | 'stock'; label: st
 function outcomeChip(outcome?: string | null): { label: string; color: string } {
   switch (outcome) {
     case 'TARGET1_HIT':
-      return { label: '🎯 T1 hit', color: '#26a69a' }
+      return { label: '🎯 T1 hit', color: 'var(--bull)' }
     case 'TARGET2_HIT':
-      return { label: '🚀 T2 hit', color: '#26a69a' }
+      return { label: '🚀 T2 hit', color: 'var(--bull)' }
     case 'STOP_HIT':
-      return { label: '🛑 Stopped', color: '#ef5350' }
+      return { label: '🛑 Stopped', color: 'var(--bear)' }
     case 'INVALIDATED':
-      return { label: '⚠ Invalidated', color: '#f5b544' }
+      return { label: '⚠ Invalidated', color: 'var(--warn)' }
     default:
-      return { label: 'Open', color: '#8b93a7' }
+      return { label: 'Open', color: 'var(--tv-muted)' }
   }
 }
 
 function dirBadge(direction?: string | null): { label: string; bg: string; fg: string; border: string } | null {
-  if (direction === 'LONG') return { label: 'LONG', bg: 'rgba(38,166,154,.15)', fg: '#26a69a', border: 'rgba(38,166,154,.4)' }
-  if (direction === 'SHORT') return { label: 'SHORT', bg: 'rgba(239,83,80,.15)', fg: '#ef5350', border: 'rgba(239,83,80,.4)' }
-  if (direction === 'NEUTRAL') return { label: 'WAIT', bg: 'rgba(245,181,68,.12)', fg: '#f5b544', border: 'rgba(245,181,68,.4)' }
+  if (direction === 'LONG') return { label: 'LONG', bg: 'var(--bull-soft)', fg: 'var(--bull)', border: 'var(--bull-line)' }
+  if (direction === 'SHORT') return { label: 'SHORT', bg: 'var(--bear-soft)', fg: 'var(--bear)', border: 'var(--bear-line)' }
+  if (direction === 'NEUTRAL') return { label: 'WAIT', bg: 'var(--warn-soft)', fg: 'var(--warn)', border: 'var(--warn-line)' }
   return null
 }
 
@@ -170,31 +164,49 @@ export function SignalDashboard() {
   const busy = run?.status === 'running'
 
   return (
-    <div className="max-w-[1180px] w-full mx-auto px-5 py-5">
+    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-5 sm:py-6">
       <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5 items-start">
         {/* ── left column: form + history ── */}
         <div className="space-y-5 order-2 lg:order-1">
-          <div className={`rounded-[14px] border ${C.panel} p-5`}>
-            <h3 className={`text-sm font-bold mb-4 ${C.text}`}>🎯 New analysis</h3>
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5 space-y-4"
+          >
+            <div className="flex items-center gap-2.5">
+              <span
+                className="h-8 w-8 rounded-xl bg-warn/15 border border-warn/30 text-warn inline-flex items-center justify-center text-sm"
+                aria-hidden="true"
+              >
+                🎯
+              </span>
+              <h3 className="text-sm font-semibold tracking-tight text-tv-ink">New analysis</h3>
+            </div>
 
-            <div className="flex gap-2 mb-3">
+            <div className="bg-tv-panel2 rounded-full p-1 flex">
               {(['crypto', 'stock'] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMarket(m)}
                   suppressHydrationWarning
-                  className={`flex-1 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
-                    market === m
-                      ? 'bg-[#1a2030] text-[#f5b544] border-[rgba(245,181,68,.45)]'
-                      : 'bg-transparent text-[#8b93a7] border-[#232b3d] hover:text-[#e6e9f0]'
+                  className={`relative flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
+                    market === m ? 'text-warn' : 'text-tv-muted hover:text-tv-ink'
                   }`}
                 >
-                  {m === 'crypto' ? '₿ Crypto' : ' Stocks'}
+                  {market === m && (
+                    <motion.span
+                      layoutId="market-pill"
+                      className="absolute inset-0 rounded-full border border-tv-line-strong/60 bg-tv-panel shadow-sm"
+                      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                    />
+                  )}
+                  <span className="relative z-10">{m === 'crypto' ? '₿ Crypto' : ' Stocks'}</span>
                 </button>
               ))}
             </div>
 
-            <label className={`flex flex-col gap-1.5 text-xs font-semibold mb-3 ${C.muted}`}>
+            <label className="flex flex-col gap-1.5 text-xs font-semibold text-tv-muted">
               Symbol
               <input
                 value={symbol}
@@ -204,11 +216,11 @@ export function SignalDashboard() {
                 }}
                 suppressHydrationWarning
                 placeholder={market === 'crypto' ? 'BTC, ETH, SOL…' : 'AAPL, TSLA, NVDA…'}
-                className="bg-[#1a2030] border border-[#232b3d] rounded-lg px-3 py-2.5 text-base font-bold tracking-wide text-[#e6e9f0] outline-none focus:border-[#f5b544] w-full"
+                className="w-full rounded-xl bg-tv-panel2 border border-tv-line px-3 py-2 text-sm font-bold tracking-wide text-tv-ink placeholder:text-tv-muted2 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-warn/40 focus:border-warn/60 transition"
               />
             </label>
 
-            <div className="flex flex-wrap gap-1.5 mb-4">
+            <div className="flex flex-wrap gap-1.5">
               {QUICK_PICKS.filter((q) => q.market === market).map((q) => (
                 <button
                   key={q.symbol}
@@ -217,10 +229,10 @@ export function SignalDashboard() {
                     setMarket(q.market)
                   }}
                   suppressHydrationWarning
-                  className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                  className={`rounded-full px-3 py-1 text-[12px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
                     symbol === q.symbol
-                      ? 'bg-[rgba(74,158,255,.15)] text-[#4a9eff] border-[rgba(74,158,255,.4)]'
-                      : `${C.panel2} text-[#8b93a7] hover:text-[#e6e9f0]`
+                      ? 'bg-info/12 text-info border-info/35'
+                      : 'bg-tv-panel2 border-tv-line text-tv-muted hover:text-tv-ink'
                   }`}
                 >
                   {q.label}
@@ -232,94 +244,127 @@ export function SignalDashboard() {
               onClick={() => startRun(symbol, market)}
               disabled={busy || starting}
               suppressHydrationWarning
-              className="w-full py-3 rounded-full text-sm font-bold text-[#0b0e14] transition-opacity disabled:opacity-50"
-              style={{ background: '#f5b544' }}
+              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-gradient-to-b from-warn to-warn/90 text-tv-bg hover:brightness-110 active:scale-[0.99] transition shadow-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
             >
               {busy || starting ? 'Analysis running…' : 'Run multi-agent analysis'}
             </button>
 
             {formError && (
-              <p className="mt-3 text-xs leading-relaxed px-3 py-2.5 rounded-lg bg-[rgba(239,83,80,.12)] text-[#ef5350] border border-[rgba(239,83,80,.4)]">
+              <p
+                role="alert"
+                className="rounded-xl bg-bear/12 text-bear border border-bear/40 px-3 py-2.5 text-[13px] leading-relaxed"
+              >
                 {formError}
               </p>
             )}
 
-            <p className={`mt-3 text-[11.5px] leading-relaxed ${C.muted}`}>
+            <p className="text-[11.5px] leading-relaxed text-tv-muted">
               ~10 LLM calls across 6 stages (analysts → debate → plan → risk → portfolio manager). Takes 1–2 minutes.
             </p>
-          </div>
+          </motion.div>
 
           {/* history */}
-          <div className={`rounded-[14px] border ${C.panel} overflow-hidden`}>
-            <h3 className={`text-sm font-bold px-5 py-3.5 border-b border-[#232b3d] ${C.text}`}>📜 Signal history</h3>
-            <div className="max-h-[420px] overflow-y-auto">
-              {history.length === 0 && <p className={`px-5 py-6 text-center text-xs ${C.muted}`}>No analyses yet — run one above.</p>}
-              {history.map((h) => {
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut', delay: 0.05 }}
+            className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5"
+          >
+            <div className="flex items-center gap-2.5 mb-3">
+              <span
+                className="h-8 w-8 rounded-xl bg-info/12 border border-info/30 text-info inline-flex items-center justify-center text-sm"
+                aria-hidden="true"
+              >
+                📜
+              </span>
+              <h3 className="text-sm font-semibold tracking-tight text-tv-ink">Signal history</h3>
+            </div>
+            <div className="max-h-[440px] overflow-y-auto">
+              {history.length === 0 && <p className="px-3 py-6 text-center text-xs text-tv-muted">No analyses yet — run one above.</p>}
+              {history.map((h, i) => {
                 const badge = dirBadge(h.direction)
                 const oc = outcomeChip(h.outcome)
+                const selected = run?.id === h.id
                 return (
-                  <button
+                  <motion.button
                     key={h.id}
                     onClick={() => openRun(h.id)}
                     suppressHydrationWarning
-                    className={`w-full text-left px-5 py-3 border-b border-dashed border-white/5 last:border-0 hover:bg-[#1a2030] transition-colors ${run?.id === h.id ? 'bg-[#1a2030]' : ''}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(i, 15) * 0.03 }}
+                    className={`w-full text-left rounded-xl px-3 py-2.5 border-b border-tv-div last:border-0 hover:bg-tv-panel2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
+                      selected ? 'bg-tv-panel2 ring-1 ring-warn/40' : ''
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`text-[13px] font-bold ${C.text}`}>
+                      <span className="text-[13px] font-semibold text-tv-ink">
                         {h.symbol}
-                        <span className={`ml-1.5 text-[10.5px] font-medium ${C.muted}`}>{h.market === 'crypto' ? '₿' : '📈'}</span>
+                        <span className="ml-1.5 text-[10.5px] font-medium text-tv-muted">{h.market === 'crypto' ? '₿' : '📈'}</span>
                       </span>
                       {badge && (
                         <span
-                          className="px-2 py-0.5 rounded-md text-[10px] font-bold"
+                          className="px-2 py-0.5 rounded-full text-[10.5px] font-bold"
                           style={{ background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}` }}
                         >
                           {badge.label}
                         </span>
                       )}
                     </div>
-                    <div className={`flex items-center justify-between gap-2 mt-1 text-[11px] ${C.muted}`}>
+                    <div className="flex items-center justify-between gap-2 mt-1 text-[11.5px] tabular-nums text-tv-muted">
                       <span>
                         {fmtPrice(h.priceAtRun)} · conf {h.confidence ?? '—'}%
                       </span>
-                      <span style={{ color: oc.color }}>
+                      <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold" style={{ color: oc.color }}>
                         {h.status === 'running' ? '⏳ running' : h.status === 'failed' ? '❌ failed' : oc.label}
                       </span>
                     </div>
-                  </button>
+                  </motion.button>
                 )
               })}
             </div>
-          </div>
+          </motion.div>
         </div>
 
         {/* ── right column: run view ── */}
         <div className="space-y-5 order-1 lg:order-2 min-w-0">
           {!run && (
-            <div className={`rounded-[14px] border ${C.panel} p-10 text-center`}>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: 'easeOut', delay: 0.1 }}
+              className="rounded-2xl border border-dashed border-tv-line-strong bg-tv-panel2/50 p-10 text-center text-tv-muted"
+            >
               <p className="text-3xl mb-3">🤖📈</p>
-              <h2 className={`text-lg font-bold mb-2 ${C.text}`}>AI trade-setup desk</h2>
-              <p className={`text-[13px] leading-relaxed max-w-md mx-auto ${C.muted}`}>
+              <h2 className="text-lg font-bold tracking-tight mb-2 text-tv-ink">AI trade-setup desk</h2>
+              <p className="text-[13px] leading-relaxed max-w-md mx-auto">
                 A multi-agent system inspired by{' '}
                 <a
                   href="https://github.com/TAuricResearch/TradingAgents"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[#4a9eff] underline decoration-dotted"
+                  className="text-info underline decoration-dotted rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50"
                 >
                   TradingAgents
                 </a>
                 : analyst team → bull/bear debate → trade-plan engineer → risk committee → portfolio manager. Entries, stops
                 and targets are computed from live price structure (ATR, pivots, EMAs) — never invented by the LLM.
               </p>
-              <p className={`text-[11.5px] mt-4 ${C.muted}`}>
+              <p className="text-[11.5px] mt-4">
                 Pick a symbol on the left and hit <b>Run multi-agent analysis</b>.
               </p>
-            </div>
+            </motion.div>
           )}
 
           {run && run.status === 'loading' && (
-            <div className={`rounded-[14px] border ${C.panel} p-10 text-center ${C.muted} text-sm`}>Loading run…</div>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-10 text-center text-sm text-tv-muted"
+            >
+              Loading run…
+            </motion.div>
           )}
 
           {run && run.status === 'running' && (
@@ -330,7 +375,7 @@ export function SignalDashboard() {
             <>
               <PipelinePanel stage={run.stage} progress={run.progress} status={run.status} error={run.error} />
               {run.stage && (
-                <p className={`text-xs text-center ${C.muted}`}>
+                <p className="text-xs text-center text-tv-muted">
                   Partial artifacts (if any) are preserved — pick a different symbol or retry.
                 </p>
               )}
@@ -347,11 +392,12 @@ export function SignalDashboard() {
         </div>
       </div>
 
-      <footer className={`mt-8 pt-4 border-t border-[#232b3d] text-[11.5px] leading-relaxed ${C.muted}`}>
-        <b>Trade2watch AI Signals</b> — multi-agent analysis inspired by TradingAgents (MIT). Decisions are generated by LLMs
-        from public market data (Binance, Yahoo Finance, Google News) with deterministic risk engineering.{' '}
-        <b>Not financial advice.</b> Crypto and stocks are volatile — never trade money you can&apos;t afford to lose.
-        Always re-validate levels before acting.
+      <footer className="mt-8 pt-4 border-t border-tv-line text-[11.5px] leading-relaxed text-tv-muted">
+        <b className="text-tv-ink">Trade2watch AI Signals</b> — multi-agent analysis inspired by TradingAgents (MIT).
+        Decisions are generated by LLMs from public market data (Binance, Yahoo Finance, Google News) with deterministic
+        risk engineering.{' '}
+        <b className="text-tv-ink">Not financial advice.</b> Crypto and stocks are volatile — never trade money you
+        can&apos;t afford to lose. Always re-validate levels before acting.
       </footer>
     </div>
   )
