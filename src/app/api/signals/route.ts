@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, ensureTables } from '@/lib/db'
 import { getTicker } from '@/lib/market/providers'
 
 export const dynamic = 'force-dynamic'
@@ -62,6 +62,7 @@ async function evaluateOutcomes(
 // GET /api/signals — recent signal history
 export async function GET(req: NextRequest) {
   try {
+    await ensureTables()
     const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get('limit') ?? 20)))
     const runs = await db.signalRun.findMany({
       orderBy: { createdAt: 'desc' },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, ensureTables } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +9,7 @@ const STALE_MS = 6 * 60 * 1000 // a run stuck >6min is considered dead
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   try {
+    await ensureTables()
     let run = await db.signalRun.findUnique({ where: { id } })
     if (!run) return NextResponse.json({ error: 'Run not found.' }, { status: 404 })
 

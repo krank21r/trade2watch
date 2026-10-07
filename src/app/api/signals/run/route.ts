@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, ensureTables } from '@/lib/db'
 import { runSignalPipeline } from '@/lib/signals/engine'
 import { CRYPTO_HINT } from '@/lib/market/providers'
 
@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 // POST /api/signals/run — start a new multi-agent analysis
 export async function POST(req: NextRequest) {
   try {
+    await ensureTables()
     const body = await req.json().catch(() => ({}))
     const rawSymbol = String(body?.symbol ?? '').trim().toUpperCase()
     const market = body?.market === 'stock' ? 'stock' : body?.market === 'crypto' ? 'crypto' : null
