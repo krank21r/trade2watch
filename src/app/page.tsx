@@ -10,12 +10,12 @@ import { ThemeToggle } from '@/components/theme-toggle'
 type Tab = 'setups' | 'signals'
 
 const TABS: Array<{ key: Tab; label: string }> = [
-  { key: 'signals', label: '⚡ AI Signals' },
   { key: 'setups', label: 'Trade Setups' },
+  { key: 'signals', label: '⚡ AI Signals' },
 ]
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>('signals')
+  const [tab, setTab] = useState<Tab>('setups')
 
   return (
     <div className="relative h-[100dvh] flex flex-col bg-tv-bg text-tv-ink overflow-hidden">
