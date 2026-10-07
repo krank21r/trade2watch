@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
  * Live, auto-generated trade setups (no LLM, no stale config).
  */
 export async function GET(req: NextRequest) {
-  const raw = req.nextUrl.searchParams.get('symbols') ?? 'BTC,ETH,SOL'
+  const raw = req.nextUrl.searchParams.get('symbols') ?? 'BTC,ETH,SOL,AAPL,TSLA,NVDA'
   const symbols = raw
     .split(',')
     .map((s) => s.trim().toUpperCase())

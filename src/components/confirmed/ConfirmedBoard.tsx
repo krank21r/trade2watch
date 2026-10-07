@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { fmtPrice } from '@/components/signals/types'
+import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 
 // ─── Trade Confirmed board ───────────────────────────────────────────────────
@@ -255,7 +256,7 @@ function ConfirmedCard({
 // ─── board ───────────────────────────────────────────────────────────────────
 
 export function ConfirmedBoard() {
-  const [symbols, setSymbols] = useState<string[]>(['BTC', 'ETH', 'SOL'])
+  const [symbols, setSymbols] = useState<string[]>(DEFAULT_WATCHLIST)
   const [data, setData] = useState<SetupsPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -264,19 +265,17 @@ export function ConfirmedBoard() {
   const [riskPct, setRiskPct] = useState('1')
   const mounted = useRef(true)
   const logRef = useRef<ConfirmEvent[]>([])
+  const wlLoaded = useRef(false)
   const { toast } = useToast()
 
   useEffect(() => {
     mounted.current = true
     setAcct(lsGet('tw_acct', ''))
     setRiskPct(lsGet('tw_risk', '1'))
-    const wl = lsGet('tw_watchlist', '')
-    const wlArr = wl
-      .split(',')
-      .map((x) => x.trim())
-      .filter((x) => /^[A-Z0-9.\-]{1,10}$/.test(x))
-      .slice(0, 8)
-    if (wlArr.length) setSymbols(wlArr)
+    const wl = loadWatchlist()
+    setSymbols(wl)
+    saveWatchlist(wl)
+    wlLoaded.current = true
     const l = loadLog()
     logRef.current = l
     setLog(l)
@@ -287,11 +286,8 @@ export function ConfirmedBoard() {
 
   // share watchlist edits with the Trade Setups tab (persist list)
   useEffect(() => {
-    try {
-      localStorage.setItem('tw_watchlist', symbols.join(','))
-    } catch {
-      /* private mode */
-    }
+    if (!wlLoaded.current) return
+    saveWatchlist(symbols)
   }, [symbols])
 
   const load = useCallback(async () => {

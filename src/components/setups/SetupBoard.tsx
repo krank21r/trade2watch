@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { fmtPrice } from '@/components/signals/types'
+import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 
 // Trade2watch design tokens (mirrors public/app.html)
@@ -441,7 +442,7 @@ function ConfirmationCard({
 }
 
 export function SetupBoard() {
-  const [symbols, setSymbols] = useState<string[]>(['BTC', 'ETH', 'SOL'])
+  const [symbols, setSymbols] = useState<string[]>(DEFAULT_WATCHLIST)
   const [data, setData] = useState<SetupsPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -453,19 +454,19 @@ export function SetupBoard() {
   const [riskPct, setRiskPct] = useState('1')
   const mounted = useRef(true)
   const confirmsRef = useRef<Record<string, ConfirmInfo>>({})
+  const wlLoaded = useRef(false)
   const { toast } = useToast()
 
   useEffect(() => {
     mounted.current = true
     setAcct(lsGet('tw_acct', ''))
     setRiskPct(lsGet('tw_risk', '1'))
-    // restore the shared watchlist (also used by the Trade Confirmed board)
-    const wlArr = lsGet('tw_watchlist', '')
-      .split(',')
-      .map((x) => x.trim())
-      .filter((x) => /^[A-Z0-9.\-]{1,10}$/.test(x))
-      .slice(0, 8)
-    if (wlArr.length) setSymbols(wlArr)
+    // restore the shared watchlist (also used by the Trade Confirmed board);
+    // loadWatchlist migrates the old crypto-only default to include stocks
+    const wl = loadWatchlist()
+    setSymbols(wl)
+    saveWatchlist(wl)
+    wlLoaded.current = true
     const c = loadConfirms()
     confirmsRef.current = c
     setConfirms(c)
@@ -498,11 +499,8 @@ export function SetupBoard() {
 
   // persist watchlist so the Trade Confirmed board tracks the same symbols
   useEffect(() => {
-    try {
-      localStorage.setItem('tw_watchlist', symbols.join(','))
-    } catch {
-      /* private mode */
-    }
+    if (!wlLoaded.current) return
+    saveWatchlist(symbols)
   }, [symbols])
 
   // confirmation tracker — when price reaches an entry zone, record it once,
