@@ -33,3 +33,17 @@ Work Log:
 
 Stage Summary:
 - Entry mechanism fully documented for user; mock-shim technique reusable for future demos; recommendation noted: refresh setupJson in public/app.html to current market structure
+
+---
+Task ID: 3
+Agent: Z.ai Code (main)
+Task: Plan AI signal engine (TradingAgents adaptation) for Trade2watch
+
+Work Log:
+- Cloned TauricResearch/TradingAgents, studied pipeline: 4 parallel analysts -> bull/bear debate -> research manager -> trader -> risk debate (aggressive/conservative/neutral) -> portfolio manager -> memory log reflection; structured outputs for the 3 decision agents; 2 LLM tiers (quick/deep)
+- Validated sandbox data sources: Binance klines OK (crypto, keyless), Yahoo Finance chart/search/news OK (stocks, keyless), Google News RSS OK, Stooq empty (dropped), CoinGecko currently 429 (use Binance instead)
+- Validated z-ai-web-dev-sdk LLM (glm-4-plus) with structured JSON request — works, but wraps JSON in code fences -> engine needs fence-stripping + retry
+- Designed TypeScript adaptation: deterministic data+indicator layer (RSI/MACD/EMA/ATR/S-R pivots computed in TS), regime-based strategy (trend: pullback momentum; range: fade edges), ATR stops, S/R targets, R:R gate, LLM agents for analysis/debate/risk, deterministic trade-plan engineering
+
+Stage Summary:
+- Full plan ready for user approval (phases 1-5); all external dependencies verified working from sandbox
