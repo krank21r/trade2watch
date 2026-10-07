@@ -1,6 +1,8 @@
 /**
  * Market data providers — keyless, verified working from this environment:
- *  - Crypto: Binance public REST (klines + 24h ticker)
+ *  - Crypto: Binance public REST (klines + 24h ticker), with geo-block fallback
+ *            to Binance's official public market-data mirrors (Binance returns
+ *            HTTP 451 from some hosting regions, e.g. US serverless IPs)
  *  - Stocks: Yahoo Finance v8 chart + v1 search (quotes, OHLCV, metadata)
  *  - News:   Google News RSS (works for any query)
  * All responses cached in memory with short TTLs to stay polite with vendors.
@@ -53,6 +55,38 @@ async function fetchText(url: string, timeoutMs = 12000): Promise<string> {
 
 // ─── crypto: Binance ─────────────────────────────────────────────────────────
 
+// Binance geo-blocks some hosting regions (HTTP 451) — e.g. US serverless IPs
+// on Vercel. data-api.binance.vision is Binance's official public market-data
+// mirror (identical REST paths, read-only); api-gcp is another official mirror.
+// We try hosts in order and stick with whichever last worked for 10 minutes.
+const BINANCE_HOSTS = [
+  'https://api.binance.com',
+  'https://data-api.binance.vision',
+  'https://api-gcp.binance.com',
+]
+let binanceHostIdx = 0
+let binanceHostAt = 0
+
+async function binanceJson<T>(path: string, ttlMs: number, cacheKey: string): Promise<T> {
+  return cached(cacheKey, ttlMs, async () => {
+    const order: number[] = []
+    if (Date.now() - binanceHostAt < 600_000) order.push(binanceHostIdx)
+    for (let i = 0; i < BINANCE_HOSTS.length; i++) if (!order.includes(i)) order.push(i)
+    let lastErr: unknown
+    for (const idx of order) {
+      try {
+        const data = await fetchJson<T>(`${BINANCE_HOSTS[idx]}${path}`)
+        binanceHostIdx = idx
+        binanceHostAt = Date.now()
+        return data
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('All Binance hosts failed')
+  })
+}
+
 export interface Ticker {
   symbol: string // normalized, e.g. "BTC"
   market: 'crypto' | 'stock'
@@ -66,10 +100,10 @@ type BinanceKline = [number, string, string, string, string, string, ...unknown[
 
 export async function fetchCryptoCandles(symbol: string, interval = '4h', limit = 200): Promise<Candle[]> {
   const pair = `${symbol.toUpperCase()}USDT`
-  const raw = await cached(`bin:k:${pair}:${interval}:${limit}`, 60_000, async () =>
-    fetchJson<BinanceKline[]>(
-      `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`,
-    ),
+  const raw = await binanceJson<BinanceKline[]>(
+    `/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`,
+    60_000,
+    `bin:k:${pair}:${interval}:${limit}`,
   )
   return raw.map((k) => ({
     time: k[0],
@@ -83,10 +117,10 @@ export async function fetchCryptoCandles(symbol: string, interval = '4h', limit 
 
 export async function fetchCryptoTicker(symbol: string): Promise<Ticker> {
   const pair = `${symbol.toUpperCase()}USDT`
-  const d = await cached(`bin:t:${pair}`, 15_000, async () =>
-    fetchJson<{ lastPrice: string; priceChangePercent: string }>(
-      `https://api.binance.com/api/v3/ticker/24hr?symbol=${pair}`,
-    ),
+  const d = await binanceJson<{ lastPrice: string; priceChangePercent: string }>(
+    `/api/v3/ticker/24hr?symbol=${pair}`,
+    15_000,
+    `bin:t:${pair}`,
   )
   return {
     symbol: symbol.toUpperCase(),
