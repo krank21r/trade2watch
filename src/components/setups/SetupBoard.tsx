@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { fmtPrice } from '@/components/signals/types'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 
@@ -52,57 +52,210 @@ function summarize(s: BoardSetup): { cls: string; txt: string } {
   return { cls: chipCls.waiting, txt: waits.length ? `WAITING · ${waits.join(' · ')}` : 'WAITING' }
 }
 
-function SideCard({ side, kind, symbol, currency }: { side: SideSetup; kind: 'long' | 'short'; symbol: string; currency: string }) {
+// ─── trade-plan ladder — Entry levels · Stop loss · Targets, one glance ─────
+
+function pctFrom(mid: number, v: number): string {
+  const p = ((v - mid) / mid) * 100
+  return `${p >= 0 ? '+' : ''}${p.toFixed(1)}%`
+}
+
+function rMult(v: number, mid: number, risk: number): string {
+  return risk > 0 ? `${(Math.abs(v - mid) / risk).toFixed(1)}R` : '—'
+}
+
+function Badge({ children }: { children: ReactNode }) {
+  return (
+    <span className="px-1.5 py-px rounded text-[9.5px] font-bold bg-[rgba(255,255,255,.07)] text-[#8b93a7] whitespace-nowrap">{children}</span>
+  )
+}
+
+function PlanRow({
+  icon, label, sub, price, badges, cls, big, accent,
+}: {
+  icon: string
+  label: string
+  sub?: string
+  price: string
+  badges?: Array<string | undefined>
+  cls: string
+  big?: boolean
+  accent?: boolean
+}) {
+  return (
+    <div
+      role="listitem"
+      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border ${accent ? 'bg-[rgba(245,181,68,.07)] border-[rgba(245,181,68,.35)]' : 'bg-[rgba(26,32,48,.6)] border-transparent'}`}
+    >
+      <span className="text-[15px] w-6 text-center shrink-0" aria-hidden="true">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className={`font-bold ${C.text} ${big ? 'text-[12.5px]' : 'text-[11.5px]'}`}>{label}</div>
+        {sub && <div className={`text-[10.5px] mt-0.5 ${C.muted}`}>{sub}</div>}
+      </div>
+      <div className="text-right shrink-0">
+        <div className={`font-bold tabular-nums ${cls} ${big ? 'text-[16.5px]' : 'text-[15px]'}`}>{price}</div>
+        {badges && badges.some((b) => b) && (
+          <div className="flex gap-1 justify-end mt-0.5 flex-wrap">
+            {badges.filter((b): b is string => !!b).map((b, i) => (
+              <Badge key={i}>{b}</Badge>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TradePlanCard({
+  side, kind, preferred, pair, currency, livePrice,
+}: {
+  side: SideSetup
+  kind: 'long' | 'short'
+  preferred: boolean
+  pair: string
+  currency: string
+  livePrice: number
+}) {
   const isLong = kind === 'long'
-  const badgeCls = isLong ? chipCls.liveLong : chipCls.liveShort
+  const [copied, setCopied] = useState(false)
+  const mid = (side.entryLow + side.entryHigh) / 2
+  const risk = Math.abs(mid - side.stop)
+
   const stateChip =
     side.state === 'LIVE' ? (
-      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badgeCls}`}>
-        {isLong ? 'LONG ZONE LIVE' : 'SHORT ZONE LIVE'}
+      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${isLong ? chipCls.liveLong : chipCls.liveShort}`}>
+        {isLong ? '🟢 IN ZONE — EXECUTE' : '🔴 IN ZONE — EXECUTE'}
       </span>
     ) : side.state === 'VOID' ? (
       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${chipCls.void}`}>VOID — THESIS DEAD</span>
     ) : (
       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${chipCls.waiting}`}>
-        WAITING · {side.dist !== null && fmtPrice(side.dist, currency)} ({side.distPct?.toFixed(1)}%) to zone
+        WAITING · {side.dist !== null && fmtPrice(side.dist, currency)} ({side.distPct?.toFixed(1)}%) away
       </span>
     )
 
+  const copyPlan = async () => {
+    const txt = `${pair} ${isLong ? 'LONG' : 'SHORT'} setup — Entry ${fmtPrice(side.entryLow, currency)}–${fmtPrice(
+      side.entryHigh,
+      currency,
+    )} | Stop loss ${fmtPrice(side.stop, currency)} | TP1 ${fmtPrice(side.t1, currency)} | TP2 ${fmtPrice(
+      side.t2,
+      currency,
+    )}${side.runner !== null ? ` | TP3 ${fmtPrice(side.runner, currency)}` : ''} | R:R ${side.rr}`
+    try {
+      await navigator.clipboard.writeText(txt)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      /* clipboard unavailable — silent */
+    }
+  }
+
+  const entrySub =
+    side.state === 'LIVE'
+      ? `live ${fmtPrice(livePrice, currency)} — price is inside the zone`
+      : side.state === 'VOID'
+        ? 'setup invalidated — wait for fresh structure'
+        : `live ${fmtPrice(livePrice, currency)} — ${side.distPct?.toFixed(1) ?? '?'}% away, set limits and wait`
+
+  // targets in the plan's own order: TP3 (furthest) → TP2 → TP1
+  const targetRows = (
+    [
+      side.runner !== null && { key: 'tp3', label: 'TP3 · Runner', v: side.runner, sub: 'trail the rest beyond TP2' },
+      { key: 'tp2', label: 'TP2 · Final target', v: side.t2, sub: 'close the position' },
+      { key: 'tp1', label: 'TP1 · Bank half', v: side.t1, sub: 'take half off, move stop to entry' },
+    ].filter(Boolean) as Array<{ key: string; label: string; v: number; sub: string }>
+  ).map((r) => (
+    <PlanRow key={r.key} icon="🎯" label={r.label} sub={r.sub} price={fmtPrice(r.v, currency)} cls={C.blue} badges={[pctFrom(mid, r.v), rMult(r.v, mid, risk)]} />
+  ))
+
+  const entryRow = (
+    <PlanRow
+      key="entry"
+      icon="▶"
+      label="ENTRY — limit zone"
+      sub={entrySub}
+      price={`${fmtPrice(side.entryLow, currency)} – ${fmtPrice(side.entryHigh, currency)}`}
+      cls={C.amber}
+      big
+      accent
+    />
+  )
+  const stopRow = (
+    <PlanRow
+      key="stop"
+      icon="🛑"
+      label="STOP LOSS"
+      sub={side.stopNote}
+      price={fmtPrice(side.stop, currency)}
+      cls={C.red}
+      badges={[pctFrom(mid, side.stop), risk > 0 ? `${fmtPrice(risk, currency)} risk/unit` : undefined]}
+    />
+  )
+
   return (
-    <div className={`rounded-[14px] border ${C.panel} p-5 flex flex-col gap-3`}>
+    <div
+      className={`rounded-[14px] border p-5 flex flex-col gap-3.5 ${
+        preferred
+          ? 'border-[rgba(245,181,68,.5)] bg-[#131722] shadow-[0_0_28px_rgba(245,181,68,.07)]'
+          : C.panel
+      }`}
+    >
+      {/* header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className={`text-[15px] font-bold ${C.text}`}>{side.strategy}</h3>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className={`text-[16px] font-extrabold tracking-wide ${isLong ? C.green : C.red}`}>
+              {isLong ? '▲ LONG SETUP' : '▼ SHORT SETUP'}
+            </h3>
+            {preferred ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#f5b544] text-[#0b0e14]">★ THE ACTIVE SETUP</span>
+            ) : (
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${isLong ? chipCls.liveLong : chipCls.liveShort}`}>{side.tag}</span>
+            )}
+          </div>
+          <p className={`text-[12.5px] font-semibold mt-1 ${C.text}`}>{side.strategy}</p>
           <p className={`text-[11px] mt-0.5 ${C.muted}`}>{side.trigger}</p>
         </div>
-        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${side.tag === 'PREFERRED' ? 'bg-[rgba(245,181,68,.14)] text-[#f5b544] border-[rgba(245,181,68,.45)]' : badgeCls}`}>
-          {side.tag}
-        </span>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {stateChip}
+          <button
+            onClick={copyPlan}
+            suppressHydrationWarning
+            aria-label={`Copy ${pair} ${isLong ? 'long' : 'short'} plan to clipboard`}
+            className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-[#232b3d] bg-[#1a2030] text-[#e6e9f0] hover:border-[#f5b544]/60 transition-colors"
+          >
+            {copied ? '✓ Copied' : '⧉ Copy plan'}
+          </button>
+        </div>
       </div>
-      <div>{stateChip}</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-[13px]">
-        <Cell k={`Entry zone (limit)`} v={`${fmtPrice(side.entryLow, currency)} – ${fmtPrice(side.entryHigh, currency)}`} cls={C.amber} strong />
-        <Cell k="Stop" v={fmtPrice(side.stop, currency)} sub={side.stopNote} cls={C.red} />
-        <Cell k="Target 1" v={fmtPrice(side.t1, currency)} cls={C.blue} />
-        <Cell k="Target 2" v={fmtPrice(side.t2, currency)} cls={C.blue} />
-        {side.runner !== null && <Cell k="Runner" v={fmtPrice(side.runner, currency)} cls={C.blue} />}
-        <Cell k="Risk : Reward" v={side.rr} cls={C.green} />
-      </div>
-      <p className={`text-[12px] ${C.red}`}>⛔ {side.invalidation}</p>
-      <p className={`text-[11px] ${C.muted}`}>
-        Sizing: risk ÷ ({fmtPrice((side.entryLow + side.entryHigh) / 2, currency)} − {fmtPrice(side.stop, currency)}) — auto-calculated below.
-      </p>
-      <span className="sr-only">{symbol} {side.strategy} setup</span>
-    </div>
-  )
-}
 
-function Cell({ k, v, sub, cls, strong }: { k: string; v: string; sub?: string; cls: string; strong?: boolean }) {
-  return (
-    <div>
-      <div className={`text-[11px] ${C.muted}`}>{k}</div>
-      <div className={`font-semibold tabular-nums ${cls} ${strong ? 'text-[15px]' : ''}`}>{v}</div>
-      {sub && <div className={`text-[10px] ${C.muted}`}>{sub}</div>}
+      {/* the ladder — reads top-down like a chart (highest price first) */}
+      <div className="flex flex-col gap-1.5" role="list" aria-label={`${pair} ${isLong ? 'long' : 'short'} plan levels`}>
+        {isLong ? (
+          <>
+            {targetRows}
+            {entryRow}
+            {stopRow}
+          </>
+        ) : (
+          <>
+            {stopRow}
+            {entryRow}
+            {[...targetRows].reverse()}
+          </>
+        )}
+      </div>
+
+      {/* R:R + invalidation */}
+      <div className="flex items-center justify-between gap-3 text-[12.5px] pt-1 border-t border-dashed border-white/5">
+        <span className={C.muted}>Risk : Reward</span>
+        <span className={`font-bold ${C.green}`}>{side.rr}</span>
+      </div>
+      <p className={`text-[11.5px] leading-relaxed ${C.red}`}>⛔ {side.invalidation}</p>
+      <span className="sr-only">
+        {pair} {isLong ? 'long' : 'short'} setup — entry {fmtPrice(side.entryLow, currency)} to {fmtPrice(side.entryHigh, currency)}, stop{' '}
+        {fmtPrice(side.stop, currency)}, targets {fmtPrice(side.t1, currency)} and {fmtPrice(side.t2, currency)}
+      </span>
     </div>
   )
 }
@@ -414,14 +567,27 @@ export function SetupBoard() {
             </div>
           </div>
 
-          {/* setup cards — preferred side first */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>)
-              .filter((pair): pair is ['long' | 'short', SideSetup] => pair[1] !== null)
-              .sort((a, b) => (a[1].tag === 'PREFERRED' ? -1 : 0) - (b[1].tag === 'PREFERRED' ? -1 : 0))
-              .map(([kind, side]) => (
-                <SideCard key={kind} side={side} kind={kind} symbol={active.symbol} currency={active.currency} />
-              ))}
+          {/* the trade plans — preferred side first */}
+          <div className="flex flex-col gap-3">
+            <h2 className={`text-[13px] font-bold ${C.text}`}>
+              Trade plans — <span className={C.amber}>entry levels</span>, <span className={C.red}>stop loss</span> &amp; <span className={C.blue}>targets</span>
+            </h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>)
+                .filter((pair): pair is ['long' | 'short', SideSetup] => pair[1] !== null)
+                .sort((a, b) => (a[1].tag === 'PREFERRED' ? -1 : 0) - (b[1].tag === 'PREFERRED' ? -1 : 0))
+                .map(([kind, side]) => (
+                  <TradePlanCard
+                    key={kind}
+                    side={side}
+                    kind={kind}
+                    preferred={side.tag === 'PREFERRED'}
+                    pair={active.pair}
+                    currency={active.currency}
+                    livePrice={active.price}
+                  />
+                ))}
+            </div>
           </div>
 
           {/* sizing */}

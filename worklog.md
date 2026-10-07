@@ -97,3 +97,20 @@ Work Log:
 Stage Summary:
 - Trade Setups tab is now a self-updating board: no hand-maintained JSON, no false alarms, zones always reflect current market structure
 - Legacy static app preserved at /app.html (linked from the board footer) — its zoneState bug lives only there, documented
+---
+Task ID: 7
+Agent: Z.ai Code (main)
+Task: Make Trade Setups unmistakably clear — Entry levels, Stop loss and Targets (user request)
+
+Work Log:
+- Re-read current state: generate.ts already computed entry zone/stop/T1/T2/runner, but SideCard buried them in a cramped 6-cell grid; SignalCard (AI tab) already lists rows — gap was clarity on the Trade Setups tab
+- Redesigned SideCard → TradePlanCard in SetupBoard.tsx: vertical plan ladder ordered like a chart (LONG: TP3→TP2→TP1→ENTRY→STOP top-down; SHORT mirrored: STOP→ENTRY→TP1→TP2→TP3)
+- Each target row: 🎯 price + % from entry-mid + R-multiple badges + management note (TP1 bank half/move stop, TP2 close, TP3 trail); ENTRY row: amber accent panel with live price status (in-zone / % away / invalidated); STOP row: price + % + $risk-per-unit + structural anchor note
+- Preferred side gets "★ THE ACTIVE SETUP" badge + amber glow border; counter-trend side keeps plain panel; section heading "Trade plans — entry levels, stop loss & targets"
+- Added ⧉ Copy plan button → clipboard text "AAPL LONG setup — Entry … | Stop loss … | TP1 … | TP2 … | TP3 … | R:R …" with ✓ Copied feedback
+- Verified math live: BTC long TP1 2.9R/2.8% correct vs mid 82640; AAPL TP3 5.7R/12.0%; short ladders mirrored correctly
+- E2E (agent-browser): BTC ranging (both EDGE ONLY, no runner — honest), AAPL trending (★ ACTIVE long + COUNTER-TREND short), copy button → "✓ Copied", mobile 390px stacks cleanly, zero console errors, lint clean
+
+Stage Summary:
+- Trade Setups tab now answers the user's ask at a glance: big Entry zone, red Stop loss, blue Targets with %/R — no hunting through small grid cells
+- No data-layer changes needed; engine levels were already correct, only presentation was rebuilt
