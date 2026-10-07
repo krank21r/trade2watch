@@ -47,3 +47,20 @@ Work Log:
 
 Stage Summary:
 - Full plan ready for user approval (phases 1-5); all external dependencies verified working from sandbox
+
+---
+Task ID: 4
+Agent: Z.ai Code (main)
+Task: Build AI signal engine (TradingAgents adaptation) — phases 1-5
+
+Work Log:
+- Phase 1: Prisma SignalRun model (signal fields + artifacts JSON + outcome tracking); src/lib/market/ — indicators.ts (EMA/SMA/RSI/MACD/ATR/Bollinger/pivot S-R clustering/slope, zero deps), providers.ts (Binance klines+ticker, Yahoo chart+search+news, Google News RSS; in-memory TTL cache; empty-news short TTL), snapshot.ts (regime detection TRENDING_UP/DOWN/RANGING via EMA stack+slope)
+- Phase 2: src/lib/signals/ — llm.ts (ZAI singleton, global call queue with 1.6s min spacing, 429 backoff 5-30s, fenced-JSON extraction with self-correcting retry), engine.ts (6-stage pipeline: data → 3 parallel analysts → bull/bear debate → research manager → DETERMINISTIC trade-plan engineer → risk committee 3 personas → portfolio manager; desk memory from past runs; house R:R floor ≥2.0/3.5 enforced after PM adjustments; graceful degradation at every step)
+- Phase 3: API — POST /api/signals/run (fire-and-forget pipeline), GET /api/signals/run/[id] (poll + zombie self-heal 6min), GET /api/signals (history + lazy outcome evaluation), GET /api/market/quote
+- Phase 4: UI — page.tsx tabbed shell (AI Signals default | Trade Setups iframe); components/signals/ SignalDashboard (form+quick picks+history, 2.5s polling), SignalCard (T2W visual language: direction badge, confidence bar, entry/stop/T1/T2/R:R/invalidation, sizing synced to tw_acct/tw_risk localStorage), PipelinePanel (6-stage stepper), ReportsPanel (collapsible agent transcripts)
+- Bugs fixed during E2E: missing llmText import; Google News empty results cached 10min (now 45s) + Yahoo news fallback source; z-ai 429 bursts (queue+backoff); R:R gate now applies after PM adjustments; news-analyst anti-hallucination prompt for empty headlines
+- Verified runs: BTC LONG 70 (PM adjusted), AAPL NEUTRAL 65, TSLA NEUTRAL 75, NVDA LONG 65 (PM caught inverted R:R and adjusted), ETH LONG 65, BTC NEUTRAL 65 (via UI), SOL NEUTRAL 60 (under rate pressure, degraded gracefully)
+- Agent Browser E2E: tab shell, history badges, ETH LONG card, sizing math exact ($10k@1% → 2.1053 ETH), pipeline live progress 22%→complete, agent transcripts, classic iframe tab, mobile 390px — all pass, zero console errors
+
+Stage Summary:
+- AI Signals desk fully operational at / (default tab); 7 signal runs persisted in SQLite; engine robust to vendor rate limits; lint clean; dev.log clean

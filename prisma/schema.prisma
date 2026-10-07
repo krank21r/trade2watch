@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +7,49 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+// ─── AI Signal Engine (TradingAgents adaptation) ────────────────────────────
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model SignalRun {
+  id          String    @id @default(cuid())
+  symbol      String // BTC, ETH, AAPL, TSLA...
+  market      String // 'crypto' | 'stock'
+  displayName String? // "Bitcoin", "Apple Inc."
+  status      String    @default("running") // running | completed | failed
+  stage       String    @default("queued") // queued | data | analysts | debate | plan | risk | decision | done
+  progress    Int       @default(0) // 0-100
+  error       String?
+
+  // market snapshot at run time
+  priceAtRun Float?
+  change24h  Float?
+  regime     String? // TRENDING_UP | TRENDING_DOWN | RANGING
+  timeframe  String? // "4h" (crypto) | "1d" (stocks)
+
+  // final signal (the Trade2watch-style setup)
+  direction    String? // LONG | SHORT | NEUTRAL
+  confidence   Int? // 0-100
+  entryLow     Float?
+  entryHigh    Float?
+  stop         Float?
+  target1      Float?
+  target2      Float?
+  runner       Float?
+  riskReward   String? // "1 : 2.4 at T1 · 1 : 4.0 at T2"
+  invalidation String?
+  planNote     String? // trader's one-line strategy note
+
+  // full agent artifacts (analyst reports, debates, risk, verdict)
+  artifacts Json?
+
+  // outcome tracking
+  outcome          String?   // OPEN | TARGET1_HIT | TARGET2_HIT | STOP_HIT | INVALIDATED
+  outcomeCheckedAt DateTime?
+  outcomePrice     Float?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([symbol, createdAt])
+  @@index([status])
+  @@index([createdAt])
 }
