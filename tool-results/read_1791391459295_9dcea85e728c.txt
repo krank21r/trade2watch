@@ -1,0 +1,882 @@
+     1→<!DOCTYPE html>
+     2→<html lang="en">
+     3→<head>
+     4→<meta charset="UTF-8">
+     5→<meta name="viewport" content="width=device-width, initial-scale=1.0">
+     6→<title>Trade2watch — Multi-Asset Trade Setup</title>
+     7→<style>
+     8→  :root {
+     9→    --bg: #0b0e14; --panel: #131722; --panel-2: #1a2030; --line: #232b3d;
+    10→    --text: #e6e9f0; --muted: #8b93a7;
+    11→    --green: #26a69a; --red: #ef5350; --amber: #f5b544; --blue: #4a9eff;
+    12→    --radius: 14px;
+    13→  }
+    14→  * { margin: 0; padding: 0; box-sizing: border-box; }
+    15→  body { background: #0b0e14 url('chart.webp') center/cover fixed no-repeat; color: var(--text); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; line-height: 1.5; min-height: 100vh; }
+    16→  body::before { content:""; position:fixed; inset:0; z-index:-1; background:rgba(11,14,20,.62); }
+    17→  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 20px 60px; }
+    18→
+    19→  /* nav */
+    20→  nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 14px 0; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+    21→  .logo { font-size: 18px; font-weight: 800; letter-spacing: .5px; margin-right: 18px; }
+    22→  .logo b { color: var(--amber); }
+    23→  .nav-btn { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 8px 18px; border-radius: 999px; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all .15s; }
+    24→  .nav-btn:hover { color: var(--text); border-color: #3a4560; }
+    25→  .nav-btn.active { background: var(--panel-2); color: var(--amber); border-color: rgba(245,181,68,.45); }
+    26→  .nav-right { margin-left: auto; font-size: 12px; color: var(--muted); display:flex; align-items:center; gap:6px; }
+    27→  .live-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--green); animation: pulse 1.6s infinite; }
+    28→  .live-dot.off { background: var(--red); animation: none; }
+    29→  @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.35} }
+    30→
+    31→  .view { display: none; }
+    32→  .view.active { display: block; animation: fade .25s ease; }
+    33→  @keyframes fade { from {opacity:0; transform: translateY(4px)} to {opacity:1; transform:none} }
+    34→
+    35→  /* hero / headers */
+    36→  .hero { display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:16px; padding-bottom:20px; border-bottom:1px solid var(--line); margin-bottom:22px; }
+    37→  .hero h1 { font-size: 22px; font-weight: 700; }
+    38→  .hero .sub { font-size: 13px; color: var(--muted); margin-top:4px; }
+    39→  .price-box { text-align:right; }
+    40→  .price { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing:-1px; }
+    41→  .price .cur { font-size: 19px; color: var(--muted); font-weight:600; margin-right:4px; }
+    42→  .sub { font-size: 13px; color: var(--muted); margin-top:2px; }
+    43→  .chg { font-size:14px; font-weight:600; }
+    44→  .up { color: var(--green); } .down { color: var(--red); }
+    45→
+    46→  .bias { display:flex; gap:12px; align-items:center; flex-wrap:wrap; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px 18px; margin-bottom:22px; }
+    47→  .bias p { font-size:13.5px; }
+    48→  .badge { padding:4px 12px; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.5px; }
+    49→  .badge.short { background:rgba(239,83,80,.15); color:var(--red); border:1px solid rgba(239,83,80,.4); }
+    50→  .badge.neutral { background:rgba(245,181,68,.12); color:var(--amber); border:1px solid rgba(245,181,68,.4); }
+    51→  .badge.long { background:rgba(38,166,154,.15); color:var(--green); border:1px solid rgba(38,166,154,.4); }
+    52→  .badge.watch { background:rgba(74,158,255,.15); color:var(--blue); border:1px solid rgba(74,158,255,.4); }
+    53→
+    54→  .gauge-wrap { margin-bottom:22px; }
+    55→  .gauge-label { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:8px; }
+    56→  .gauge { position:relative; height:34px; border-radius:10px; overflow:hidden; display:flex; border:1px solid var(--line); }
+    57→  .gauge .seg { display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; letter-spacing:.4px; }
+    58→  .seg.longz { background:rgba(38,166,154,.18); color:var(--green); flex:0 0 12%; }
+    59→  .seg.mid { background:var(--panel-2); color:var(--muted); flex:1; }
+    60→  .seg.shortz { background:rgba(239,83,80,.18); color:var(--red); flex:0 0 12%; }
+    61→  .marker { position:absolute; top:0; bottom:0; width:3px; background:#fff; box-shadow:0 0 8px rgba(255,255,255,.8); border-radius:2px; transition:left .6s ease; }
+    62→  .marker::after { content:""; position:absolute; left:50%; top:-5px; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid #fff; }
+    63→  .gauge-note { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:8px; }
+    64→
+    65→  .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    66→  @media (max-width: 820px) { .grid { grid-template-columns:1fr; } .price-box { text-align:left; } }
+    67→
+    68→  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+    69→  .card-head { padding:16px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
+    70→  .card-head h2 { font-size:16px; font-weight:700; display:flex; align-items:center; gap:10px; }
+    71→  .card-head .side { width:10px; height:10px; border-radius:3px; }
+    72→  .side.short { background:var(--red); } .side.long { background:var(--green); } .side.neutral { background:var(--amber); }
+    73→  .card-body { padding:18px 20px 20px; }
+    74→
+    75→  .row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:9px 0; border-bottom:1px dashed rgba(255,255,255,.06); }
+    76→  .row:last-child { border-bottom:none; }
+    77→  .row .k { font-size:13px; color:var(--muted); }
+    78→  .row .v { font-size:14.5px; font-weight:600; text-align:right; font-variant-numeric:tabular-nums; }
+    79→  .row .v small { display:block; font-size:11.5px; color:var(--muted); font-weight:400; }
+    80→  .entry { color:var(--amber); font-size:16px; }
+    81→  .t1, .t2, .runner { color:var(--blue); }
+    82→  .stop { color:var(--red); }
+    83→  .rr { color:var(--green); }
+    84→
+    85→  .state-line { margin-top:14px; padding:10px 14px; border-radius:8px; font-size:13px; font-weight:600; text-align:center; }
+    86→  .state-line.wait { background:rgba(245,181,68,.1); color:var(--amber); border:1px solid rgba(245,181,68,.3); }
+    87→  .state-line.hot { background:rgba(239,83,80,.12); color:var(--red); border:1px solid rgba(239,83,80,.4); }
+    88→  .state-line.hot.long { background:rgba(38,166,154,.12); color:var(--green); border:1px solid rgba(38,166,154,.4); }
+    89→
+    90→  h3.section { font-size:13px; letter-spacing:1.5px; color:var(--muted); text-transform:uppercase; margin:26px 0 12px; }
+    91→  table { width:100%; border-collapse:collapse; font-size:14px; }
+    92→  th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+    93→  th { color:var(--muted); font-weight:600; font-size:12px; letter-spacing:.8px; text-transform:uppercase; }
+    94→  td.r { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+    95→  .tag { font-size:11px; font-weight:700; padding:2px 8px; border-radius:6px; }
+    96→  .tag.s { background:rgba(239,83,80,.15); color:var(--red); }
+    97→  .tag.r { background:rgba(74,158,255,.15); color:var(--blue); }
+    98→
+    99→  ul.rules { list-style:none; }
+   100→  ul.rules li { padding:10px 0 10px 28px; position:relative; font-size:14px; border-bottom:1px dashed rgba(255,255,255,.06); }
+   101→  ul.rules li:last-child { border-bottom:none; }
+   102→  ul.rules li::before { content:"→"; position:absolute; left:6px; color:var(--amber); font-weight:700; }
+   103→
+   104→  .alert-cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+   105→  @media (max-width:820px) { .alert-cards { grid-template-columns:1fr; } }
+   106→  .mini { background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:14px 16px; font-size:13px; }
+   107→  .mini b { display:block; margin-bottom:4px; font-size:13.5px; }
+   108→  .mini .lvl { font-size:20px; font-weight:700; margin:4px 0 2px; }
+   109→  .mini .lvl.long-l { color:var(--green); } .mini .lvl.short-l { color:var(--red); }
+   110→  .mini .when { color:var(--muted); font-size:12px; }
+   111→
+   112→  /* zonewatch */
+   113→  .zw-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+   114→  @media (max-width:820px) { .zw-grid { grid-template-columns:1fr; } }
+   115→  .zw .zrow { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 0; border-bottom:1px dashed rgba(255,255,255,.06); }
+   116→  .zw .zrow:last-child { border-bottom:none; }
+   117→  .zname { font-size:13px; color:var(--muted); font-weight:600; }
+   118→  .zlvl { font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; }
+   119→  .chip { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; white-space:nowrap; }
+   120→  .chip.wait { background:rgba(245,181,68,.1); color:var(--amber); border:1px solid rgba(245,181,68,.3); }
+   121→  .chip.hot { background:rgba(239,83,80,.14); color:var(--red); border:1px solid rgba(239,83,80,.4); }
+   122→  .chip.hot.g { background:rgba(38,166,154,.14); color:var(--green); border:1px solid rgba(38,166,154,.4); }
+   123→  .dist { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+   124→
+   125→  footer { margin-top:40px; padding-top:16px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+   126→  /* home: the footer line lives inside the view; suppress the global footer there */
+   127→  #view-home.active ~ footer { display:none; }
+   128→  .home-line { padding:40px 0 8px; text-align:center; font-size:12.5px; line-height:1.7; color:var(--muted); max-width:640px; margin:0 auto; }
+   129→
+   130→  /* in-page alert banner */
+   131→  .alert-banner { position:fixed; top:0; left:50%; transform:translateX(-50%); z-index:100; display:flex; align-items:center; gap:14px; padding:12px 20px; border-radius:0 0 12px 12px; font-size:14px; font-weight:700; box-shadow:0 8px 28px rgba(0,0,0,.55); max-width:96vw; animation: drop .3s ease; }
+   132→  @keyframes drop { from { transform:translate(-50%,-100%); } to { transform:translate(-50%,0); } }
+   133→  .alert-banner.hidden { display:none; }
+   134→  .alert-banner.up { background:#b71c1c; color:#fff; border:1px solid #e57373; border-top:none; }
+   135→  .alert-banner.down { background:#00695c; color:#fff; border:1px solid #4db6ac; border-top:none; }
+   136→  .alert-banner button { background:rgba(255,255,255,.22); border:none; color:#fff; font-size:16px; line-height:1; padding:5px 11px; border-radius:8px; cursor:pointer; }
+   137→  .alert-banner button:hover { background:rgba(255,255,255,.35); }
+   138→
+   139→  /* position sizing */
+   140→  .size-ctrl { display:flex; gap:18px; margin-bottom:6px; flex-wrap:wrap; }
+   141→  .size-ctrl label { font-size:12.5px; color:var(--muted); display:flex; flex-direction:column; gap:5px; font-weight:600; }
+   142→  .size-ctrl input { background:var(--panel-2); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:8px 10px; font-size:14px; width:160px; font-variant-numeric:tabular-nums; }
+   143→  .size-ctrl input:focus { outline:none; border-color:var(--amber); }
+   144→  .size-row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:10px 0; border-bottom:1px dashed rgba(255,255,255,.06); }
+   145→  .size-row:last-child { border-bottom:none; }
+   146→  .size-row .k { font-size:13px; color:var(--muted); }
+   147→  .size-row .v { font-size:14.5px; font-weight:600; text-align:right; font-variant-numeric:tabular-nums; }
+   148→  .size-row .v small { display:block; font-size:11.5px; color:var(--muted); font-weight:400; margin-top:2px; }
+   149→  .size-hint { font-size:12.5px; color:var(--muted); margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+   150→
+   151→  /* thesis */
+   152→  .row .v.note { text-align:left; font-weight:400; font-size:13.5px; line-height:1.55; color:var(--text); max-width:78%; }
+   153→</style>
+   154→</head>
+   155→<body>
+   156→<div id="alertBanner" class="alert-banner hidden"><span id="alertBannerTxt"></span><button id="alertBannerClose" title="dismiss">×</button></div>
+   157→<div class="wrap">
+   158→
+   159→  <nav>
+   160→    <div class="logo">Trade<b>2watch</b></div>
+   161→    <button class="nav-btn active" data-view="home">Home</button>
+   162→    <button class="nav-btn" data-view="btc">BTC Watch</button>
+   163→    <button class="nav-btn" data-view="eth">ETH Watch</button>
+   164→    <button class="nav-btn" data-view="zone">ZoneWatch</button>
+   165→    <div class="nav-right"><span class="live-dot" id="dot"></span><span id="liveTxt">connecting…</span></div>
+   166→  </nav>
+   167→
+   168→  <!-- ============ SETUP DATA — single source of truth; assistant pushes trades here ============ -->
+   169→  <script type="application/json" id="setupJson">
+   170→{
+   171→  "updated": "2026-08-11 22:05 local",
+   172→  "assets": {
+   173→    "btc": {
+   174→      "name": "Bitcoin",
+   175→      "pair": "BTC/USD",
+   176→      "bias": "short",
+   177→      "biasTag": "SHORT BIAS",
+   178→      "biasNote": "6-week range ($62.3k–$66.5k) broke down Aug 10–11. Fresh downside impulse → momentum favors short toward range low. Long only at range-bottom support.",
+   179→      "heroNote": "Range breakdown → short bias toward $62,300 · long only at range low",
+   180→      "thesis": {
+   181→        "trend": "6-week range ($62.3k–$66.5k) broke down Aug 10–11 with a fresh downside impulse. Momentum favors shorts toward the range low; longs are counter-trend fades only.",
+   182→        "zones": "Short zone sits at the broken consolidation floor $64.1k–$64.4k — limit there, never chase a crash. Long zone at the range low $62.3k–$62.6k — fade only, with the June low $58.6k as the magnet if it breaks.",
+   183→        "invalidation": "4h close above $65,400 voids the short (breakdown origin reclaimed). Daily close below $61,750 voids the long and opens $58.6k.",
+   184→        "validity": "Valid until a 4h close above $65,400 or a structure shift; re-validated on every push."
+   185→      },
+   186→      "zones": { "shortEnter": 64400, "shortRearm": 63900, "longEnter": 62600, "longRearm": 63100, "invalidUp": 65400, "invalidDown": 61750 },
+   187→      "gauge": { "min": 62000, "max": 65500, "low": "62,000", "high": "65,500" },
+   188→      "short": {
+   189→        "title": "SHORT — momentum continuation",
+   190→        "tag": "PREFERRED",
+   191→        "trigger": "Price must rally into the zone — don't chase a crash. Blows through 63,400 = setup void.",
+   192→        "entry": [64100, 64400],
+   193→        "stop": 64650, "stopNote": "above retest zone + swing",
+   194→        "t1": 62800, "t2": 62300, "t2Note": "30d range low", "runner": 60000,
+   195→        "rr": "1 : 3.6 at T1 · 1 : 4.9 at T2",
+   196→        "invalid": "4h close above $65,400"
+   197→      },
+   198→      "long": {
+   199→        "title": "LONG — range-bottom fade",
+   200→        "tag": "PATIENT",
+   201→        "trigger": "Price must drop into the zone. 62,300 breaking decisively = void.",
+   202→        "entry": [62300, 62600],
+   203→        "stop": 61750, "stopNote": "below range low",
+   204→        "t1": 64100, "t1Note": "floor reclaim", "t2": 65000, "t2Note": "range mid",
+   205→        "rr": "1 : 2.4 at T1 · 1 : 3.6 at T2",
+   206→        "invalid": "Daily close below $61,750 → June low $58,600 becomes magnet"
+   207→      },
+   208→      "levels": [
+   209→        { "t": "res", "v": "$64,100 – 64,400", "w": "Broken consolidation floor → first resistance" },
+   210→        { "t": "res", "v": "$65,000 – 65,400", "w": "Breakdown origin / range mid" },
+   211→        { "t": "res", "v": "$66,521", "w": "30-day range high (closes)" },
+   212→        { "t": "sup", "v": "$63,424", "w": "Aug 11 low" },
+   213→        { "t": "sup", "v": "$62,300 – 62,500", "w": "30-day range low — long entry zone" },
+   214→        { "t": "sup", "v": "$60,000 / $58,566", "w": "June major low — runner magnet if range breaks" }
+   215→      ]
+   216→    },
+   217→    "eth": {
+   218→      "name": "Ethereum",
+   219→      "pair": "ETH/USD",
+   220→      "bias": "neutral",
+   221→      "biasTag": "NEUTRAL — RANGE",
+   222→      "biasNote": "Downtrend from $2,283 (May) → $1,566 (June), then 4 weeks sideways $1,774–$1,952. No breakdown impulse like BTC. Trade the edges: short the top of range, long the bottom, skip the middle.",
+   223→      "heroNote": "Clean 30-day range ($1,774–$1,952) → neutral · fade both edges, no directional edge",
+   224→      "thesis": {
+   225→        "trend": "Downtrend from $2,283 (May) to $1,566 (June), then 4 weeks of sideways consolidation $1,774–$1,952. No breakdown impulse like BTC — this is a range, not a trend.",
+   226→        "zones": "Short at the range top $1,930–$1,950 (fade rallies, never short mid-range). Long at the range bottom $1,780–$1,800. The middle is dead zone — no edge.",
+   227→        "invalidation": "Daily close above $1,975 = range broken up, stand aside. Daily close below $1,760 = range broken down, June low $1,566 becomes the target.",
+   228→        "validity": "Valid while price stays inside $1,774–$1,952; re-validated on every push."
+   229→      },
+   230→      "zones": { "shortEnter": 1930, "shortRearm": 1880, "longEnter": 1800, "longRearm": 1840, "invalidUp": 1975, "invalidDown": 1760 },
+   231→      "gauge": { "min": 1760, "max": 1970, "low": "1,760", "high": "1,970" },
+   232→      "short": {
+   233→        "title": "SHORT — range-top fade",
+   234→        "tag": "EDGE ONLY",
+   235→        "trigger": "Rally into the zone — fading range top. Don't short mid-range.",
+   236→        "entry": [1930, 1950],
+   237→        "stop": 1970, "stopNote": "above range high",
+   238→        "t1": 1880, "t2": 1800, "t2Note": "range low",
+   239→        "rr": "1 : 1.7 at T1 · 1 : 4.7 at T2",
+   240→        "invalid": "Daily close above $1,975 — range broken up, stand aside"
+   241→      },
+   242→      "long": {
+   243→        "title": "LONG — range-bottom fade",
+   244→        "tag": "EDGE ONLY",
+   245→        "trigger": "Drop into the zone — fading range low. 1,774 breaking decisively = void.",
+   246→        "entry": [1780, 1800],
+   247→        "stop": 1760, "stopNote": "below range low",
+   248→        "t1": 1880, "t2": 1920, "t2Note": "upper range",
+   249→        "rr": "1 : 2.7 at T1 · 1 : 4.0 at T2",
+   250→        "invalid": "Daily close below $1,760 → June low $1,566 becomes magnet"
+   251→      },
+   252→      "levels": [
+   253→        { "t": "res", "v": "$1,930 – 1,950", "w": "Upper range — short entry zone" },
+   254→        { "t": "res", "v": "$1,952", "w": "30-day range high (closes)" },
+   255→        { "t": "res", "v": "$2,283", "w": "90-day high (May)" },
+   256→        { "t": "sup", "v": "$1,800 – 1,780", "w": "Lower range — long entry zone" },
+   257→        { "t": "sup", "v": "$1,774", "w": "30-day range low (closes)" },
+   258→        { "t": "sup", "v": "$1,566", "w": "June major low — magnet if range breaks" }
+   259→      ]
+   260→    }
+   261→  }
+   262→}
+   263→  </script>
+   264→
+   265→  <!-- ============ HOME (footer line only) ============ -->
+   266→  <section class="view active" id="view-home">
+   267→    <div class="home-line">
+   268→      <span id="homeStamp"></span><b>Trade2watch</b> — multi-asset trade setup dashboard. <b>Disclaimer:</b> Technical analysis of public market data (CoinGecko). Not financial advice. Crypto is volatile — never trade money you can't afford to lose. Levels shift as structure changes; re-validate before acting.
+   269→    </div>
+   270→  </section>
+   271→
+   272→  <!-- ============ ASSET WATCH (generated from setup JSON) ============ -->
+   273→  <div id="assetViews"></div>
+   274→
+   275→  <!-- ============ ZONEWATCH ============ -->
+   276→  <section class="view" id="view-zone">
+   277→    <div class="hero">
+   278→      <div>
+   279→        <h1>ZoneWatch — live zone monitor</h1>
+   280→        <div class="sub">Every entry zone, all assets, one board. Green = long zone live, red = short zone live, amber = waiting.</div>
+   281→      </div>
+   282→      <div class="price-box">
+   283→        <div class="price" style="font-size:22px"><span id="zwSummary">—</span></div>
+   284→        <div class="sub"><span id="zwTime">—</span></div>
+   285→      </div>
+   286→    </div>
+   287→
+   288→    <div class="zw-grid" id="zwGrid"></div>
+   289→
+   290→    <h3 class="section">Rule of thumb</h3>
+   291→    <div class="card"><div class="card-body">
+   292→      <ul class="rules">
+   293→        <li><b>Amber everywhere = do nothing.</b> All assets mid-range — no edge.</li>
+   294→        <li><b>Red zone live = short setup armed</b> (limit entry, stop above zone).</li>
+   295→        <li><b>Green zone live = long setup armed</b> (limit entry, stop below zone).</li>
+   296→        <li><b>Invalidation breached = thesis dead.</b> Close the trade, re-analyze structure.</li>
+   297→      </ul>
+   298→    </div></div>
+   299→  </section>
+   300→
+   301→  <footer id="footer">
+   302→    <span id="setupStamp"></span><b>Trade2watch</b> — multi-asset trade setup dashboard. <b>Disclaimer:</b> Technical analysis of public market data (CoinGecko). Not financial advice. Crypto is volatile — never trade money you can't afford to lose. Levels shift as structure changes; re-validate before acting.
+   303→  </footer>
+   304→</div>
+   305→
+   306→<script>
+   307→(function () {
+   308→  var $ = function (id) { return document.getElementById(id); };
+   309→  var state = {};
+   310→  var SETUP = null;
+   311→
+   312→  function readSetup() {
+   313→    try {
+   314→      var el = $('setupJson');
+   315→      if (!el || !el.textContent) return SETUP;
+   316→      var parsed = JSON.parse(el.textContent);
+   317→      if (!parsed || !parsed.assets) return SETUP;
+   318→      SETUP = parsed;
+   319→    } catch (e) { /* keep last good setup if mid-edit */ }
+   320→    return SETUP;
+   321→  }
+   322→
+   323→  function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
+   324→  function trimNum(x, d) { var m = Math.pow(10, d); return String(Math.round(x * m) / m); }
+   325→  function money(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+   326→  function zoneRange(a, side) { return money(a[side].entry[0]) + ' – ' + money(a[side].entry[1]); }
+   327→
+   328→  function el(tag, cls, text) {
+   329→    var e = document.createElement(tag);
+   330→    if (cls) e.className = cls;
+   331→    if (text !== undefined && text !== null) e.textContent = text;
+   332→    return e;
+   333→  }
+   334→
+   335→  function zoneState(z, price) {
+   336→    if (price >= z.shortEnter) return { cls: 'hot', txt: 'SHORT ZONE LIVE' };
+   337→    if (price <= z.longEnter) return { cls: 'hot g', txt: 'LONG ZONE LIVE' };
+   338→    if (price <= z.shortRearm && price >= z.longRearm) return { cls: 'wait', txt: 'WAITING — mid-range' };
+   339→    return { cls: 'wait', txt: 'WAITING' };
+   340→  }
+   341→
+   342→  function distToNext(z, price) {
+   343→    if (price < z.longEnter) return 'to LONG zone: ' + money(z.longEnter - price);
+   344→    if (price > z.shortEnter) return 'to SHORT zone: ' + money(price - z.shortEnter);
+   345→    return 'in waiting zone';
+   346→  }
+   347→
+   348→  /* ---- builders ---- */
+   349→
+   350→  function buildAssetView(key, a) {
+   351→    var view = el('section', 'view', null);
+   352→    view.id = 'view-' + key;
+   353→
+   354→    // hero
+   355→    var hero = el('div', 'hero');
+   356→    var hl = el('div');
+   357→    hl.appendChild(el('h1', null, a.name + ' — ' + a.pair));
+   358→    hl.appendChild(el('div', 'sub', a.heroNote));
+   359→    var pb = el('div', 'price-box');
+   360→    var pr = el('div', 'price');
+   361→    pr.appendChild(el('span', 'cur', '$'));
+   362→    var ps = el('span', null, '—'); ps.id = key + 'Price';
+   363→    pr.appendChild(ps);
+   364→    pb.appendChild(pr);
+   365→    var sb = el('div', 'sub');
+   366→    var cs = el('span', 'chg', '—'); cs.id = key + 'Chg';
+   367→    sb.appendChild(cs);
+   368→    pb.appendChild(sb);
+   369→    var tm = el('span', null, '—');
+   370→    tm.id = key + 'Time';
+   371→    sb.appendChild(document.createTextNode(' · '));
+   372→    sb.appendChild(tm);
+   373→    sb.appendChild(document.createTextNode(' · '));
+   374→    var ag = el('span', null, '—');
+   375→    ag.id = key + 'Age';
+   376→    sb.appendChild(ag);
+   377→    hero.appendChild(hl); hero.appendChild(pb);
+   378→    view.appendChild(hero);
+   379→
+   380→    // bias
+   381→    var bias = el('div', 'bias');
+   382→    bias.appendChild(el('span', 'badge ' + a.bias, a.biasTag));
+   383→    bias.appendChild(el('p', null, a.biasNote));
+   384→    view.appendChild(bias);
+   385→
+   386→    // gauge
+   387→    var gw = el('div', 'gauge-wrap');
+   388→    var gl = el('div', 'gauge-label');
+   389→    var ll = el('span'); ll.id = key + 'LongLabel';
+   390→    var sl = el('span'); sl.id = key + 'ShortLabel';
+   391→    gl.appendChild(ll); gl.appendChild(sl);
+   392→    gw.appendChild(gl);
+   393→    var g = el('div', 'gauge');
+   394→    g.appendChild(el('div', 'seg longz', 'LONG'));
+   395→    g.appendChild(el('div', 'seg mid', 'WAITING ZONE — no edge mid-range'));
+   396→    g.appendChild(el('div', 'seg shortz', 'SHORT'));
+   397→    var mk = el('div', 'marker'); mk.id = key + 'Marker'; mk.style.left = '50%';
+   398→    g.appendChild(mk);
+   399→    gw.appendChild(g);
+   400→    var gn = el('div', 'gauge-note');
+   401→    var lo = el('span'); lo.id = key + 'GaugeLow';
+   402→    var pos = el('span'); pos.id = key + 'GaugePos'; pos.textContent = '—';
+   403→    var hi = el('span'); hi.id = key + 'GaugeHigh';
+   404→    gn.appendChild(lo); gn.appendChild(pos); gn.appendChild(hi);
+   405→    gw.appendChild(gn);
+   406→    view.appendChild(gw);
+   407→
+   408→    // cards grid
+   409→    var grid = el('div', 'grid');
+   410→    grid.appendChild(buildCard(key + 'Short', a, 'short', 'short'));
+   411→    grid.appendChild(buildCard(key + 'Long', a, 'long', 'long'));
+   412→    view.appendChild(grid);
+   413→
+   414→    // thesis ("why this setup")
+   415→    if (a.thesis) {
+   416→      view.appendChild(el('h3', 'section', 'Why this setup'));
+   417→      var tCard = el('div', 'card');
+   418→      var tBody = el('div', 'card-body');
+   419→      [
+   420→        ['Trend', a.thesis.trend],
+   421→        ['Zones', a.thesis.zones],
+   422→        ['Invalidation', a.thesis.invalidation],
+   423→        ['Validity', a.thesis.validity]
+   424→      ].forEach(function (kv) {
+   425→        if (!kv[1]) return;
+   426→        var row = el('div', 'row');
+   427→        row.appendChild(el('span', 'k', kv[0]));
+   428→        row.appendChild(el('span', 'v note', kv[1]));
+   429→        tBody.appendChild(row);
+   430→      });
+   431→      tCard.appendChild(tBody);
+   432→      view.appendChild(tCard);
+   433→    }
+   434→
+   435→    // position sizing
+   436→    view.appendChild(el('h3', 'section', 'Position Sizing'));
+   437→    var sc = el('div', 'card');
+   438→    var sBody = el('div', 'card-body');
+   439→    var ctrl = el('div', 'size-ctrl');
+   440→    var labAcct = el('label', null, 'Account size ($)');
+   441→    var inAcct = el('input'); inAcct.type = 'number'; inAcct.min = '0'; inAcct.step = 'any'; inAcct.id = key + 'SizeAcct';
+   442→    inAcct.value = lsGet('tw_acct', '');
+   443→    labAcct.appendChild(inAcct);
+   444→    ctrl.appendChild(labAcct);
+   445→    var labRisk = el('label', null, 'Risk per trade (%)');
+   446→    var inRisk = el('input'); inRisk.type = 'number'; inRisk.min = '0'; inRisk.max = '100'; inRisk.step = 'any'; inRisk.id = key + 'SizeRisk';
+   447→    inRisk.value = lsGet('tw_risk', '1');
+   448→    labRisk.appendChild(inRisk);
+   449→    ctrl.appendChild(labRisk);
+   450→    sBody.appendChild(ctrl);
+   451→    sBody.appendChild(el('div', 'size-hint', 'Worst-case entry (zone edge closest to stop) × stop distance. Sizes so the stop costs exactly your risk %.'));
+   452→    sBody.appendChild(sizeRow(key + 'SizeShort', 'SHORT', '—'));
+   453→    sBody.appendChild(sizeRow(key + 'SizeLong', 'LONG', '—'));
+   454→    sc.appendChild(sBody);
+   455→    view.appendChild(sc);
+   456→    inAcct.addEventListener('input', function () { syncSizeInputs('acct', inAcct.value); calcSizing(key); });
+   457→    inRisk.addEventListener('input', function () { syncSizeInputs('risk', inRisk.value); calcSizing(key); });
+   458→
+   459→    // levels
+   460→    view.appendChild(el('h3', 'section', 'Key Levels'));
+   461→    var lvlCard = el('div', 'card');
+   462→    var lvlBody = el('div', 'card-body');
+   463→    lvlBody.style.padding = '0';
+   464→    var tbl = el('table');
+   465→    var thead = el('tr');
+   466→    ['Type', 'Level', 'Why'].forEach(function (h) {
+   467→      var th = el('th', null, h); if (h === 'Why') th.className = 'r';
+   468→      thead.appendChild(th);
+   469→    });
+   470→    tbl.appendChild(thead);
+   471→    var tb = el('tbody'); tb.id = key + 'Levels';
+   472→    tbl.appendChild(tb);
+   473→    lvlBody.appendChild(tbl);
+   474→    lvlCard.appendChild(lvlBody);
+   475→    view.appendChild(lvlCard);
+   476→
+   477→    // alerts
+   478→    view.appendChild(el('h3', 'section', 'Alerts'));
+   479→    var ac = el('div', 'alert-cards'); ac.id = key + 'Alerts';
+   480→    view.appendChild(ac);
+   481→
+   482→    return view;
+   483→  }
+   484→
+   485→  function buildCard(idBase, a, side, sideCls) {
+   486→    var card = el('div', 'card');
+   487→    var head = el('div', 'card-head');
+   488→    var h2 = el('h2');
+   489→    h2.appendChild(el('span', 'side ' + sideCls));
+   490→    h2.appendChild(document.createTextNode(a[side].title));
+   491→    head.appendChild(h2);
+   492→    head.appendChild(el('span', 'badge ' + sideCls, a[side].tag));
+   493→    card.appendChild(head);
+   494→    var body = el('div', 'card-body'); body.id = idBase + 'Body';
+   495→    card.appendChild(body);
+   496→    return card;
+   497→  }
+   498→
+   499→  function cardRow(k, vCls, vText, vNote) {
+   500→    var row = el('div', 'row');
+   501→    row.appendChild(el('span', 'k', k));
+   502→    var v = el('span', 'v ' + vCls, vText);
+   503→    if (vNote) v.appendChild(el('small', null, vNote));
+   504→    row.appendChild(v);
+   505→    return row;
+   506→  }
+   507→
+   508→  function lsGet(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
+   509→  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+   510→  function apiKeyOf(key) { return key === 'btc' ? 'bitcoin' : key === 'eth' ? 'ethereum' : key; }
+   511→
+   512→  function sizeRow(id, sideLabel, txt) {
+   513→    var row = el('div', 'size-row');
+   514→    row.appendChild(el('span', 'k', sideLabel));
+   515→    var v = el('span', 'v', txt); v.id = id;
+   516→    row.appendChild(v);
+   517→    return row;
+   518→  }
+   519→
+   520→  function fillSizeRow(elRow, a, side, risk$, unit) {
+   521→    var s = a[side];
+   522→    var worst = side === 'short' ? Math.max(s.entry[0], s.entry[1]) : Math.min(s.entry[0], s.entry[1]);
+   523→    var dist = side === 'short' ? s.stop - worst : worst - s.stop;
+   524→    if (!(dist > 0)) {
+   525→      elRow.textContent = 'Stop distance invalid — check setup';
+   526→      return;
+   527→    }
+   528→    var units = risk$ / dist;
+   529→    var key = elRow.id.replace('SizeShort', '').replace('SizeLong', '');
+   530→    var px = state[apiKeyOf(key)];
+   531→    var unitsTxt = units >= 100 ? fmt(units) : units >= 1 ? trimNum(units, 2) : trimNum(units, 4);
+   532→    var notionalTxt = '';
+   533→    if (px) {
+   534→      var notional = units * px;
+   535→      notionalTxt = 'notional ≈ ' + money(notional) + ' · ';
+   536→    }
+   537→    elRow.textContent = unitsTxt + ' ' + (key === 'btc' ? 'BTC' : key === 'eth' ? 'ETH' : key.toUpperCase());
+   538→    var small = el('small', null, notionalTxt + 'risk ' + money(risk$) + ' · worst entry ' + money(worst) + ' · stop ' + money(s.stop));
+   539→    elRow.appendChild(small);
+   540→  }
+   541→
+   542→  function syncSizeInputs(which, val) {
+   543→    Object.keys(SETUP.assets).forEach(function (k) {
+   544→      var ei = $(k + 'Size' + (which === 'acct' ? 'Acct' : 'Risk'));
+   545→      if (ei) ei.value = val;
+   546→    });
+   547→  }
+   548→
+   549→  function calcSizing(key) {
+   550→    var a = SETUP.assets[key];
+   551→    var shortEl = $(key + 'SizeShort'), longEl = $(key + 'SizeLong');
+   552→    if (!a || !shortEl || !longEl) return;
+   553→    var acct = parseFloat($(key + 'SizeAcct').value);
+   554→    if (!(acct > 0)) acct = 0;
+   555→    var rp = parseFloat($(key + 'SizeRisk').value);
+   556→    if (!(rp > 0)) rp = 1;
+   557→    lsSet('tw_acct', String(acct));
+   558→    lsSet('tw_risk', String(rp));
+   559→    if (!(acct > 0)) {
+   560→      shortEl.textContent = 'Enter account size above';
+   561→      longEl.textContent = 'Enter account size above';
+   562→      return;
+   563→    }
+   564→    var risk$ = acct * rp / 100;
+   565→    fillSizeRow(shortEl, a, 'short', risk$, key);
+   566→    fillSizeRow(longEl, a, 'long', risk$, key);
+   567→  }
+   568→
+   569→  function fillCard(idBase, a, side, sideCls) {
+   570→    var body = $(idBase + 'Body');
+   571→    body.textContent = '';
+   572→    var s = a[side];
+   573→    body.appendChild(cardRow('Trigger', '', s.trigger));
+   574→    body.appendChild(cardRow('Entry (limit)', 'entry', zoneRange(a, side)));
+   575→    var stopTxt = money(s.stop);
+   576→    if (s.stopNote) stopTxt += ' — ' + s.stopNote;
+   577→    body.appendChild(cardRow('Stop', 'stop', stopTxt));
+   578→    var t1Txt = money(s.t1); if (s.t1Note) t1Txt += ' — ' + s.t1Note;
+   579→    body.appendChild(cardRow('Target 1 (half)', 't1', t1Txt));
+   580→    var t2Txt = money(s.t2); if (s.t2Note) t2Txt += ' — ' + s.t2Note;
+   581→    body.appendChild(cardRow('Target 2 (trail)', 't2', t2Txt));
+   582→    if (s.runner) body.appendChild(cardRow('Runner', 'runner', money(s.runner)));
+   583→    body.appendChild(cardRow('Risk : Reward', 'rr', s.rr));
+   584→    body.appendChild(cardRow('Invalidation', 'stop', s.invalid));
+   585→    var st = el('div', 'state-line wait', '⏳ Waiting — no zone active');
+   586→    st.id = idBase.replace('Body', '') + 'State';
+   587→    body.appendChild(st);
+   588→  }
+   589→
+   590→  function fillLevels(idBase, a) {
+   591→    var tb = $(idBase + 'Levels');
+   592→    tb.textContent = '';
+   593→    a.levels.forEach(function (lv) {
+   594→      var tr = el('tr');
+   595→      var tdTag = el('td');
+   596→      tdTag.appendChild(el('span', 'tag ' + (lv.t === 'res' ? 'r' : 's'), lv.t === 'res' ? 'RES' : 'SUP'));
+   597→      tr.appendChild(tdTag);
+   598→      tr.appendChild(el('td', null, lv.v));
+   599→      tr.appendChild(el('td', 'r', lv.w));
+   600→      tb.appendChild(tr);
+   601→    });
+   602→  }
+   603→
+   604→  function fillAlerts(idBase, a) {
+   605→    var ac = $(idBase + 'Alerts');
+   606→    ac.textContent = '';
+   607→    var z = a.zones;
+   608→    var items = [
+   609→      { b: '📱 Phone (CoinGecko app) — primary', lvl: '≥ ' + money(z.shortEnter), lvlCls: 'short-l', when: 'Fires on rise to short zone · push, sleep-proof' },
+   610→      { b: '📱 Phone (CoinGecko app) — primary', lvl: '≤ ' + money(z.longEnter), lvlCls: 'long-l', when: 'Fires on drop to long zone · push, sleep-proof' },
+   611→      { b: '💻 Laptop watcher — backup', lvl: fmt(z.shortEnter) + ' / ' + fmt(z.longEnter), lvlCls: '', when: 'Desktop popup · log: C:\\Users\\Ishi\\btc-alerts\\alerts.log' },
+   612→      { b: '📈 Invalidations', lvl: fmt(z.invalidUp) + ' / ' + fmt(z.invalidDown), lvlCls: '', when: 'Above ' + fmt(z.invalidUp) + ' = ' + (a.bias === 'short' ? 'short thesis dead' : 'range broken up') + ' · below ' + fmt(z.invalidDown) + ' = range broken down' }
+   613→    ];
+   614→    items.forEach(function (it) {
+   615→      var m = el('div', 'mini');
+   616→      m.appendChild(el('b', null, it.b));
+   617→      var lvl = el('div', 'lvl ' + it.lvlCls, it.lvl);
+   618→      m.appendChild(lvl);
+   619→      m.appendChild(el('div', 'when', it.when));
+   620→      ac.appendChild(m);
+   621→    });
+   622→  }
+   623→
+   624→  function buildZoneWatch() {
+   625→    var grid = $('zwGrid');
+   626→    grid.textContent = '';
+   627→    Object.keys(SETUP.assets).forEach(function (key) {
+   628→      var a = SETUP.assets[key];
+   629→      var card = el('div', 'card zw');
+   630→      var head = el('div', 'card-head');
+   631→      head.appendChild(el('h2', null, a.name + ' — ' + a.pair));
+   632→      var biasBadge = el('span', 'badge ' + a.bias); biasBadge.id = 'zw' + key.toUpperCase() + 'Bias';
+   633→      biasBadge.textContent = a.biasTag;
+   634→      head.appendChild(biasBadge);
+   635→      card.appendChild(head);
+   636→      var body = el('div', 'card-body');
+   637→      var z = a.zones;
+   638→      function zrow(name, txt, color) {
+   639→        var r = el('div', 'zrow');
+   640→        r.appendChild(el('span', 'zname', name));
+   641→        var lvl = el('span', 'zlvl', txt);
+   642→        if (color) lvl.style.color = color;
+   643→        r.appendChild(lvl);
+   644→        body.appendChild(r);
+   645→      }
+   646→      zrow('Price', '—', null); body.lastChild.lastChild.id = 'zw' + key.toUpperCase() + 'Price';
+   647→      zrow('LONG entry zone', zoneRange(a, 'long'), '#26a69a');
+   648→      zrow('Long stop / invalid', money(z.invalidDown), '#ef5350');
+   649→      zrow('SHORT entry zone', zoneRange(a, 'short'), '#ef5350');
+   650→      zrow('Short stop / invalid', money(a.short.stop) + ' / ' + money(z.invalidUp), '#ef5350');
+   651→      var st = el('div', 'zrow');
+   652→      st.appendChild(el('span', 'zname', 'Zone status'));
+   653→      var chip = el('span', 'chip wait', '—'); chip.id = 'zw' + key.toUpperCase() + 'Chip';
+   654→      st.appendChild(chip);
+   655→      body.appendChild(st);
+   656→      var d = el('div', 'zrow');
+   657→      d.appendChild(el('span', 'zname', 'Distance to next zone'));
+   658→      var dist = el('span', 'dist', '—'); dist.id = 'zw' + key.toUpperCase() + 'Dist';
+   659→      d.appendChild(dist);
+   660→      body.appendChild(d);
+   661→      card.appendChild(body);
+   662→      grid.appendChild(card);
+   663→    });
+   664→  }
+   665→
+   666→  function renderAsset(key) {
+   667→    var a = SETUP.assets[key];
+   668→    var z = a.zones;
+   669→    // labels
+   670→    $(key + 'LongLabel').textContent = 'LONG ZONE ' + fmt(z.longEnter) + '–' + fmt(a.long.entry[1]);
+   671→    $(key + 'ShortLabel').textContent = 'SHORT ZONE ' + fmt(a.short.entry[0]) + '–' + fmt(z.shortEnter);
+   672→    $(key + 'GaugeLow').textContent = a.gauge.low;
+   673→    $(key + 'GaugeHigh').textContent = a.gauge.high;
+   674→    fillCard(key + 'Short', a, 'short', 'short');
+   675→    fillCard(key + 'Long', a, 'long', 'long');
+   676→    fillLevels(key, a);
+   677→    fillAlerts(key, a);
+   678→  }
+   679→
+   680→  function render() {
+   681→    if (!SETUP) return;
+   682→    Object.keys(SETUP.assets).forEach(function (key) {
+   683→      var a = SETUP.assets[key];
+   684→      var apiKey = key === 'btc' ? 'bitcoin' : key === 'eth' ? 'ethereum' : key;
+   685→      var p = state[apiKey];
+   686→      if (p === null || p === undefined) return;
+   687→      var chg = state['chg' + (key === 'btc' ? 'Btc' : key === 'eth' ? 'Eth' : '')];
+   688→      var t = new Date().toLocaleTimeString();
+   689→
+   690→      // price displays
+   691→      $(key + 'Price').textContent = fmt(p);
+   692→      $(key + 'Chg').textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '% 24h';
+   693→      $(key + 'Chg').className = 'chg ' + (chg >= 0 ? 'up' : 'down');
+   694→      $(key + 'Time').textContent = t;
+   695→
+   696→      // gauge
+   697→      var g = a.gauge;
+   698→      var pos = Math.min(1, Math.max(0, (p - g.min) / (g.max - g.min)));
+   699→      $(key + 'Marker').style.left = (pos * 100) + '%';
+   700→      $(key + 'GaugePos').textContent = 'PRICE ' + money(p);
+   701→
+   702→      // zonewatch
+   703→      var zP = $('zw' + key.toUpperCase() + 'Price');
+   704→      if (zP) {
+   705→        zP.textContent = money(p);
+   706→        var zs = zoneState(a.zones, p);
+   707→        var chip = $('zw' + key.toUpperCase() + 'Chip');
+   708→        chip.className = 'chip ' + zs.cls;
+   709→        chip.textContent = zs.txt;
+   710→        $('zw' + key.toUpperCase() + 'Dist').textContent = distToNext(a.zones, p);
+   711→      }
+   712→
+   713→      // state lines (re-evaluate with current price)
+   714→      var ss = $(key + 'ShortState'), ls = $(key + 'LongState');
+   715→      if (ss && ls) {
+   716→        var zs2 = zoneState(a.zones, p);
+   717→        if (zs2.cls.indexOf('hot') === 0 && zs2.txt.indexOf('SHORT') === 0) {
+   718→          ss.className = 'state-line hot';
+   719→          ss.textContent = '🔴 SHORT ZONE ACTIVE — price ≥ ' + money(a.zones.shortEnter) + '. Limit ' + zoneRange(a, 'short') + ', stop ' + money(a.short.stop) + ', T1 ' + money(a.short.t1) + ', T2 ' + money(a.short.t2) + '.';
+   720→          ls.className = 'state-line wait'; ls.textContent = '⏳ Short zone live — long not in play';
+   721→        } else if (zs2.cls.indexOf('hot') === 0) {
+   722→          ls.className = 'state-line hot long';
+   723→          ls.textContent = '🟢 LONG ZONE ACTIVE — price ≤ ' + money(a.zones.longEnter) + '. Limit ' + zoneRange(a, 'long') + ', stop ' + money(a.long.stop) + ', T1 ' + money(a.long.t1) + ', T2 ' + money(a.long.t2) + '.';
+   724→          ss.className = 'state-line wait'; ss.textContent = '⏳ Long zone live — short not in play';
+   725→        } else {
+   726→          ss.className = 'state-line wait'; ss.textContent = '⏳ Waiting — no zone active';
+   727→          ls.className = 'state-line wait'; ls.textContent = '⏳ Waiting — no zone active';
+   728→        }
+   729→      }
+   730→
+   731→      calcSizing(key);
+   732→      checkAlerts(key, a, p);
+   733→    });
+   734→    $('zwSummary').textContent = Object.keys(SETUP.assets).map(function (key) {
+   735→      var p = state[key === 'btc' ? 'bitcoin' : key === 'eth' ? 'ethereum' : key];
+   736→      return p === null || p === undefined ? null : (key.toUpperCase() + ' ' + money(p));
+   737→    }).filter(Boolean).join('  ·  ');
+   738→    $('zwTime').textContent = 'updated ' + new Date().toLocaleTimeString();
+   739→    $('setupStamp').textContent = 'Setup pushed: ' + SETUP.updated + ' — ';
+   740→    var hs = $('homeStamp');
+   741→    if (hs) hs.textContent = 'Setup pushed: ' + SETUP.updated + ' — ';
+   742→  }
+   743→
+   744→  function setLive(ok, txt) {
+   745→    $('dot').className = 'live-dot' + (ok ? '' : ' off');
+   746→    $('liveTxt').textContent = txt;
+   747→  }
+   748→
+   749→  /* ---- in-page alert banner + beep ---- */
+   750→  var alertFired = {};   // 'btc:up' / 'btc:down' — armed once zone re-enters waiting band
+   751→  var audioCtx = null;
+   752→  var lastFetchAt = 0;
+   753→  var feedOk = false;
+   754→
+   755→  function initAudio() {
+   756→    if (audioCtx) return;
+   757→    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; }
+   758→  }
+   759→  document.addEventListener('click', initAudio, { once: true });
+   760→
+   761→  function beep() {
+   762→    if (!audioCtx) return;
+   763→    try {
+   764→      var t0 = audioCtx.currentTime;
+   765→      [0, .2, .4].forEach(function (d) {
+   766→        var o = audioCtx.createOscillator();
+   767→        var g = audioCtx.createGain();
+   768→        o.type = 'square'; o.frequency.value = 880;
+   769→        g.gain.setValueAtTime(.05, t0 + d);
+   770→        g.gain.exponentialRampToValueAtTime(.0001, t0 + d + .14);
+   771→        o.connect(g); g.connect(audioCtx.destination);
+   772→        o.start(t0 + d); o.stop(t0 + d + .15);
+   773→      });
+   774→    } catch (e) {}
+   775→  }
+   776→
+   777→  function showBanner(txt, cls) {
+   778→    $('alertBannerTxt').textContent = '🔔 ' + txt;
+   779→    $('alertBanner').className = 'alert-banner ' + cls;
+   780→    beep();
+   781→  }
+   782→
+   783→  function checkAlerts(key, a, p) {
+   784→    var z = a.zones;
+   785→    if (p >= z.shortEnter && !alertFired[key + ':up']) {
+   786→      alertFired[key + ':up'] = true;
+   787→      showBanner(a.name + ' reached SHORT zone — ' + money(p) + ' ≥ ' + money(z.shortEnter) + '. Limit ' + zoneRange(a, 'short') + ', stop ' + money(a.short.stop) + '.', 'up');
+   788→    } else if (p <= z.shortRearm) {
+   789→      alertFired[key + ':up'] = false;   // re-arm once back inside waiting band
+   790→    }
+   791→    if (p <= z.longEnter && !alertFired[key + ':down']) {
+   792→      alertFired[key + ':down'] = true;
+   793→      showBanner(a.name + ' reached LONG zone — ' + money(p) + ' ≤ ' + money(z.longEnter) + '. Limit ' + zoneRange(a, 'long') + ', stop ' + money(a.long.stop) + '.', 'down');
+   794→    } else if (p >= z.longRearm) {
+   795→      alertFired[key + ':down'] = false;
+   796→    }
+   797→  }
+   798→
+   799→  function tickTicker() {
+   800→    if (!lastFetchAt) return;
+   801→    var age = Math.max(0, Math.round((Date.now() - lastFetchAt) / 1000));
+   802→    var txt;
+   803→    if (feedOk) {
+   804→      var m = age % 45, next = m === 0 ? 0 : 45 - m;
+   805→      txt = age + 's ago · next poll in ' + next + 's';
+   806→    } else {
+   807→      txt = 'offline · last update ' + age + 's ago';
+   808→    }
+   809→    Object.keys(SETUP.assets).forEach(function (key) {
+   810→      var ea = $(key + 'Age');
+   811→      if (ea) ea.textContent = txt;
+   812→    });
+   813→  }
+   814→
+   815→  /* ---- init: build views from setup ---- */
+   816→  readSetup();
+   817→  var btns = document.querySelectorAll('.nav-btn');
+   818→  btns.forEach(function (b) {
+   819→    b.addEventListener('click', function () {
+   820→      btns.forEach(function (x) { x.classList.remove('active'); });
+   821→      b.classList.add('active');
+   822→      document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+   823→      $('view-' + b.dataset.view).classList.add('active');
+   824→    });
+   825→  });
+   826→
+   827→  var lastUpdated = null;
+   828→  function build() {
+   829→    lastUpdated = SETUP.updated;
+   830→    alertFired = {};   // new setup → re-arm banners
+   831→    $('assetViews').textContent = '';
+   832→    $('zwGrid').textContent = '';
+   833→    Object.keys(SETUP.assets).forEach(function (key) {
+   834→      var view = buildAssetView(key, SETUP.assets[key]);
+   835→      $('assetViews').appendChild(view);
+   836→      renderAsset(key);
+   837→    });
+   838→    buildZoneWatch();
+   839→  }
+   840→  build();
+   841→  render();
+   842→
+   843→  function poll() {
+   844→    var ids = Object.keys(SETUP.assets).map(function (k) { return k === 'btc' ? 'bitcoin' : k === 'eth' ? 'ethereum' : k; }).join(',');
+   845→    var ctrl = new AbortController();
+   846→    var t = setTimeout(function () { ctrl.abort(); }, 12000);
+   847→    fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=usd&include_24hr_change=true', { signal: ctrl.signal })
+   848→      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+   849→      .then(function (d) {
+   850→        clearTimeout(t);
+   851→        readSetup(); // pick up pushed setups without refresh
+   852→        if (SETUP.updated !== lastUpdated) build();
+   853→        lastFetchAt = Date.now();
+   854→        feedOk = true;
+   855→        Object.keys(SETUP.assets).forEach(function (key) {
+   856→          var apiKey = key === 'btc' ? 'bitcoin' : key === 'eth' ? 'ethereum' : key;
+   857→          if (!d[apiKey]) return;
+   858→          state[apiKey] = d[apiKey].usd;
+   859→          state['chg' + (key === 'btc' ? 'Btc' : key === 'eth' ? 'Eth' : '')] = d[apiKey].usd_24h_change;
+   860→        });
+   861→        render();
+   862→        setLive(true, 'LIVE — polling every 45s');
+   863→      })
+   864→      .catch(function () {
+   865→        clearTimeout(t);
+   866→        feedOk = false;
+   867→        if (Object.keys(state).length > 0) setLive(false, 'offline — last known price');
+   868→        else setLive(false, 'offline — cannot reach price feed');
+   869→      });
+   870→  }
+   871→
+   872→  poll();
+   873→  setInterval(poll, 45000);
+   874→  setInterval(tickTicker, 1000);
+   875→  $('alertBannerClose').addEventListener('click', function () {
+   876→    $('alertBanner').className = 'alert-banner hidden';
+   877→  });
+   878→})();
+   879→</script>
+   880→</body>
+   881→</html>
+   882→

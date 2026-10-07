@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade2watch — Multi-Asset Trade Setup</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #131722; --panel-2: #1a2030; --line: #232b3d;
+    --text: #e6e9f0; --muted: #8b93a7;
+    --green: #26a69a; --red: #ef5350; --amber: #f5b544; --blue: #4a9eff;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0e14 url('chart.webp') center/cover fixed no-repeat; color: var(--text); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; line-height: 1.5; min-height: 100vh; }
+  body::before { content:""; position:fixed; inset:0; z-index:-1; background:rgba(11,14,20,.62); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 20px 60px; }
+
+  /* nav */
+  nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 14px 0; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+  .logo { font-size: 18px; font-weight: 800; letter-spacing: .5px; margin-right: 18px; }
+  .logo b { color: var(--amber); }
+  .nav-btn { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 8px 18px; border-radius: 999px; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .nav-btn:hover { color: var(--text); border-color: #3a4560; }
+  .nav-btn.active { background: var(--panel-2); color: var(--amber); border-color: rgba(245,181,68,.45); }
+  .nav-right { margin-left: auto; font-size: 12px; color: var(--muted); display:flex; align-items:center; gap:6px; }
+  .live-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--green); animation: pulse 1.6s infinite; }
+  .live-dot.off { background: var(--red); animation: none; }
+  @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.35} }
+
+  .view { display: none; }
+  .view.active { display: block; animation: fade .25s ease; }
+  @keyframes fade { from {opacity:0; transform: translateY(4px)} to {opacity:1; transform:none} }
+
+  /* hero / headers */
+  .hero { display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:16px; padding-bottom:20px; border-bottom:1px solid var(--line); margin-bottom:22px; }
+  .hero h1 { font-size: 22px; font-weight: 700; }
+  .hero .sub { font-size: 13px; color: var(--muted); margin-top:4px; }
+  .price-box { text-align:right; }
+  .price { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing:-1px; }
+  .price .cur { font-size: 19px; color: var(--muted); font-weight:600; margin-right:4px; }
+  .sub { font-size: 13px; color: var(--muted); margin-top:2px; }
+  .chg { font-size:14px; font-weight:600; }
+  .up { color: var(--green); } .down { color: var(--red); }
+
+  .bias { display:flex; gap:12px; align-items:center; flex-wrap:wrap; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px 18px; margin-bottom:22px; }
+  .bias p { font-size:13.5px; }
+  .badge { padding:4px 12px; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.5px; }
+  .badge.short { background:rgba(239,83,80,.15); color:var(--red); border:1px solid rgba(239,83,80,.4); }
+  .badge.neutral { background:rgba(245,181,68,.12); color:var(--amber); border:1px solid rgba(245,181,68,.4); }
+  .badge.long { background:rgba(38,166,154,.15); color:var(--green); border:1px solid rgba(38,166,154,.4); }
+  .badge.watch { background:rgba(74,158,255,.15); color:var(--blue); border:1px solid rgba(74,158,255,.4); }
+
+  .gauge-wrap { margin-bottom:22px; }
+  .gauge-label { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:8px; }
+  .gauge { position:relative; height:34px; border-radius:10px; overflow:hidden; display:flex; border:1px solid var(--line); }
+  .gauge .seg { display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; letter-spacing:.4px; }
+  .seg.longz { background:rgba(38,166,154,.18); color:var(--green); flex:0 0 12%; }
+  .seg.mid { background:var(--panel-2); color:var(--muted); flex:1; }
+  .seg.shortz { background:rgba(239,83,80,.18); color:var(--red); flex:0 0 12%; }
+  .marker { position:absolute; top:0; bottom:0; width:3px; background:#fff; box-shadow:0 0 8px rgba(255,255,255,.8); border-radius:2px; transition:left .6s ease; }
+  .marker::after { content:""; position:absolute; left:50%; top:-5px; transform:translateX(-50%); border:5px solid transparent; border-top:6px solid #fff; }
+  .gauge-note { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:8px; }
+
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width: 820px) { .grid { grid-template-columns:1fr; } .price-box { text-align:left; } }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+  .card-head { padding:16px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
+  .card-head h2 { font-size:16px; font-weight:700; display:flex; align-items:center; gap:10px; }
+  .card-head .side { width:10px; height:10px; border-radius:3px; }
+  .side.short { background:var(--red); } .side.long { background:var(--green); } .side.neutral { background:var(--amber); }
+  .card-body { padding:18px 20px 20px; }
+
+  .row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:9px 0; border-bottom:1px dashed rgba(255,255,255,.06); }
+  .row:last-child { border-bottom:none; }
+  .row .k { font-size:13px; color:var(--muted); }
+  .row .v { font-size:14.5px; font-weight:600; text-align:right; font-variant-numeric:tabular-nums; }
+  .row .v small { display:block; font-size:11.5px; color:var(--muted); font-weight:400; }
+  .entry { color:var(--amber); font-size:16px; }
+  .t1, .t2, .runner { color:var(--blue); }
+  .stop { color:var(--red); }
+  .rr { color:var(--green); }
+
+  .state-line { margin-top:14px; padding:10px 14px; border-radius:8px; font-size:13px; font-weight:600; text-align:center; }
+  .state-line.wait { background:rgba(245,181,68,.1); color:var(--amber); border:1px solid rgba(245,181,68,.3); }
+  .state-line.hot { background:rgba(239,83,80,.12); color:var(--red); border:1px solid rgba(239,83,80,.4); }
+  .state-line.hot.long { background:rgba(38,166,154,.12); color:var(--green); border:1px solid rgba(38,166,154,.4); }
+
+  h3.section { font-size:13px; letter-spacing:1.5px; color:var(--muted); text-transform:uppercase; margin:26px 0 12px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:12px; letter-spacing:.8px; text-transform:uppercase; }
+  td.r { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+  .tag { font-size:11px; font-weight:700; padding:2px 8px; border-radius:6px; }
+  .tag.s { background:rgba(239,83,80,.15); color:var(--red); }
+  .tag.r { background:rgba(74,158,255,.15); color:var(--blue); }
+
+  ul.rules { list-style:none; }
+  ul.rules li { padding:10px 0 10px 28px; position:relative; font-size:14px; border-bottom:1px dashed rgba(255,255,255,.06); }
+  ul.rules li:last-child { border-bottom:none; }
+  ul.rules li::before { content:"→"; position:absolute; left:6px; color:var(--amber); font-weight:700; }
+
+  .alert-cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:820px) { .alert-cards { grid-template-columns:1fr; } }
+  .mini { background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:14px 16px; font-size:13px; }
+  .mini b { display:block; margin-bottom:4px; font-size:13.5px; }
+  .mini .lvl { font-size:20px; font-weight:700; margin:4px 0 2px; }
+  .mini .lvl.long-l { color:var(--green); } .mini .lvl.short-l { color:var(--red); }
+  .mini .when { color:var(--muted); font-size:12px; }
+
+  /* zonewatch */
+  .zw-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:820px) { .zw-grid { grid-template-columns:1fr; } }
+  .zw .zrow { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 0; border-bottom:1px dashed rgba(255,255,255,.06); }
+  .zw .zrow:last-child { border-bottom:none; }
+  .zname { font-size:13px; color:var(--muted); font-weight:600; }
+  .zlvl { font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .chip { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; white-space:nowrap; }
+  .chip.wait { background:rgba(245,181,68,.1); color:var(--amber); border:1px solid rgba(245,181,68,.3); }
+  .chip.hot { background:rgba(239,83,80,.14); color:var(--red); border:1px solid rgba(239,83,80,.4); }
+  .chip.hot.g { background:rgba(38,166,154,.14); color:var(--green); border:1px solid rgba(38,166,154,.4); }
+  .dist { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  footer { margin-top:40px; padding-top:16px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+  /* home: the footer line lives inside the view; suppress the global footer there */
+  #view-home.active ~ footer { display:none; }
+  .home-line { padding:40px 0 8px; text-align:center; font-size:12.5px; line-height:1.7; color:var(--muted); max-width:640px; margin:0 auto; }
+
+  /* in-page alert banner */
+  .alert-banner { position:fixed; top:0; left:50%; transform:translateX(-50%); z-index:100; display:flex; align-items:center; gap:14px; padding:12px 20px; border-radius:0 0 12px 12px; font-size:14px; font-weight:700; box-shadow:0 8px 28px rgba(0,0,0,.55); max-width:96vw; animation: drop .3s ease; }
+  @keyframes drop { from { transform:translate(-50%,-100%); } to { transform:translate(-50%,0); } }
+  .alert-banner.hidden { display:none; }
+  .alert-banner.up { background:#b71c1c; color:#fff; border:1px solid #e57373; border-top:none; }
+  .alert-banner.down { background:#00695c; color:#fff; border:1px solid #4db6ac; border-top:none; }
+  .alert-banner button { background:rgba(255,255,255,.22); border:none; color:#fff; font-size:16px; line-height:1; padding:5px 11px; border-radius:8px; cursor:pointer; }
+  .alert-banner button:hover { background:rgba(255,255,255,.35); }
+
+  /* position sizing */
+  .size-ctrl { display:flex; gap:18px; margin-bottom:6px; flex-wrap:wrap; }
+  .size-ctrl label { font-size:12.5px; color:var(--muted); display:flex; flex-direction:column; gap:5px; font-weight:600; }
+  .size-ctrl input { background:var(--panel-2); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:8px 10px; font-size:14px; width:160px; font-variant-numeric:tabular-nums; }
+  .size-ctrl input:focus { outline:none; border-color:var(--amber); }
+  .size-row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:10px 0; border-bottom:1px dashed rgba(255,255,255,.06); }
+  .size-row:last-child { border-bottom:none; }
+  .size-row .k { font-size:13px; color:var(--muted); }
+  .size-row .v { font-size:14.5px; font-weight:600; text-align:right; font-variant-numeric:tabular-nums; }
+  .size-row .v small { display:block; font-size:11.5px; color:var(--muted); font-weight:400; margin-top:2px; }
+  .size-hint { font-size:12.5px; color:var(--muted); margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+
+  /* thesis */
+  .row .v.note { text-align:left; font-weight:400; font-size:13.5px; line-height:1.55; color:var(--text); max-width:78%; }
+</style>
+</head>
+<body>
+<div id="alertBanner" class="alert-banner hidden"><span id="alertBannerTxt"></span><button id="alertBannerClose" title="dismiss">×</button></div>
+<div class="wrap">
+
+  <nav>
+    <div class="logo">Trade<b>2watch</b></div>
+    <button class="nav-btn active" data-view="home">Home</button>
+    <button class="nav-btn" data-view="btc">BTC Watch</button>
+    <button class="nav-btn" data-view="eth">ETH Watch</button>
+    <button class="nav-btn" data-view="zone">ZoneWatch</button>
+    <div class="nav-right"><span class="live-dot" id="dot"></span><span id="liveTxt">connecting…</span></div>
+  </nav>
+
+  <!-- ============ SETUP DATA — single source of truth; assistant pushes trades here ============ -->
+  <script type="application/json" id="setupJson">
+{
+  "updated": "2026-08-11 22:05 local",
+  "assets": {
+    "btc": {
+      "name": "Bitcoin",
+      "pair": "BTC/USD",
+      "bias": "short",
+      "biasTag": "SHORT BIAS",
+      "biasNote": "6-week range ($62.3k–$66.5k) broke down Aug 10–11. Fresh downside impulse → momentum favors short toward range low. Long only at range-bottom support.",
+      "heroNote": "Range breakdown → short bias toward $62,300 · long only at range low",
+      "thesis": {
+        "trend": "6-week range ($62.3k–$66.5k) broke down Aug 10–11 with a fresh downside impulse. Momentum favors shorts toward the range low; longs are counter-trend fades only.",
+        "zones": "Short zone sits at the broken consolidation floor $64.1k–$64.4k — limit there, never chase a crash. Long zone at the range low $62.3k–$62.6k — fade only, with the June low $58.6k as the magnet if it breaks.",
+        "invalidation": "4h close above $65,400 voids the short (breakdown origin reclaimed). Daily close below $61,750 voids the long and opens $58.6k.",
+        "validity": "Valid until a 4h close above $65,400 or a structure shift; re-validated on every push."
+      },
+      "zones": { "shortEnter": 64400, "shortRearm": 63900, "longEnter": 62600, "longRearm": 63100, "invalidUp": 65400, "invalidDown": 61750 },
+      "gauge": { "min": 62000, "max": 65500, "low": "62,000", "high": "65,500" },
+      "short": {
+        "title": "SHORT — momentum continuation",
+        "tag": "PREFERRED",
+        "trigger": "Price must rally into the zone — don't chase a crash. Blows through 63,400 = setup void.",
+        "entry": [64100, 64400],
+        "stop": 64650, "stopNote": "above retest zone + swing",
+        "t1": 62800, "t2": 62300, "t2Note": "30d range low", "runner": 60000,
+        "rr": "1 : 3.6 at T1 · 1 : 4.9 at T2",
+        "invalid": "4h close above $65,400"
+      },
+      "long": {
+        "title": "LONG — range-bottom fade",
+        "tag": "PATIENT",
+        "trigger": "Price must drop into the zone. 62,300 breaking decisively = void.",
+        "entry": [62300, 62600],
+        "stop": 61750, "stopNote": "below range low",
+        "t1": 64100, "t1Note": "floor reclaim", "t2": 65000, "t2Note": "range mid",
+        "rr": "1 : 2.4 at T1 · 1 : 3.6 at T2",
+        "invalid": "Daily close below $61,750 → June low $58,600 becomes magnet"
+      },
+      "levels": [
+        { "t": "res", "v": "$64,100 – 64,400", "w": "Broken consolidation floor → first resistance" },
+        { "t": "res", "v": "$65,000 – 65,400", "w": "Breakdown origin / range mid" },
+        { "t": "res", "v": "$66,521", "w": "30-day range high (closes)" },
+        { "t": "sup", "v": "$63,424", "w": "Aug 11 low" },
+        { "t": "sup", "v": "$62,300 – 62,500", "w": "30-day range low — long entry zone" },
+        { "t": "sup", "v": "$60,000 / $58,566", "w": "June major low — runner magnet if range breaks" }
+      ]
+    },
+    "eth": {
+      "name": "Ethereum",
+      "pair": "ETH/USD",
+      "bias": "neutral",
+      "biasTag": "NEUTRAL — RANGE",
+      "biasNote": "Downtrend from $2,283 (May) → $1,566 (June), then 4 weeks sideways $1,774–$1,952. No breakdown impulse like BTC. Trade the edges: short the top of range, long the bottom, skip the middle.",
+      "heroNote": "Clean 30-day range ($1,774–$1,952) → neutral · fade both edges, no directional edge",
+      "thesis": {
+        "trend": "Downtrend from $2,283 (May) to $1,566 (June), then 4 weeks of sideways consolidation $1,774–$1,952. No breakdown impulse like BTC — this is a range, not a trend.",
+        "zones": "Short at the range top $1,930–$1,950 (fade rallies, never short mid-range). Long at the range bottom $1,780–$1,800. The middle is dead zone — no edge.",
+        "invalidation": "Daily close above $1,975 = range broken up, stand aside. Daily close below $1,760 = range broken down, June low $1,566 becomes the target.",
+        "validity": "Valid while price stays inside $1,774–$1,952; re-validated on every push."
+      },
+      "zones": { "shortEnter": 1930, "shortRearm": 1880, "longEnter": 1800, "longRearm": 1840, "invalidUp": 1975, "invalidDown": 1760 },
+      "gauge": { "min": 1760, "max": 1970, "low": "1,760", "high": "1,970" },
+      "short": {
+        "title": "SHORT — range-top fade",
+        "tag": "EDGE ONLY",
+        "trigger": "Rally into the zone — fading range top. Don't short mid-range.",
+        "entry": [1930, 1950],
+        "stop": 1970, "stopNote": "above range high",
+        "t1": 1880, "t2": 1800, "t2Note": "range low",
+        "rr": "1 : 1.7 at T1 · 1 : 4.7 at T2",
+        "invalid": "Daily close above $1,975 — range broken up, stand aside"
+      },
+      "long": {
+        "title": "LONG — range-bottom fade",
+        "tag": "EDGE ONLY",
+        "trigger": "Drop into the zone — fading range low. 1,774 breaking decisively = void.",
+        "entry": [1780, 1800],
+        "stop": 1760, "stopNote": "below range low",
+        "t1": 1880, "t2": 1920, "t2Note": "upper range",
+        "rr": "1 : 2.7 at T1 · 1 : 4.0 at T2",
+        "invalid": "Daily close below $1,760 → June low $1,566 becomes magnet"
+      },
+      "levels": [
+        { "t": "res", "v": "$1,930 – 1,950", "w": "Upper range — short entry zone" },
+        { "t": "res", "v": "$1,952", "w": "30-day range high (closes)" },
+        { "t": "res", "v": "$2,283", "w": "90-day high (May)" },
+        { "t": "sup", "v": "$1,800 – 1,780", "w": "Lower range — long entry zone" },
+        { "t": "sup", "v": "$1,774", "w": "30-day range low (closes)" },
+        { "t": "sup", "v": "$1,566", "w": "June major low — magnet if range breaks" }
+      ]
+    }
+  }
+}
+  </script>
+
+  <!-- ============ HOME (footer line only) ============ -->
+  <section class="view active" id="view-home">
+    <div class="home-line">
+      <span id="homeStamp"></span><b>Trade2watch</b> — multi-asset trade setup dashboard. <b>Disclaimer:</b> Technical analysis of public market data (CoinGecko). Not financial advice. Crypto is volatile — never trade money you can't afford to lose. Levels shift as structure changes; re-validate before acting.
+    </div>
+  </section>
+
+  <!-- ============ ASSET WATCH (generated from setup JSON) ============ -->
+  <div id="assetViews"></div>
+
+  <!-- ============ ZONEWATCH ============ -->
+  <section class="view" id="view-zone">
+    <div class="hero">
+      <div>
+        <h1>ZoneWatch — live zone monitor</h1>
+        <div class="sub">Every entry zone, all assets, one board. Green = long zone live, red = short zone live, amber = waiting.</div>
+      </div>
+      <div class="price-box">
+        <div class="price" style="font-size:22px"><span id="zwSummary">—</span></div>
+        <div class="sub"><span id="zwTime">—</span></div>
+      </div>
+    </div>
+
+    <div class="zw-grid" id="zwGrid"></div>
+
+    <h3 class="section">Rule of thumb</h3>
+    <div class="card"><div class="card-body">
+      <ul class="rules">
+        <li><b>Amber everywhere = do nothing.</b> All assets mid-range — no edge.</li>
+        <li><b>Red zone live = short setup armed</b> (limit entry, stop above zone).</li>
+        <li><b>Green zone live = long setup armed</b> (limit entry, stop below zone).</li>
+        <li><b>Invalidation breached = thesis dead.</b> Close the trade, re-analyze structure.</li>
+      </ul>
+    </div></div>
+  </section>
+
+  <footer id="footer">
+    <span id="setupStamp"></span><b>Trade2watch</b> — multi-asset trade setup dashboard. <b>Disclaimer:</b> Technical analysis of public market data (CoinGecko). Not financial advice. Crypto is volatile — never trade money you can't afford to lose. Levels shift as structure changes; re-validate before acting.
+  </footer>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var state = {};
+  var SETUP = null;
+
+  function readSetup() {
+    try {
+      var el = $('setupJson');
+      if (!el || !el.textContent) return SETUP;
+      var parsed = JSON.parse(el.textContent);
+      if (!parsed || !parsed.assets) return SETUP;
+      SETUP = parsed;
+    } catch (e) { /* keep last good setup if mid-edit */ }
+    return SETUP;
+  }
+
+  function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
+  function trimNum(x, d) { var m = Math.pow(10, d); return String(Math.round(x * m) / m); }
+  function money(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+  function zoneRange(a, side) { return money(a[side].entry[0]) + ' – ' + money(a[side].entry[1]); }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = text;
+    return e;
+  }
+
+  function zoneState(z, price) {
+    if (price >= z.shortEnter) return { cls: 'hot', txt: 'SHORT ZONE LIVE' };
+    if (price <= z.longEnter) return { cls: 'hot g', txt: 'LONG ZONE LIVE' };
+    if (price <= z.shortRearm && price >= z.longRearm) return { cls: 'wait', txt: 'WAITING — mid-range' };
+    return { cls: 'wait', txt: 'WAITING' };
+  }
+
+  function distToNext(z, price) {
+    if (price < z.longEnter) return 'to LONG zone: ' + money(z.longEnter - price);
+    if (price > z.shortEnter) return 'to SHORT zone: ' + money(price - z.shortEnter);
+    return 'in waiting zone';
+  }
+
+  /* ---- builders ---- */
+
+  function buildAssetView(key, a) {
+    var view = el('section', 'view', null);
+    view.id = 'view-' + key;
+
+    // hero
+    var hero = el('div', 'hero');
+    var hl = el('div');
+    hl.appendChild(el('h1', null, a.name + ' — ' + a.pair));
+    hl.appendChild(el('div', 'sub', a.heroNote));
+    var pb = el('div', 'price-box');
+    var pr = el('div', 'price');
+    pr.appendChild(el('span', 'cur', '$'));
+    var ps = el('span', null, '—'); ps.id = key + 'Price';
+    pr.appendChild(ps);
+    pb.appendChild(pr);
+    var sb = el('div', 'sub');
+    var cs = el('span', 'chg', '—'); cs.id = key + 'Chg';
+    sb.appendChild(cs);
+    pb.appendChild(sb);
+    var tm = el('span', null, '—');
+    tm.id = key + 'Time';
+    sb.appendChild(document.createTextNode(' · '));
+    sb.appendChild(tm);
+    sb.appendChild(document.createTextNode(' · '));
+    var ag = el('span', null, '—');
+    ag.id = key + 'Age';
+    sb.appendChild(ag);
+    hero.appendChild(hl); hero.appendChild(pb);
+    view.appendChild(hero);
+
+    // bias
+    var bias = el('div', 'bias');
+    bias.appendChild(el('span', 'badge ' + a.bias, a.biasTag));
+    bias.appendChild(el('p', null, a.biasNote));
+    view.appendChild(bias);
+
+    // gauge
+    var gw = el('div', 'gauge-wrap');
+    var gl = el('div', 'gauge-label');
+    var ll = el('span'); ll.id = key + 'LongLabel';
+    var sl = el('span'); sl.id = key + 'ShortLabel';
+    gl.appendChild(ll); gl.appendChild(sl);
+    gw.appendChild(gl);
+    var g = el('div', 'gauge');
+    g.appendChild(el('div', 'seg longz', 'LONG'));
+    g.appendChild(el('div', 'seg mid', 'WAITING ZONE — no edge mid-range'));
+    g.appendChild(el('div', 'seg shortz', 'SHORT'));
+    var mk = el('div', 'marker'); mk.id = key + 'Marker'; mk.style.left = '50%';
+    g.appendChild(mk);
+    gw.appendChild(g);
+    var gn = el('div', 'gauge-note');
+    var lo = el('span'); lo.id = key + 'GaugeLow';
+    var pos = el('span'); pos.id = key + 'GaugePos'; pos.textContent = '—';
+    var hi = el('span'); hi.id = key + 'GaugeHigh';
+    gn.appendChild(lo); gn.appendChild(pos); gn.appendChild(hi);
+    gw.appendChild(gn);
+    view.appendChild(gw);
+
+    // cards grid
+    var grid = el('div', 'grid');
+    grid.appendChild(buildCard(key + 'Short', a, 'short', 'short'));
+    grid.appendChild(buildCard(key + 'Long', a, 'long', 'long'));
+    view.appendChild(grid);
+
+    // thesis ("why this setup")
+    if (a.thesis) {
+      view.appendChild(el('h3', 'section', 'Why this setup'));
+      var tCard = el('div', 'card');
+      var tBody = el('div', 'card-body');
+      [
+        ['Trend', a.thesis.trend],
+        ['Zones', a.thesis.zones],
+        ['Invalidation', a.thesis.invalidation],
+        ['Validity', a.thesis.validity]
+      ].forEach(function (kv) {
+        if (!kv[1]) return;
+        var row = el('div', 'row');
+        row.appendChild(el('span', 'k', kv[0]));
+        row.appendChild(el('span', 'v note', kv[1]));
+        tBody.appendChild(row);
+      });
+      tCard.appendChild(tBody);
+      view.appendChild(tCard);
+    }
+
+    // position sizing
+    view.appendChild(el('h3', 'section', 'Position Sizing'));
+    var sc = el('div', 'card');
+    var sBody = el('div', 'card-body');
+    var ctrl = el('div', 'size-ctrl');
+    var labAcct = el('label', null, 'Account size ($)');
+    var inAcct = el('input'); inAcct.type = 'number'; inAcct.min = '0'; inAcct.step = 'any'; inAcct.id = key + 'SizeAcct';
+    inAcct.value = lsGet('tw_acct', '');
+    labAcct.appendChild(inAcct);
+    ctrl.appendChild(labAcct);
+    var labRisk = el('label', null, 'Risk per trade (%)');
+    var inRisk = el('input'); inRisk.type = 'number'; inRisk.min = '0'; inRisk.max = '100'; inRisk.step = 'any'; inRisk.id = key + 'SizeRisk';
+    inRisk.value = lsGet('tw_risk', '1');
+    labRisk.appendChild(inRisk);
+    ctrl.appendChild(labRisk);
+    sBody.appendChild(ctrl);
+    sBody.appendChild(el('div', 'size-hint', 'Worst-case entry (zone edge closest to stop) × stop distance. Sizes so the stop costs exactly your risk %.'));
+    sBody.appendChild(sizeRow(key + 'SizeShort', 'SHORT', '—'));
+    sBody.appendChild(sizeRow(key + 'SizeLong', 'LONG', '—'));
+    sc.appendChild(sBody);
+    view.appendChild(sc);
+    inAcct.addEventListener('input', function () { syncSizeInputs('acct', inAcct.value); calcSizing(key); });
+    inRisk.addEventListener('input', function () { syncSizeInputs('risk', inRisk.value); calcSizing(key); });
+
+    // levels
+    view.appendChild(el('h3', 'section', 'Key Levels'));
+    var lvlCard = el('div', 'card');
+    var lvlBody = el('div', 'card-body');
+    lvlBody.style.padding = '0';
+    var tbl = el('table');
+    var thead = el('tr');
+    ['Type', 'Level', 'Why'].forEach(function (h) {
+      var th = el('th', null, h); if (h === 'Why') th.className = 'r';
+      thead.appendChild(th);
+    });
+    tbl.appendChild(thead);
+    var tb = el('tbody'); tb.id = key + 'Levels';
+    tbl.appendChild(tb);
+    lvlBody.appendChild(tbl);
+    lvlCard.appendChild(lvlBody);
+    view.appendChild(lvlCard);
+
+    // alerts
+    view.appendChild(el('h3', 'section', 'Alerts'));
+    var ac = el('div', 'alert-cards'); ac.id = key + 'Alerts';
+    view.appendChild(ac);
+
+    return view;
+  }
+
+  function buildCard(idBase, a, side, sideCls) {
+    var card = el('div', 'card');
+    var head = el('div', 'card-head');
+    var h2 = el('h2');
+    h2.appendChild(el('span', 'side ' + sideCls));
+    h2.appendChild(document.createTextNode(a[side].title));
+    head.appendChild(h2);
+    head.appendChild(el('span', 'badge ' + sideCls, a[side].tag));
+    card.appendChild(head);
+    var body = el('div', 'card-body'); body.id = idBase + 'Body';
+    card.appendChild(body);
+    return card;
+  }
+
+  function cardRow(k, vCls, vText, vNote) {
+    var row = el('div', 'row');
+    row.appendChild(el('span', 'k', k));
+    var v = el('span', 'v ' + vCls, vText);
+    if (vNote) v.appendChild(el('small', null, vNote));
+    row.appendChild(v);
+    return row;
+  }
+
+  function lsGet(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function apiKeyOf(key) { return key === 'btc' ? 'bitcoin' : key === 'eth' ? 'ethereum' : key; }
+
+  function sizeRow(id, sideLabel, txt) {
+    var row = el('div', 'size-row');
+    row.appendChild(el('span', 'k', sideLabel));
+    var v = el('span', 'v', txt); v.id = id;
+    row.appendChild(v);
+    return row;
+  }
+
+  function fillSizeRow(elRow, a, side, risk$, unit) {
+    var s = a[side];
+    var worst = side === 'short' ? Math.max(s.entry[0], s.entry[1]) : Math.min(s.entry[0], s.entry[1]);
+    var dist = side === 'short' ? s.stop - worst : worst - s.stop;
+    if (!(dist > 0)) {
+      elRow.textContent = 'Stop distance invalid — check setup';
+      return;
+    }
+    var units = risk$ / dist;
+    var key = elRow.id.replace('SizeShort', '').replace('SizeLong', '');
+    var px = state[apiKeyOf(key)];
+    var unitsTxt = units >= 100 ? fmt(units) : units >= 1 ? trimNum(units, 2) : trimNum(units, 4);
+    var notionalTxt = '';
+    if (px) {
+      var notional = units * px;
+      notionalTxt = 'notional ≈ ' + money(notional) + ' · ';
+    }
+    elRow.textContent = unitsTxt + ' ' + (key === 'btc' ? 'BTC' : key === 'eth' ? 'ETH' : key.toUpperCase());
+    var small = el('small', null, notionalTxt + 'risk ' + money(risk$) + ' · worst entry ' + money(worst) + ' · stop ' + money(s.stop));
+    elRow.appendChild(small);
+  }
+
+  function syncSizeInputs(which, val) {
+    Object.keys(SETUP.assets).forEach(function (k) {
+      var ei = $(k + 'Size' + (which === 'acct' ? 'Acct' : 'Risk'));
+      if (ei) ei.value = val;
+    });
+  }
+
+  function calcSizing(key) {
+    var a = SETUP.assets[key];
+    var shortEl = $(key + 'SizeShort'), longEl = $(key + 'SizeLong');
+    if (!a || !shortEl || !longEl) return;
+    var acct = parseFloat($(key + 'SizeAcct').value);
+    if (!(acct > 0)) acct = 0;
+    var rp = parseFloat($(key + 'SizeRisk').value);
+    if (!(rp > 0)) rp = 1;
+    lsSet('tw_acct', String(acct));
+    lsSet('tw_risk', String(rp));
+    if (!(acct > 0)) {
+      shortEl.textContent = 'Enter account size above';
+      longEl.textContent = 'Enter account size above';
+      return;
+    }
+    var risk$ = acct * rp / 100;
+    fillSizeRow(shortEl, a, 'short', risk$, key);
+    fillSizeRow(longEl, a, 'long', risk$, key);
+  }
+
+  function fillCard(idBase, a, side, sideCls) {
+    var body = $(idBase + 'Body');
+    body.textContent = '';
+    var s = a[side];
+    body.appendChild(cardRow('Trigger', '', s.trigger));
+    body.appendChild(cardRow('Entry (limit)', 'entry', zoneRange(a, side)));
+    var stopTxt = money(s.stop);
+    if (s.stopNote) stopTxt += ' — ' + s.stopNote;
+    body.appendChild(cardRow('Stop', 'stop', stopTxt));
+    var t1Txt = money(s.t1); if (s.t1Note) t1Txt += ' — ' + s.t1Note;
+    body.appendChild(cardRow('Target 1 (half)', 't1', t1Txt));
+    var t2Txt = money(s.t2); if (s.t2Note) t2Txt += ' — ' + s.t2Note;
+    body.appendChild(cardRow('Target 2 (trail)', 't2', t2Txt));
+    if (s.runner) body.appendChild(cardRow('Runner', 'runner', money(s.runner)));
+    body.appendChild(cardRow('Risk : Reward', 'rr', s.rr));
+    body.appendChild(cardRow('Invalidation', 'stop', s.invalid));
+    var st = el('div', 'state-line wait', '⏳ Waiting — no zone active');
+    st.id = idBase.replace('Body', '') + 'State';
+    body.appendChild(st);
+  }
+
+  function fillLevels(idBase, a) {
+    var tb = $(idBase + 'Levels');
+    tb.textContent = '';
+    a.levels.forEach(function (lv) {
+      var tr = el('tr');
+      var tdTag = el('td');
+      tdTag.appendChild(el('span', 'tag ' + (lv.t === 'res' ? 'r' : 's'), lv.t === 'res' ? 'RES' : 'SUP'));
+      tr.appendChild(tdTag);
+      tr.appendChild(el('td', null, lv.v));
+      tr.appendChild(el('td', 'r', lv.w));
+      tb.appendChild(tr);
+    });
+  }
+
+  function fillAlerts(idBase, a) {
+    var ac = $(idBase + 'Alerts');
+    ac.textContent = '';
+    var z = a.zones;
+    var items = [
+      { b: '📱 Phone (CoinGecko app) — primary', lvl: '≥ ' + money(z.shortEnter), lvlCls: 'short-l', when: 'Fires on rise to short zone · push, sleep-proof' },
+      { b: '📱 Phone (CoinGecko app) — primary', lvl: '≤ ' + money(z.longEnter), lvlCls: 'long-l', when: 'Fires on drop to long zone · push, sleep-proof' },
+      { b: '💻 Laptop watcher — backup', lvl: fmt(z.shortEnter) + ' / ' + fmt(z.longEnter), lvlCls: '', when: 'Desktop popup · log: C:\\Users\\Ishi\\btc-alerts\\alerts.log' },
+      { b: '📈 Invalidations', lvl: fmt(z.invalidUp) + ' / ' + fmt(z.invalidDown), lvlCls: '', when: 'Above ' + fmt(z.invalidUp) + ' = ' + (a.bias === 'short' ? 'short thesis dead' : 'range broken up') + ' · below ' + fmt(z.invalidDown) + ' = range broken down' }
+    ];
+    items.forEach(function (it) {
+      var m = el('div', 'mini');
+      m.appendChild(el('b', null, it.b));
+      var lvl = el('div', 'lvl ' + it.lvlCls, it.lvl);
+      m.appendChild(lvl);
+      m.appendChild(el('div', 'when', it.when));
+      ac.appendChild(m);
+    });
+  }
+
+  function buildZoneWatch() {
+    var grid = $('zwGrid');
+    grid.textContent = '';
+    Object.keys(SETUP.assets).forEach(function (key) {
+      var a = SETUP.assets[key];
+      var card = el('div', 'card zw');
+      var head = el('div', 'card-head');
+      head.appendChild(el('h2', null, a.name + ' — ' + a.pair));
+      var biasBadge = el('span', 'badge ' + a.bias); biasBadge.id = 'zw' + key.toUpperCase() + 'Bias';
+      biasBadge.textContent = a.biasTag;
+      head.appendChild(biasBadge);
+      card.appendChild(head);
+      var body = el('div', 'card-body');
+      var z = a.zones;
+      function zrow(name, txt, color) {
+        var r = el('div', 'zrow');
+        r.appendChild(el('span', 'zname', name));
+        var lvl = el('span', 'zlvl', txt);
+        if (color) lvl.style.color = color;
+        r.appendChild(lvl);
+        body.appendChild(r);
+      }
+      zrow('Price', '—', null); body.lastChild.lastChild.id = 'zw' + key.toUpperCase() + 'Price';
+      zrow('LONG entry zone', zoneRange(a, 'long'), '#26a69a');
+      zrow('Long stop / invalid', money(z.invalidDown), '#ef5350');
+      zrow('SHORT entry zone', zoneRange(a, 'short'), '#ef5350');
+      zrow('Short stop / invalid', money(a.short.stop) + ' / ' + money(z.invalidUp), '#ef5350');
+      var st = el('div', 'zrow');
+      st.appendChild(el('span', 'zname', 'Zone status'));
+      var chip = el('span', 'chip wait', '—'); chip.id = 'zw' + key.toUpperCase() + 'Chip';
+      st.appendChild(chip);
+      body.appendChild(st);
+      var d = el('div', 'zrow');
+      d.appendChild(el('span', 'zname', 'Distance to next zone'));
+      var dist = el('span', 'dist', '—'); dist.id = 'zw' + key.toUpperCase() + 'Dist';
+      d.appendChild(dist);
+      body.appendChild(d);
+      card.appendChild(body);
+      grid.appendChild(card);
+    });
+  }
+
+  function renderAsset(key) {
+    var a = SETUP.assets[key];
+    var z = a.zones;
+    // labels
+    $(key + 'LongLabel').textContent = 'LONG ZONE ' + fmt(z.longEnter) + '–' + fmt(a.long.entry[1]);
+    $(key + 'ShortLabel').textContent = 'SHORT ZONE ' + fmt(a.short.entry[0]) + '–' + fmt(z.shortEnter);
+    $(key + 'GaugeLow').textContent = a.gauge.low;
+    $(key + 'GaugeHigh').textContent = a.gauge.high;
+    fillCard(key + 'Short', a, 'short', 'short');
+    fillCard(key + 'Long', a, 'long', 'long');
+    fillLevels(key, a);
+    fillAlerts(key, a);
+  }
+
+  function render() {
+    if (!SETUP) return;
+    Object.keys(SETUP.assets).forEach(function (key) {
+      var a = SETUP.assets[key];
+      var apiKey = key === 'btc' ? 'bitcoin' : key === 'eth' ? 'ethereum' : key;
+      var p = state[apiKey];
+      if (p === null || p === undefined) return;
+      var chg = state['chg' + (key === 'btc' ? 'Btc' : key === 'eth' ? 'Eth' : '')];
+      var t = new Date().toLocaleTimeString();
+
+      // price displays
+      $(key + 'Price').textContent = fmt(p);
+      $(key + 'Chg').textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '% 24h';
+      $(key + 'Chg').className = 'chg ' + (chg >= 0 ? 'up' : 'down');
+      $(key + 'Time').textContent = t;
+
+      // gauge
+      var g = a.gauge;
+      var pos = Math.min(1, Math.max(0, (p - g.min) / (g.max - g.min)));
+      $(key + 'Marker').style.left = (pos * 100) + '%';
+      $(key + 'GaugePos').textContent = 'PRICE ' + money(p);
+
+      // zonewatch
+      var zP = $('zw' + key.toUpperCase() + 'Price');
+      if (zP) {
+        zP.textContent = money(p);
+        var zs = zoneState(a.zones, p);
+        var chip = $('zw' + key.toUpperCase() + 'Chip');
+        chip.className = 'chip ' + zs.cls;
+        chip.textContent = zs.txt;
+        $('zw' + key.toUpperCase() + 'Dist').textContent = distToNext(a.zones, p);
+      }
+
+      // state lines (re-evaluate with current price)
+      var ss = $(key + 'ShortState'), ls = $(key + 'LongState');
+      if (ss && ls) {
+        var zs2 = zoneState(a.zones, p);
+        if (zs2.cls.indexOf('hot') === 0 && zs2.txt.indexOf('SHORT') === 0) {
+          ss.className = 'state-line hot';
+          ss.textContent = '🔴 SHORT ZONE ACTIVE — price ≥ ' + money(a.zones.shortEnter) + '. Limit ' + zoneRange(a, 'short') + ', stop ' + money(a.short.stop) + ', T1 ' + money(a.short.t1) + ', T2 ' + money(a.short.t2) + '.';
+          ls.className = 'state-line wait'; ls.textContent = '⏳ Short zone live — long not in play';
+        } else if (zs2.cls.indexOf('hot') === 0) {
+          ls.className = 'state-line hot long';
+          ls.textContent = '🟢 LONG ZONE ACTIVE — price ≤ ' + money(a.zones.longEnter) + '. Limit ' + zoneRange(a, 'long') + ', stop ' + money(a.long.stop) + ', T1 ' + money(a.long.t1) + ', T2 ' + money(a.long.t2) + '.';
+          ss.className = 'state-line wait'; ss.textContent = '⏳ Long zone live — short not in play';
+        } else {
+          ss.className = 'state-line wait'; ss.textContent = '⏳ Waiting — no zone active';
+          ls.className = 'state-line wait'; ls.textContent = '⏳ Waiting — no zone active';
+        }
+      }
+
+      calcSizing(key);
+      checkAlerts(key, a, p);
+    });
+    $('zwSummary').textContent = Object.keys(SETUP.assets).map(function (key) {
+      var p = state[key === 'btc' ? 'bitcoin' : key === 'eth' ? 'ethereum' : key];
+      return p === null || p === undefined ? null : (key.toUpperCase() + ' ' + money(p));
+    }).filter(Boolean).join('  ·  ');
+    $('zwTime').textContent = 'updated ' + new Date().toLocaleTimeString();
+    $('setupStamp').textContent = 'Setup pushed: ' + SETUP.updated + ' — ';
+    var hs = $('homeStamp');
+    if (hs) hs.textContent = 'Setup pushed: ' + SETUP.updated + ' — ';
+  }
+
+  function setLive(ok, txt) {
+    $('dot').className = 'live-dot' + (ok ? '' : ' off');
+    $('liveTxt').textContent = txt;
+  }
+
+  /* ---- in-page alert banner + beep ---- */
+  var alertFired = {};   // 'btc:up' / 'btc:down' — armed once zone re-enters waiting band
+  var audioCtx = null;
+  var lastFetchAt = 0;
+  var feedOk = false;
+
+  function initAudio() {
+    if (audioCtx) return;
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; }
+  }
+  document.addEventListener('click', initAudio, { once: true });
+
+  function beep() {
+    if (!audioCtx) return;
+    try {
+      var t0 = audioCtx.currentTime;
+      [0, .2, .4].forEach(function (d) {
+        var o = audioCtx.createOscillator();
+        var g = audioCtx.createGain();
+        o.type = 'square'; o.frequency.value = 880;
+        g.gain.setValueAtTime(.05, t0 + d);
+        g.gain.exponentialRampToValueAtTime(.0001, t0 + d + .14);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t0 + d); o.stop(t0 + d + .15);
+      });
+    } catch (e) {}
+  }
+
+  function showBanner(txt, cls) {
+    $('alertBannerTxt').textContent = '🔔 ' + txt;
+    $('alertBanner').className = 'alert-banner ' + cls;
+    beep();
+  }
+
+  function checkAlerts(key, a, p) {
+    var z = a.zones;
+    if (p >= z.shortEnter && !alertFired[key + ':up']) {
+      alertFired[key + ':up'] = true;
+      showBanner(a.name + ' reached SHORT zone — ' + money(p) + ' ≥ ' + money(z.shortEnter) + '. Limit ' + zoneRange(a, 'short') + ', stop ' + money(a.short.stop) + '.', 'up');
+    } else if (p <= z.shortRearm) {
+      alertFired[key + ':up'] = false;   // re-arm once back inside waiting band
+    }
+    if (p <= z.longEnter && !alertFired[key + ':down']) {
+      alertFired[key + ':down'] = true;
+      showBanner(a.name + ' reached LONG zone — ' + money(p) + ' ≤ ' + money(z.longEnter) + '. Limit ' + zoneRange(a, 'long') + ', stop ' + money(a.long.stop) + '.', 'down');
+    } else if (p >= z.longRearm) {
+      alertFired[key + ':down'] = false;
+    }
+  }
+
+  function tickTicker() {
+    if (!lastFetchAt) return;
+    var age = Math.max(0, Math.round((Date.now() - lastFetchAt) / 1000));
+    var txt;
+    if (feedOk) {
+      var m = age % 45, next = m === 0 ? 0 : 45 - m;
+      txt = age + 's ago · next poll in ' + next + 's';
+    } else {
+      txt = 'offline · last update ' + age + 's ago';
+    }
+    Object.keys(SETUP.assets).forEach(function (key) {
+      var ea = $(key + 'Age');
+      if (ea) ea.textContent = txt;
+    });
+  }
+
+  /* ---- init: build views from setup ---- */
+  readSetup();
+  var btns = document.querySelectorAll('.nav-btn');
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      btns.forEach(function (x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+      $('view-' + b.dataset.view).classList.add('active');
+    });
+  });
+
+  var lastUpdated = null;
+  function build() {
+    lastUpdated = SETUP.updated;
+    alertFired = {};   // new setup → re-arm banners
+    $('assetViews').textContent = '';
+    $('zwGrid').textContent = '';
+    Object.keys(SETUP.assets).forEach(function (key) {
+      var view = buildAssetView(key, SETUP.assets[key]);
+      $('assetViews').appendChild(view);
+      renderAsset(key);
+    });
+    buildZoneWatch();
+  }
+  build();
+  render();
+
+  function poll() {
+    var ids = Object.keys(SETUP.assets).map(function (k) { return k === 'btc' ? 'bitcoin' : k === 'eth' ? 'ethereum' : k; }).join(',');
+    var ctrl = new AbortController();
+    var t = setTimeout(function () { ctrl.abort(); }, 12000);
+    fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=usd&include_24hr_change=true', { signal: ctrl.signal })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        clearTimeout(t);
+        readSetup(); // pick up pushed setups without refresh
+        if (SETUP.updated !== lastUpdated) build();
+        lastFetchAt = Date.now();
+        feedOk = true;
+        Object.keys(SETUP.assets).forEach(function (key) {
+          var apiKey = key === 'btc' ? 'bitcoin' : key === 'eth' ? 'ethereum' : key;
+          if (!d[apiKey]) return;
+          state[apiKey] = d[apiKey].usd;
+          state['chg' + (key === 'btc' ? 'Btc' : key === 'eth' ? 'Eth' : '')] = d[apiKey].usd_24h_change;
+        });
+        render();
+        setLive(true, 'LIVE — polling every 45s');
+      })
+      .catch(function () {
+        clearTimeout(t);
+        feedOk = false;
+        if (Object.keys(state).length > 0) setLive(false, 'offline — last known price');
+        else setLive(false, 'offline — cannot reach price feed');
+      });
+  }
+
+  poll();
+  setInterval(poll, 45000);
+  setInterval(tickTicker, 1000);
+  $('alertBannerClose').addEventListener('click', function () {
+    $('alertBanner').className = 'alert-banner hidden';
+  });
+})();
+</script>
+</body>
+</html>
