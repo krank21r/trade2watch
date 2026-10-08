@@ -1,0 +1,989 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { useToast } from '@/hooks/use-toast'
+     6→import { fmtPrice } from '@/components/signals/types'
+     7→import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
+     8→import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
+     9→
+    10→// Trade2watch design tokens (mirrors public/app.html)
+    11→const C = {
+    12→  panel: 'bg-tv-panel border-tv-line',
+    13→  panel2: 'bg-tv-panel2 border-tv-line',
+    14→  muted: 'text-tv-muted',
+    15→  text: 'text-tv-ink',
+    16→  green: 'text-bull',
+    17→  red: 'text-bear',
+    18→  amber: 'text-warn',
+    19→  blue: 'text-info',
+    20→}
+    21→
+    22→// soft icon-disc backgrounds per plan-ladder role (targets → info, entry → warn, stop → bear)
+    23→const ICON_SOFT: Record<string, string> = {
+    24→  [C.blue]: 'var(--info-soft)',
+    25→  [C.amber]: 'var(--warn-soft)',
+    26→  [C.red]: 'var(--bear-soft)',
+    27→}
+    28→
+    29→const QUICK = ['BTC', 'ETH', 'SOL', 'AAPL', 'TSLA', 'NVDA']
+    30→const POLL_MS = 45_000
+    31→
+    32→function lsGet(k: string, d: string): string {
+    33→  try {
+    34→    return localStorage.getItem(k) ?? d
+    35→  } catch {
+    36→    return d
+    37→  }
+    38→}
+    39→
+    40→const chipCls: Record<string, string> = {
+    41→  liveShort: 'bg-bear/15 text-bear border-bear/45',
+    42→  liveLong: 'bg-bull/15 text-bull border-bull/45',
+    43→  hitShort: 'bg-bear/10 text-bear border-bear/35',
+    44→  hitLong: 'bg-bull/10 text-bull border-bull/35',
+    45→  waiting: 'bg-warn/10 text-warn border-warn/35',
+    46→  void: 'bg-tv-muted/12 text-tv-muted border-tv-line-strong',
+    47→}
+    48→
+    49→// ─── trade-confirmation tracking — fires when price reaches an entry zone ───
+    50→
+    51→interface ConfirmInfo {
+    52→  at: number // timestamp of the FIRST poll that saw price inside the zone
+    53→  price: number // price at confirmation
+    54→}
+    55→
+    56→const CONF_KEY = 'tw_confirmed'
+    57→
+    58→function loadConfirms(): Record<string, ConfirmInfo> {
+    59→  try {
+    60→    const raw = JSON.parse(localStorage.getItem(CONF_KEY) ?? '{}') as Record<string, ConfirmInfo>
+    61→    return raw && typeof raw === 'object' ? raw : {}
+    62→  } catch {
+    63→    return {}
+    64→  }
+    65→}
+    66→
+    67→function saveConfirms(m: Record<string, ConfirmInfo>) {
+    68→  try {
+    69→    localStorage.setItem(CONF_KEY, JSON.stringify(m))
+    70→  } catch {
+    71→    /* private mode */
+    72→  }
+    73→}
+    74→
+    75→/** One-chip summary per asset for the ZoneWatch strip. */
+    76→function summarize(s: BoardSetup): { cls: string; txt: string } {
+    77→  const l = s.long
+    78→  const sh = s.short
+    79→  if (sh?.state === 'LIVE') return { cls: chipCls.liveShort, txt: 'SHORT CONFIRMED' }
+    80→  if (l?.state === 'LIVE') return { cls: chipCls.liveLong, txt: 'LONG CONFIRMED' }
+    81→  // entry hit = confirmed: zone was triggered by a wick, price moved on
+    82→  if (sh?.state === 'HIT') return { cls: chipCls.hitShort, txt: 'SHORT HIT — CONFIRMED' }
+    83→  if (l?.state === 'HIT') return { cls: chipCls.hitLong, txt: 'LONG HIT — CONFIRMED' }
+    84→  const waits: string[] = []
+    85→  if (l?.state === 'WAITING' && l.distPct !== null) waits.push(`${l.distPct.toFixed(1)}% to LONG`)
+    86→  if (sh?.state === 'WAITING' && sh.distPct !== null) waits.push(`${sh.distPct.toFixed(1)}% to SHORT`)
+    87→  const voids: string[] = []
+    88→  if (l?.state === 'VOID') voids.push('LONG void')
+    89→  if (sh?.state === 'VOID') voids.push('SHORT void')
+    90→  if (voids.length === 2) return { cls: chipCls.void, txt: 'SETUP VOID' }
+    91→  if (waits.length === 0 && voids.length === 1) return { cls: chipCls.void, txt: `${voids[0].toUpperCase()} — WAIT` }
+    92→  if (voids.length === 1) return { cls: chipCls.waiting, txt: `${waits[0]} · ${voids[0]}` }
+    93→  return { cls: chipCls.waiting, txt: waits.length ? `WAITING · ${waits.join(' · ')}` : 'WAITING' }
+    94→}
+    95→
+    96→// ─── trade-plan ladder — Entry levels · Stop loss · Targets, one glance ─────
+    97→
+    98→function pctFrom(mid: number, v: number): string {
+    99→  const p = ((v - mid) / mid) * 100
+   100→  return `${p >= 0 ? '+' : ''}${p.toFixed(1)}%`
+   101→}
+   102→
+   103→function rMult(v: number, mid: number, risk: number): string {
+   104→  return risk > 0 ? `${(Math.abs(v - mid) / risk).toFixed(1)}R` : '—'
+   105→}
+   106→
+   107→/** time-only for today, date+time otherwise — wick hits are often hours/days old */
+   108→function fmtWhen(t: number): string {
+   109→  const d = new Date(t)
+   110→  const now = new Date()
+   111→  const sameDay =
+   112→    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+   113→  return sameDay
+   114→    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+   115→    : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+   116→}
+   117→
+   118→function Badge({ children }: { children: ReactNode }) {
+   119→  return (
+   120→    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-bold tabular-nums text-tv-muted whitespace-nowrap">{children}</span>
+   121→  )
+   122→}
+   123→
+   124→function PlanRow({
+   125→  icon, label, sub, price, badges, cls, big, accent,
+   126→}: {
+   127→  icon: string
+   128→  label: string
+   129→  sub?: string
+   130→  price: string
+   131→  badges?: Array<string | undefined>
+   132→  cls: string
+   133→  big?: boolean
+   134→  accent?: boolean
+   135→}) {
+   136→  const rowCls = accent
+   137→    ? 'border-warn/40 bg-warn/5'
+   138→    : cls === C.red
+   139→      ? 'border-bear/30 bg-bear/5'
+   140→      : 'border-tv-line bg-tv-panel2/50'
+   141→  return (
+   142→    <div
+   143→      role="listitem"
+   144→      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${rowCls}`}
+   145→    >
+   146→      <span
+   147→        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[14px]"
+   148→        style={{ background: ICON_SOFT[cls] ?? 'var(--tv-panel2)' }}
+   149→        aria-hidden="true"
+   150→      >
+   151→        {icon}
+   152→      </span>
+   153→      <div className="min-w-0 flex-1">
+   154→        <div className="text-[11px] font-bold uppercase tracking-wider text-tv-muted">{label}</div>
+   155→        {sub && <div className={`mt-0.5 text-[10.5px] ${C.muted}`}>{sub}</div>}
+   156→      </div>
+   157→      <div className="shrink-0 text-right">
+   158→        <div className={`font-bold tabular-nums ${cls} ${big ? 'text-[16.5px]' : 'text-[15px]'}`}>{price}</div>
+   159→        {badges && badges.some((b) => b) && (
+   160→          <div className="flex gap-1 justify-end mt-0.5 flex-wrap">
+   161→            {badges.filter((b): b is string => !!b).map((b, i) => (
+   162→              <Badge key={i}>{b}</Badge>
+   163→            ))}
+   164→          </div>
+   165→        )}
+   166→      </div>
+   167→    </div>
+   168→  )
+   169→}
+   170→
+   171→function TradePlanCard({
+   172→  side, kind, preferred, pair, currency, livePrice, confirmedAt,
+   173→}: {
+   174→  side: SideSetup
+   175→  kind: 'long' | 'short'
+   176→  preferred: boolean
+   177→  pair: string
+   178→  currency: string
+   179→  livePrice: number
+   180→  confirmedAt?: number
+   181→}) {
+   182→  const isLong = kind === 'long'
+   183→  const [copied, setCopied] = useState(false)
+   184→  const mid = (side.entryLow + side.entryHigh) / 2
+   185→  const risk = Math.abs(mid - side.stop)
+   186→
+   187→  const stateChip =
+   188→    side.state === 'LIVE' ? (
+   189→      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${isLong ? chipCls.liveLong : chipCls.liveShort}`}>
+   190→        ✓ CONFIRMED — IN ENTRY ZONE
+   191→      </span>
+   192→    ) : side.state === 'HIT' ? (
+   193→      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${isLong ? chipCls.hitLong : chipCls.hitShort}`}>
+   194→        ✓ CONFIRMED — ENTRY HIT
+   195→      </span>
+   196→    ) : side.state === 'VOID' ? (
+   197→      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${chipCls.void}`}>VOID — THESIS DEAD</span>
+   198→    ) : (
+   199→      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${chipCls.waiting}`}>
+   200→        WAITING · {side.dist !== null && fmtPrice(side.dist, currency)} ({side.distPct?.toFixed(1)}%) away
+   201→      </span>
+   202→    )
+   203→
+   204→  const copyPlan = async () => {
+   205→    const txt = `${pair} ${isLong ? 'LONG' : 'SHORT'} setup — Entry ${fmtPrice(side.entryLow, currency)}–${fmtPrice(
+   206→      side.entryHigh,
+   207→      currency,
+   208→    )} | Stop loss ${fmtPrice(side.stop, currency)} | TP1 ${fmtPrice(side.t1, currency)} | TP2 ${fmtPrice(
+   209→      side.t2,
+   210→      currency,
+   211→    )}${side.runner !== null ? ` | TP3 ${fmtPrice(side.runner, currency)}` : ''} | R:R ${side.rr}`
+   212→    try {
+   213→      await navigator.clipboard.writeText(txt)
+   214→      setCopied(true)
+   215→      setTimeout(() => setCopied(false), 1800)
+   216→    } catch {
+   217→      /* clipboard unavailable — silent */
+   218→    }
+   219→  }
+   220→
+   221→  const entrySub =
+   222→    side.state === 'LIVE'
+   223→      ? `✓ confirmed${confirmedAt ? ` ${new Date(confirmedAt).toLocaleTimeString()}` : ''} — price ${fmtPrice(livePrice, currency)} inside entry zone`
+   224→      : side.state === 'HIT'
+   225→        ? `✓ entry triggered — wick ${side.touchedPrice !== null ? fmtPrice(side.touchedPrice, currency) : '—'}${
+   226→            side.touchedAt !== null ? ` ${fmtWhen(side.touchedAt)}` : ''
+   227→          } · price now ${fmtPrice(livePrice, currency)} (${side.distPct?.toFixed(1) ?? '?'}% away) — trade confirmed`
+   228→        : side.state === 'VOID'
+   229→          ? 'setup invalidated — wait for fresh structure'
+   230→          : `live ${fmtPrice(livePrice, currency)} — ${side.distPct?.toFixed(1) ?? '?'}% away, set limits and wait`
+   231→
+   232→  // targets in the plan's own order: TP3 (furthest) → TP2 → TP1
+   233→  const targetRows = (
+   234→    [
+   235→      side.runner !== null && { key: 'tp3', label: 'TP3 · Runner', v: side.runner, sub: 'trail the rest beyond TP2' },
+   236→      { key: 'tp2', label: 'TP2 · Final target', v: side.t2, sub: 'close the position' },
+   237→      { key: 'tp1', label: 'TP1 · Bank half', v: side.t1, sub: 'take half off, move stop to entry' },
+   238→    ].filter(Boolean) as Array<{ key: string; label: string; v: number; sub: string }>
+   239→  ).map((r) => (
+   240→    <PlanRow key={r.key} icon="🎯" label={r.label} sub={r.sub} price={fmtPrice(r.v, currency)} cls={C.blue} badges={[pctFrom(mid, r.v), rMult(r.v, mid, risk)]} />
+   241→  ))
+   242→
+   243→  const entryRow = (
+   244→    <PlanRow
+   245→      key="entry"
+   246→      icon="▶"
+   247→      label="ENTRY — limit zone"
+   248→      sub={entrySub}
+   249→      price={`${fmtPrice(side.entryLow, currency)} – ${fmtPrice(side.entryHigh, currency)}`}
+   250→      cls={C.amber}
+   251→      big
+   252→      accent
+   253→    />
+   254→  )
+   255→  const stopRow = (
+   256→    <PlanRow
+   257→      key="stop"
+   258→      icon="🛑"
+   259→      label="STOP LOSS"
+   260→      sub={side.stopNote}
+   261→      price={fmtPrice(side.stop, currency)}
+   262→      cls={C.red}
+   263→      badges={[pctFrom(mid, side.stop), risk > 0 ? `${fmtPrice(risk, currency)} risk/unit` : undefined]}
+   264→    />
+   265→  )
+   266→
+   267→  return (
+   268→    <div
+   269→      className={`flex h-full flex-col gap-4 rounded-2xl border p-4 sm:p-6 ${
+   270→        preferred
+   271→          ? 'border-warn/50 bg-tv-panel shadow-[0_0_28px_var(--warn-soft)]'
+   272→          : 'border-tv-line bg-tv-panel shadow-sm'
+   273→      }`}
+   274→    >
+   275→      {/* header */}
+   276→      <div className="flex items-start justify-between gap-3 flex-wrap">
+   277→        <div className="min-w-0">
+   278→          <div className="flex items-center gap-2 flex-wrap">
+   279→            <h3 className={`text-[15px] font-bold tracking-tight ${isLong ? C.green : C.red}`}>
+   280→              {isLong ? '▲ LONG SETUP' : '▼ SHORT SETUP'}
+   281→            </h3>
+   282→            {preferred ? (
+   283→              <span className="rounded-full bg-warn px-2.5 py-0.5 text-[11px] font-bold text-tv-bg shadow-[0_0_20px_var(--warn-soft)]">★ THE ACTIVE SETUP</span>
+   284→            ) : (
+   285→              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${isLong ? chipCls.liveLong : chipCls.liveShort}`}>{side.tag}</span>
+   286→            )}
+   287→          </div>
+   288→          <p className={`text-[12.5px] font-semibold mt-1 ${C.text}`}>{side.strategy}</p>
+   289→          <p className={`text-[11px] mt-0.5 ${C.muted}`}>{side.trigger}</p>
+   290→        </div>
+   291→        <div className="flex flex-col items-end gap-2 shrink-0">
+   292→          {stateChip}
+   293→          <button
+   294→            onClick={copyPlan}
+   295→            suppressHydrationWarning
+   296→            aria-label={`Copy ${pair} ${isLong ? 'long' : 'short'} plan to clipboard`}
+   297→            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[11px] font-bold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+   298→          >
+   299→            {copied ? '✓ Copied' : '⧉ Copy plan'}
+   300→          </button>
+   301→        </div>
+   302→      </div>
+   303→
+   304→      {/* the ladder — reads top-down like a chart (highest price first) */}
+   305→      <div className="flex flex-col gap-2" role="list" aria-label={`${pair} ${isLong ? 'long' : 'short'} plan levels`}>
+   306→        {isLong ? (
+   307→          <>
+   308→            {targetRows}
+   309→            {entryRow}
+   310→            {stopRow}
+   311→          </>
+   312→        ) : (
+   313→          <>
+   314→            {stopRow}
+   315→            {entryRow}
+   316→            {[...targetRows].reverse()}
+   317→          </>
+   318→        )}
+   319→      </div>
+   320→
+   321→      {/* R:R + invalidation */}
+   322→      <div className="flex items-center justify-between gap-3 text-[12.5px] pt-1 border-t border-dashed border-tv-div">
+   323→        <span className={C.muted}>Risk : Reward</span>
+   324→        <span className={`font-bold tabular-nums ${C.green}`}>{side.rr}</span>
+   325→      </div>
+   326→      <p className={`text-[11.5px] leading-relaxed ${C.red}`}>⛔ {side.invalidation}</p>
+   327→      <span className="sr-only">
+   328→        {pair} {isLong ? 'long' : 'short'} setup — entry {fmtPrice(side.entryLow, currency)} to {fmtPrice(side.entryHigh, currency)}, stop{' '}
+   329→        {fmtPrice(side.stop, currency)}, targets {fmtPrice(side.t1, currency)} and {fmtPrice(side.t2, currency)}
+   330→      </span>
+   331→    </div>
+   332→  )
+   333→}
+   334→
+   335→function ConfirmationCard({
+   336→  side, setup, s, info, sizingTxt, onDismiss,
+   337→}: {
+   338→  side: 'long' | 'short'
+   339→  setup: BoardSetup
+   340→  s: SideSetup
+   341→  info: ConfirmInfo
+   342→  sizingTxt: string | null
+   343→  onDismiss: () => void
+   344→}) {
+   345→  const isLong = side === 'long'
+   346→  const [copied, setCopied] = useState(false)
+   347→  const accent = isLong ? 'var(--bull)' : 'var(--bear)'
+   348→  const mid = (s.entryLow + s.entryHigh) / 2
+   349→  const risk = Math.abs(mid - s.stop)
+   350→  const rr1 = risk > 0 ? (Math.abs(s.t1 - mid) / risk).toFixed(1) : '—'
+   351→
+   352→  const copyConfirmation = async () => {
+   353→    const txt = `${setup.pair} ${isLong ? 'LONG' : 'SHORT'} trade CONFIRMED @ ${fmtPrice(info.price, setup.currency)} — Entry ${fmtPrice(
+   354→      s.entryLow,
+   355→      setup.currency,
+   356→    )}–${fmtPrice(s.entryHigh, setup.currency)} · SL ${fmtPrice(s.stop, setup.currency)} · TP1 ${fmtPrice(s.t1, setup.currency)} · TP2 ${fmtPrice(
+   357→      s.t2,
+   358→      setup.currency,
+   359→    )}${s.runner !== null ? ` · TP3 ${fmtPrice(s.runner, setup.currency)}` : ''} · R:R 1:${rr1} at T1`
+   360→    try {
+   361→      await navigator.clipboard.writeText(txt)
+   362→      setCopied(true)
+   363→      setTimeout(() => setCopied(false), 1800)
+   364→    } catch {
+   365→      /* clipboard unavailable — silent */
+   366→    }
+   367→  }
+   368→
+   369→  return (
+   370→    <div
+   371→      role="status"
+   372→      aria-live="polite"
+   373→      className="rounded-2xl border p-4 sm:p-5 flex flex-col gap-3"
+   374→      style={{
+   375→        background: isLong ? 'var(--bull-soft)' : 'var(--bear-soft)',
+   376→        borderColor: isLong ? 'var(--bull-line)' : 'var(--bear-line)',
+   377→        boxShadow: `0 0 34px ${isLong ? 'var(--bull-soft)' : 'var(--bear-soft)'}`,
+   378→      }}
+   379→    >
+   380→      <div className="flex items-start gap-3 flex-wrap">
+   381→        <span className="relative h-9 w-9 shrink-0" aria-hidden="true">
+   382→          <span className="absolute inset-0 animate-ping rounded-full opacity-40" style={{ background: accent }} />
+   383→          <span
+   384→            className="relative grid h-9 w-9 place-items-center rounded-full text-[15px] font-extrabold"
+   385→            style={{ background: accent, color: 'var(--tv-bg)' }}
+   386→          >
+   387→            ✓
+   388→          </span>
+   389→        </span>
+   390→        <div className="min-w-0 flex-1">
+   391→          <div className="text-[14.5px] font-extrabold tracking-wide" style={{ color: accent }}>
+   392→            TRADE CONFIRMED — {setup.pair} {isLong ? 'LONG' : 'SHORT'}
+   393→          </div>
+   394→          <div className={`mt-0.5 text-[11.5px] tabular-nums ${C.muted}`}>
+   395→            {s.state === 'HIT'
+   396→              ? `Wick ${fmtPrice(info.price, setup.currency)} hit the entry zone${info.at ? ` ${fmtWhen(info.at)}` : ''} · price now ${fmtPrice(
+   397→                  setup.price,
+   398→                  setup.currency,
+   399→                )} — entry triggered`
+   400→              : `Price ${fmtPrice(info.price, setup.currency)} reached the entry zone · confirmed ${new Date(info.at).toLocaleTimeString()} · live ${
+   401→                  fmtPrice(setup.price, setup.currency)
+   402→                }`}
+   403→          </div>
+   404→        </div>
+   405→        <div className="flex items-center gap-2 shrink-0">
+   406→          <button
+   407→            onClick={copyConfirmation}
+   408→            suppressHydrationWarning
+   409→            aria-label={`Copy ${setup.pair} ${side} trade confirmation`}
+   410→            className="rounded-xl border bg-tv-panel2 px-3 py-2 text-[11px] font-bold text-tv-ink transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+   411→            style={{ borderColor: isLong ? 'var(--bull-line)' : 'var(--bear-line)' }}
+   412→          >
+   413→            {copied ? '✓ Copied' : '⧉ Copy confirmation'}
+   414→          </button>
+   415→          <button
+   416→            onClick={onDismiss}
+   417→            aria-label={`Dismiss ${setup.pair} ${side} confirmation`}
+   418→            suppressHydrationWarning
+   419→            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-tv-line bg-tv-panel2 text-xs text-tv-muted transition hover:border-tv-line-strong hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+   420→          >
+   421→            ✕
+   422→          </button>
+   423→        </div>
+   424→      </div>
+   425→
+   426→      {/* checklist */}
+   427→      <div className="flex flex-wrap gap-1.5">
+   428→        {[
+   429→          s.state === 'HIT' ? 'Entry zone hit (candle wick)' : 'Price inside entry zone',
+   430→          isLong ? 'Stop not breached (price above stop)' : 'Stop not breached (price below stop)',
+   431→          `R:R gate passed — 1:${rr1} at T1`,
+   432→        ].map(
+   433→          (t) => (
+   434→            <span
+   435→              key={t}
+   436→              className="rounded-full border bg-tv-panel/60 px-2.5 py-0.5 text-[11px] font-bold"
+   437→              style={{ borderColor: 'var(--bull-line)', color: 'var(--bull)' }}
+   438→            >
+   439→              ✓ {t}
+   440→            </span>
+   441→          ),
+   442→        )}
+   443→      </div>
+   444→
+   445→      {/* plan recap */}
+   446→      <div className="text-[12.5px] font-semibold flex flex-wrap gap-x-4 gap-y-1 tabular-nums text-tv-ink">
+   447→        <span>
+   448→          Entry <span className="text-warn">{fmtPrice(s.entryLow, setup.currency)} – {fmtPrice(s.entryHigh, setup.currency)}</span>
+   449→        </span>
+   450→        <span>
+   451→          SL <span className="text-bear">{fmtPrice(s.stop, setup.currency)}</span>
+   452→        </span>
+   453→        <span>
+   454→          TP1 <span className="text-info">{fmtPrice(s.t1, setup.currency)}</span>
+   455→        </span>
+   456→        <span>
+   457→          TP2 <span className="text-info">{fmtPrice(s.t2, setup.currency)}</span>
+   458→        </span>
+   459→        {s.runner !== null && (
+   460→          <span>
+   461→            TP3 <span className="text-info">{fmtPrice(s.runner, setup.currency)}</span>
+   462→          </span>
+   463→        )}
+   464→      </div>
+   465→      {sizingTxt && (
+   466→        <div className={`text-[11px] tabular-nums ${C.muted}`}>
+   467→          Suggested size: <b className="text-warn">{sizingTxt}</b>
+   468→        </div>
+   469→      )}
+   470→      <span className="sr-only">
+   471→        {setup.pair} {side} trade confirmed at {new Date(info.at).toLocaleTimeString()} — entry {fmtPrice(s.entryLow, setup.currency)} to{' '}
+   472→        {fmtPrice(s.entryHigh, setup.currency)}, stop {fmtPrice(s.stop, setup.currency)}
+   473→      </span>
+   474→    </div>
+   475→  )
+   476→}
+   477→
+   478→export function SetupBoard() {
+   479→  const [symbols, setSymbols] = useState<string[]>(DEFAULT_WATCHLIST)
+   480→  const [data, setData] = useState<SetupsPayload | null>(null)
+   481→  const [loading, setLoading] = useState(true)
+   482→  const [error, setError] = useState<string | null>(null)
+   483→  const [selected, setSelected] = useState('BTC')
+   484→  const [input, setInput] = useState('')
+   485→  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+   486→  const [confirms, setConfirms] = useState<Record<string, ConfirmInfo>>({})
+   487→  const [acct, setAcct] = useState('')
+   488→  const [riskPct, setRiskPct] = useState('1')
+   489→  const mounted = useRef(true)
+   490→  const confirmsRef = useRef<Record<string, ConfirmInfo>>({})
+   491→  const wlLoaded = useRef(false)
+   492→  const { toast } = useToast()
+   493→
+   494→  useEffect(() => {
+   495→    mounted.current = true
+   496→    setAcct(lsGet('tw_acct', ''))
+   497→    setRiskPct(lsGet('tw_risk', '1'))
+   498→    // restore the shared watchlist (also used by the Trade Confirmed board);
+   499→    // loadWatchlist migrates the old crypto-only default to include stocks
+   500→    const wl = loadWatchlist()
+   501→    setSymbols(wl)
+   502→    saveWatchlist(wl)
+   503→    wlLoaded.current = true
+   504→    const c = loadConfirms()
+   505→    confirmsRef.current = c
+   506→    setConfirms(c)
+   507→    return () => {
+   508→      mounted.current = false
+   509→    }
+   510→  }, [])
+   511→
+   512→  const load = useCallback(async () => {
+   513→    try {
+   514→      const res = await fetch(`/api/setups?symbols=${symbols.join(',')}`, { cache: 'no-store' })
+   515→      if (!res.ok) throw new Error(`API ${res.status}`)
+   516→      const d = (await res.json()) as SetupsPayload
+   517→      if (!mounted.current) return
+   518→      setData(d)
+   519→      setError(null)
+   520→    } catch (e) {
+   521→      if (mounted.current) setError(String(e).slice(0, 120))
+   522→    } finally {
+   523→      if (mounted.current) setLoading(false)
+   524→    }
+   525→  }, [symbols])
+   526→
+   527→  useEffect(() => {
+   528→    setLoading(true)
+   529→    load()
+   530→    const t = setInterval(load, POLL_MS)
+   531→    return () => clearInterval(t)
+   532→  }, [load])
+   533→
+   534→  // persist watchlist so the Trade Confirmed board tracks the same symbols
+   535→  useEffect(() => {
+   536→    if (!wlLoaded.current) return
+   537→    saveWatchlist(symbols)
+   538→  }, [symbols])
+   539→
+   540→  // confirmation tracker — when price reaches an entry zone, record it once,
+   541→  // fire a toast, and re-arm automatically if the zone is left/voided
+   542→  useEffect(() => {
+   543→    if (!data) return
+   544→    const prev = confirmsRef.current
+   545→    const next: Record<string, ConfirmInfo> = {}
+   546→    const fired: Array<{ key: string; symbol: string; side: 'long' | 'short'; info: ConfirmInfo; s: SideSetup; setup: BoardSetup }> = []
+   547→    for (const setup of data.setups) {
+   548→      for (const kind of ['long', 'short'] as const) {
+   549→        const s = setup[kind]
+   550→        if (!s) continue
+   551→        const key = `${setup.symbol}:${kind}`
+   552→        if (s.state === 'LIVE') {
+   553→          const prior = prev[key]
+   554→          const info: ConfirmInfo = prior ? { ...prior, price: setup.price } : { at: Date.now(), price: setup.price }
+   555→          next[key] = info
+   556→          if (!prior) fired.push({ key, symbol: setup.symbol, side: kind, info, s, setup })
+   557→        } else if (s.state === 'HIT') {
+   558→          // entry hit (wick) = confirmed — record with the wick print + candle
+   559→          // time so the banner reflects the real trigger, not the poll time
+   560→          const prior = prev[key]
+   561→          const info: ConfirmInfo = prior
+   562→            ? { ...prior }
+   563→            : { at: s.touchedAt ?? Date.now(), price: s.touchedPrice ?? setup.price }
+   564→          next[key] = info
+   565→          if (!prior) fired.push({ key, symbol: setup.symbol, side: kind, info, s, setup })
+   566→        }
+   567→      }
+   568→    }
+   569→    confirmsRef.current = next
+   570→    setConfirms(next)
+   571→    saveConfirms(next)
+   572→    for (const f of fired) {
+   573→      setDismissed((d) => {
+   574→        if (!d.has(f.key)) return d
+   575→        const n = new Set(d)
+   576→        n.delete(f.key)
+   577→        return n
+   578→      })
+   579→      toast({
+   580→        title:
+   581→          f.s.state === 'HIT'
+   582→            ? `🎯 ${f.symbol} ${f.side.toUpperCase()} CONFIRMED — ENTRY HIT`
+   583→            : `✅ ${f.symbol} ${f.side.toUpperCase()} CONFIRMED`,
+   584→        description:
+   585→          f.s.state === 'HIT'
+   586→            ? `A candle wick reached ${fmtPrice(f.info.price, f.setup.currency)} inside the entry zone ${fmtPrice(
+   587→                f.s.entryLow,
+   588→                f.setup.currency,
+   589→              )} – ${fmtPrice(f.s.entryHigh, f.setup.currency)} · SL ${fmtPrice(f.s.stop, f.setup.currency)} · TP1 ${fmtPrice(f.s.t1, f.setup.currency)}`
+   590→            : `Price ${fmtPrice(f.info.price, f.setup.currency)} reached the entry zone ${fmtPrice(
+   591→                f.s.entryLow,
+   592→                f.setup.currency,
+   593→              )} – ${fmtPrice(f.s.entryHigh, f.setup.currency)} · SL ${fmtPrice(f.s.stop, f.setup.currency)} · TP1 ${fmtPrice(f.s.t1, f.setup.currency)}`,
+   594→      })
+   595→    }
+   596→  }, [data, toast])
+   597→
+   598→  // keep selection valid
+   599→  const active: BoardSetup | undefined =
+   600→    data?.setups.find((s) => s.symbol === selected) ?? data?.setups[0]
+   601→
+   602→  const persist = (k: string, v: string, setter: (x: string) => void) => {
+   603→    setter(v)
+   604→    try {
+   605→      localStorage.setItem(k, v)
+   606→    } catch { /* private mode */ }
+   607→  }
+   608→
+   609→  const addSymbol = () => {
+   610→    const s = input.trim().toUpperCase()
+   611→    if (!/^[A-Z0-9.\-]{1,10}$/.test(s)) return
+   612→    if (!symbols.includes(s)) setSymbols((prev) => [...prev, s].slice(0, 8))
+   613→    setSelected(s)
+   614→    setInput('')
+   615→  }
+   616→
+   617→  const savePct = (x: number, min: number, max: number) => Math.min(max, Math.max(min, x))
+   618→
+   619→  const sizingFor = (side: SideSetup | null) => {
+   620→    if (!side) return null
+   621→    const a = parseFloat(acct)
+   622→    const r = parseFloat(riskPct)
+   623→    if (!(a > 0) || !(r > 0)) return null
+   624→    const mid = (side.entryLow + side.entryHigh) / 2
+   625→    const dist = Math.abs(mid - side.stop)
+   626→    if (!(dist > 0)) return null
+   627→    const riskDollars = (a * r) / 100
+   628→    const units = riskDollars / dist
+   629→    const notional = units * (active?.price ?? mid)
+   630→    const unitName = active?.market === 'crypto' ? (active?.symbol ?? '') : 'shares'
+   631→    return {
+   632→      unitsTxt: `${units >= 100 ? Math.round(units).toLocaleString('en-US') : Math.round(units * 10000) / 10000} ${unitName}`,
+   633→      notionalTxt: `notional ≈ ${fmtPrice(notional, 'USD')} · risk $${Math.round(riskDollars).toLocaleString('en-US')} · stop dist ${fmtPrice(dist, 'USD')}`,
+   634→    }
+   635→  }
+   636→
+   637→  // active trade confirmations — LIVE state + tracked confirmation info
+   638→  const confirmations: Array<{ key: string; side: 'long' | 'short'; setup: BoardSetup; s: SideSetup; info: ConfirmInfo; sizingTxt: string | null }> = []
+   639→  const aNum = parseFloat(acct)
+   640→  const rNum = parseFloat(riskPct)
+   641→  for (const setup of data?.setups ?? []) {
+   642→    for (const kind of ['long', 'short'] as const) {
+   643→      const s = setup[kind]
+   644→      const key = `${setup.symbol}:${kind}`
+   645→      const info = confirms[key]
+   646→      if ((s?.state === 'LIVE' || s?.state === 'HIT') && info && !dismissed.has(key)) {
+   647→        let sizingTxt: string | null = null
+   648→        if (aNum > 0 && rNum > 0) {
+   649→          const m = (s.entryLow + s.entryHigh) / 2
+   650→          const dist = Math.abs(m - s.stop)
+   651→          if (dist > 0) {
+   652→            const units = (aNum * rNum) / 100 / dist
+   653→            const unitName = setup.market === 'crypto' ? setup.symbol : 'shares'
+   654→            sizingTxt = `${units >= 100 ? Math.round(units).toLocaleString('en-US') : Math.round(units * 10000) / 10000} ${unitName} (${fmtPrice(
+   655→              dist,
+   656→              setup.currency,
+   657→            )} stop distance)`
+   658→          }
+   659→        }
+   660→        confirmations.push({ key, side: kind, setup, s, info, sizingTxt })
+   661→      }
+   662→    }
+   663→  }
+   664→
+   665→  const gaugePct = (v: number) =>
+   666→    active ? savePct(((v - active.gauge.min) / (active.gauge.max - active.gauge.min)) * 100, 0, 100) : 0
+   667→
+   668→  return (
+   669→    <div className="min-h-full mx-auto flex w-full max-w-[1400px] flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6">
+   670→      {/* toolbar */}
+   671→      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-3 sm:p-4">
+   672→        <div className="mr-1 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Watchlist</div>
+   673→        {(data?.setups ?? []).map((s) => (
+   674→          <button
+   675→            key={s.symbol}
+   676→            onClick={() => setSelected(s.symbol)}
+   677→            suppressHydrationWarning
+   678→            aria-pressed={active?.symbol === s.symbol}
+   679→            className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+   680→              active?.symbol === s.symbol
+   681→                ? 'border-bull/40 bg-bull/10 text-bull'
+   682→                : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink hover:border-tv-line-strong'
+   683→            }`}
+   684→          >
+   685→            {s.symbol}
+   686→          </button>
+   687→        ))}
+   688→        <div className="ml-auto flex flex-wrap items-center gap-2">
+   689→          <input
+   690→            value={input}
+   691→            onChange={(e) => setInput(e.target.value)}
+   692→            onKeyDown={(e) => e.key === 'Enter' && addSymbol()}
+   693→            placeholder="Add symbol (BTC, AAPL…)"
+   694→            aria-label="Add symbol"
+   695→            suppressHydrationWarning
+   696→            className="w-40 sm:w-48 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
+   697→          />
+   698→          <button
+   699→            onClick={addSymbol}
+   700→            suppressHydrationWarning
+   701→            aria-label="Add symbol to watchlist"
+   702→            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+   703→          >
+   704→            + Add
+   705→          </button>
+   706→          <button
+   707→            onClick={() => { setLoading(true); load() }}
+   708→            suppressHydrationWarning
+   709→            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+   710→            aria-label="Refresh setups"
+   711→          >
+   712→            ⟳ Refresh
+   713→          </button>
+   714→        </div>
+   715→        <div className="flex w-full flex-wrap items-center gap-2 text-[11px] text-tv-muted">
+   716→          <span>Quick:</span>
+   717→          {QUICK.filter((q) => !symbols.includes(q)).map((q) => (
+   718→            <button
+   719→              key={q}
+   720→              onClick={() => { setSymbols((prev) => [...prev, q].slice(0, 8)); setSelected(q) }}
+   721→              suppressHydrationWarning
+   722→              className="rounded-full border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[12px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+   723→            >
+   724→              +{q}
+   725→            </button>
+   726→          ))}
+   727→          <span className="ml-auto tabular-nums">
+   728→            {data ? `Live · regenerated ${new Date(data.updatedAt).toLocaleTimeString()} · auto every 45s` : 'connecting…'}
+   729→          </span>
+   730→        </div>
+   731→      </div>
+   732→
+   733→      {/* trade confirmations — fire when price genuinely reaches an entry zone */}
+   734→      {confirmations.map((c) => (
+   735→        <ConfirmationCard
+   736→          key={c.key}
+   737→          side={c.side}
+   738→          setup={c.setup}
+   739→          s={c.s}
+   740→          info={c.info}
+   741→          sizingTxt={c.sizingTxt}
+   742→          onDismiss={() => setDismissed((prev) => new Set(prev).add(c.key))}
+   743→        />
+   744→      ))}
+   745→
+   746→      {/* ZoneWatch strip */}
+   747→      <section aria-label="ZoneWatch — live zone monitor">
+   748→        <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">ZoneWatch — every zone, one board</h2>
+   749→        {loading && !data ? (
+   750→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   751→            {[0, 1, 2].map((i) => (
+   752→              <div key={i} className="h-[92px] rounded-2xl border border-tv-line bg-tv-panel animate-pulse" />
+   753→            ))}
+   754→          </div>
+   755→        ) : (
+   756→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   757→            {(data?.setups ?? []).map((s) => {
+   758→              const chip = summarize(s)
+   759→              return (
+   760→                <button
+   761→                  key={s.symbol}
+   762→                  onClick={() => setSelected(s.symbol)}
+   763→                  suppressHydrationWarning
+   764→                  aria-pressed={active?.symbol === s.symbol}
+   765→                  className={`rounded-2xl border p-4 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+   766→                    active?.symbol === s.symbol ? 'border-bull/40 bg-tv-panel2' : 'border-tv-line bg-tv-panel hover:border-tv-line-strong'
+   767→                  }`}
+   768→                >
+   769→                  <div className="flex items-center justify-between gap-2">
+   770→                    <span className="text-[13px] font-bold text-tv-ink">
+   771→                      {s.displayName} <span className={C.muted}>· {s.pair}</span>
+   772→                    </span>
+   773→                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold tabular-nums ${s.change24h >= 0 ? 'bg-bull/10 text-bull border-bull/30' : 'bg-bear/10 text-bear border-bear/30'}`}>
+   774→                      {s.change24h >= 0 ? '+' : ''}{s.change24h.toFixed(2)}%
+   775→                    </span>
+   776→                  </div>
+   777→                  <div className="mt-1 text-xl font-bold tabular-nums tracking-tight text-tv-ink">
+   778→                    {fmtPrice(s.price, s.currency)}
+   779→                  </div>
+   780→                  <div className="mt-2">
+   781→                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${chip.cls}`}>{chip.txt}</span>
+   782→                  </div>
+   783→                </button>
+   784→              )
+   785→            })}
+   786→          </div>
+   787→        )}
+   788→        {data && Object.keys(data.failed).length > 0 && (
+   789→          <p className={`text-[11px] mt-2 ${C.muted}`}>
+   790→            No data: {Object.entries(data.failed).map(([k, v]) => `${k} (${v.slice(0, 40)})`).join(', ')}
+   791→          </p>
+   792→        )}
+   793→        {error && (
+   794→          <p className="text-[12px] mt-2 text-bear">
+   795→            Feed error: {error} — retrying automatically.{' '}
+   796→            <button onClick={() => { setLoading(true); load() }} suppressHydrationWarning className="underline transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50">Retry now</button>
+   797→          </p>
+   798→        )}
+   799→      </section>
+   800→
+   801→      {/* selected asset detail */}
+   802→      {active && (
+   803→        <section aria-label={`${active.displayName} setup detail`} className="flex flex-col gap-5">
+   804→          {/* header + gauge */}
+   805→          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-6">
+   806→            <div className="flex items-start justify-between gap-4 flex-wrap">
+   807→              <div>
+   808→                <div className="flex items-center gap-2.5 flex-wrap">
+   809→                  <h2 className="text-lg font-bold tracking-tight text-tv-ink">
+   810→                    {active.displayName} — {active.pair}
+   811→                  </h2>
+   812→                  <span className="rounded-full border border-info/40 bg-info/15 px-2.5 py-0.5 text-[11px] font-bold text-info">
+   813→                    {active.biasTag}
+   814→                  </span>
+   815→                </div>
+   816→                <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-tv-muted">
+   817→                  <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-0.5 text-[11px] font-bold text-tv-muted">
+   818→                    {active.regime.replace('_', ' ')}
+   819→                  </span>
+   820→                  <span>
+   821→                    regime · {active.timeframe} candles · RSI(14){' '}
+   822→                    <b className={`tabular-nums ${active.rsi !== null ? (active.rsi >= 70 ? C.red : active.rsi <= 30 ? C.green : C.text) : ''}`}>
+   823→                      {active.rsi !== null ? active.rsi.toFixed(1) : '—'}
+   824→                    </b>{' '}
+   825→                    · ATR {active.atrPct !== null ? `${active.atrPct.toFixed(2)}%` : '—'}
+   826→                  </span>
+   827→                </p>
+   828→              </div>
+   829→              <div className="flex flex-col items-end gap-1.5">
+   830→                <div className="text-2xl font-bold tabular-nums tracking-tight text-tv-ink sm:text-3xl">
+   831→                  {fmtPrice(active.price, active.currency)}
+   832→                </div>
+   833→                <span
+   834→                  className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold tabular-nums ${
+   835→                    active.change24h >= 0 ? 'bg-bull/10 text-bull border-bull/30' : 'bg-bear/10 text-bear border-bear/30'
+   836→                  }`}
+   837→                >
+   838→                  {active.change24h >= 0 ? '+' : ''}{active.change24h.toFixed(2)}% 24h
+   839→                </span>
+   840→              </div>
+   841→            </div>
+   842→
+   843→            <p className="mt-3 text-[13px] text-warn">{active.biasNote}</p>
+   844→
+   845→            {/* gauge */}
+   846→            <div className="mt-4" aria-hidden="true">
+   847→              <div className="relative h-2.5 rounded-full bg-tv-panel2 border border-tv-line overflow-visible">
+   848→                {active.long && (
+   849→                  <div
+   850→                    className="absolute top-0 h-full rounded-full bg-bull/55"
+   851→                    style={{ left: `${gaugePct(active.long.entryLow)}%`, width: `${Math.max(gaugePct(active.long.entryHigh) - gaugePct(active.long.entryLow), 1.5)}%` }}
+   852→                  />
+   853→                )}
+   854→                {active.short && (
+   855→                  <div
+   856→                    className="absolute top-0 h-full rounded-full bg-bear/55"
+   857→                    style={{ left: `${gaugePct(active.short.entryLow)}%`, width: `${Math.max(gaugePct(active.short.entryHigh) - gaugePct(active.short.entryLow), 1.5)}%` }}
+   858→                  />
+   859→                )}
+   860→                <div
+   861→                  className="absolute -top-1.5 -bottom-1.5 w-[2px] bg-tv-ink"
+   862→                  style={{ left: `${gaugePct(active.price)}%` }}
+   863→                />
+   864→              </div>
+   865→              <div className="mt-1.5 flex justify-between text-[10px] tabular-nums text-tv-muted2">
+   866→                <span>{fmtPrice(active.gauge.min, active.currency)}</span>
+   867→                <span className="text-tv-ink font-semibold">▲ {fmtPrice(active.price, active.currency)}</span>
+   868→                <span>{fmtPrice(active.gauge.max, active.currency)}</span>
+   869→              </div>
+   870→              <div className={`text-[11px] mt-1 ${C.muted}`}>
+   871→                <span className="text-bull">■</span> long zone&nbsp;&nbsp;
+   872→                <span className="text-bear">■</span> short zone&nbsp;&nbsp;— zones regenerate with market structure
+   873→              </div>
+   874→            </div>
+   875→          </div>
+   876→
+   877→          {/* the trade plans — preferred side first */}
+   878→          <div className="flex flex-col gap-4">
+   879→            <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+   880→              Trade plans — <span className="text-warn">entry levels</span>, <span className="text-bear">stop loss</span> &amp;{' '}
+   881→              <span className="text-info">targets</span>
+   882→            </h2>
+   883→            <div className="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-2">
+   884→              {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>)
+   885→                .filter((pair): pair is ['long' | 'short', SideSetup] => pair[1] !== null)
+   886→                .sort((a, b) => (a[1].tag === 'PREFERRED' ? -1 : 0) - (b[1].tag === 'PREFERRED' ? -1 : 0))
+   887→                .map(([kind, side], idx) => (
+   888→                  <motion.div
+   889→                    key={kind}
+   890→                    initial={{ opacity: 0, y: 8 }}
+   891→                    animate={{ opacity: 1, y: 0 }}
+   892→                    transition={{ duration: 0.25, ease: 'easeOut', delay: idx * 0.05 }}
+   893→                  >
+   894→                    <TradePlanCard
+   895→                      side={side}
+   896→                      kind={kind}
+   897→                      preferred={side.tag === 'PREFERRED'}
+   898→                      pair={active.pair}
+   899→                      currency={active.currency}
+   900→                      livePrice={active.price}
+   901→                      confirmedAt={confirms[`${active.symbol}:${kind}`]?.at}
+   902→                    />
+   903→                  </motion.div>
+   904→                ))}
+   905→            </div>
+   906→          </div>
+   907→
+   908→          {/* sizing */}
+   909→          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-6">
+   910→            <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Position sizing — risk-first</h3>
+   911→            <div className="flex flex-wrap gap-3 mb-4">
+   912→              <label className={`text-[12px] ${C.muted}`}>
+   913→                <span className="block mb-1">Account ($)</span>
+   914→                <input
+   915→                  value={acct}
+   916→                  onChange={(e) => persist('tw_acct', e.target.value, setAcct)}
+   917→                  inputMode="decimal"
+   918→                  placeholder="10000"
+   919→                  suppressHydrationWarning
+   920→                  className="w-36 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
+   921→                />
+   922→              </label>
+   923→              <label className={`text-[12px] ${C.muted}`}>
+   924→                <span className="block mb-1">Risk per trade (%)</span>
+   925→                <input
+   926→                  value={riskPct}
+   927→                  onChange={(e) => persist('tw_risk', e.target.value, setRiskPct)}
+   928→                  inputMode="decimal"
+   929→                  placeholder="1"
+   930→                  suppressHydrationWarning
+   931→                  className="w-28 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
+   932→                />
+   933→              </label>
+   934→            </div>
+   935→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
+   936→              {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>).map(
+   937→                ([kind, side]) => {
+   938→                  const sz = sizingFor(side)
+   939→                  const label = kind === 'long' ? 'LONG side' : 'SHORT side'
+   940→                  return (
+   941→                    <div key={kind} className="rounded-xl border border-tv-line bg-tv-panel2 p-3">
+   942→                      <div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-warn">{label}</div>
+   943→                      {sz ? (
+   944→                        <>
+   945→                          <div className="font-bold tabular-nums text-tv-ink">{sz.unitsTxt}</div>
+   946→                          <div className="text-[11px] tabular-nums text-tv-muted">{sz.notionalTxt}</div>
+   947→                        </>
+   948→                      ) : (
+   949→                        <div className={C.muted}>Enter account &amp; risk to size</div>
+   950→                      )}
+   951→                    </div>
+   952→                  )
+   953→                },
+   954→              )}
+   955→            </div>
+   956→          </div>
+   957→
+   958→          {/* key levels */}
+   959→          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-6">
+   960→            <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Key levels — live structure</h3>
+   961→            <ul className="flex flex-col gap-1.5">
+   962→              {active.levels.map((l, i) => (
+   963→                <li key={i} className="flex items-baseline gap-3 text-[13px]">
+   964→                  <span className={`w-28 shrink-0 font-semibold tabular-nums whitespace-nowrap ${l.t === 'res' ? C.red : l.t === 'sup' ? C.green : C.blue}`}>
+   965→                    {l.t === 'res' ? 'RES' : l.t === 'sup' ? 'SUP' : 'EMA'} {fmtPrice(l.v, active.currency)}
+   966→                  </span>
+   967→                  <span className={C.muted}>{l.w}</span>
+   968→                </li>
+   969→              ))}
+   970→            </ul>
+   971→          </div>
+   972→        </section>
+   973→      )}
+   974→
+   975→      {/* footer / disclaimer */}
+   976→      <footer className={`mt-auto pt-2 pb-4 text-[11px] leading-relaxed ${C.muted} border-t border-tv-line`}>
+   977→        Setups are <b className={C.text}>auto-generated from live market data</b> (Binance · Yahoo Finance) every 45 seconds — levels
+   978→        follow the market, so they never go stale.{' '}
+   979→        <a href="/app.html" target="_blank" rel="noreferrer" className="underline hover:text-tv-ink">
+   980→          Legacy static view ↗
+   981→        </a>
+   982→        <br />
+   983→        <b className={C.amber}>Disclaimer:</b> Technical analysis of public market data for decision support only. Not financial
+   984→        advice — no auto-trading. Crypto and stocks are volatile; never trade money you can&apos;t afford to lose.
+   985→      </footer>
+   986→    </div>
+   987→  )
+   988→}
+   989→

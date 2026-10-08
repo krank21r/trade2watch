@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { useToast } from '@/hooks/use-toast'
 import { fmtPrice } from '@/components/signals/types'
 import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
@@ -46,41 +45,15 @@ const chipCls: Record<string, string> = {
   void: 'bg-tv-muted/12 text-tv-muted border-tv-line-strong',
 }
 
-// ─── trade-confirmation tracking — fires when price reaches an entry zone ───
-
-interface ConfirmInfo {
-  at: number // timestamp of the FIRST poll that saw price inside the zone
-  price: number // price at confirmation
-}
-
-const CONF_KEY = 'tw_confirmed'
-
-function loadConfirms(): Record<string, ConfirmInfo> {
-  try {
-    const raw = JSON.parse(localStorage.getItem(CONF_KEY) ?? '{}') as Record<string, ConfirmInfo>
-    return raw && typeof raw === 'object' ? raw : {}
-  } catch {
-    return {}
-  }
-}
-
-function saveConfirms(m: Record<string, ConfirmInfo>) {
-  try {
-    localStorage.setItem(CONF_KEY, JSON.stringify(m))
-  } catch {
-    /* private mode */
-  }
-}
-
 /** One-chip summary per asset for the ZoneWatch strip. */
 function summarize(s: BoardSetup): { cls: string; txt: string } {
   const l = s.long
   const sh = s.short
-  if (sh?.state === 'LIVE') return { cls: chipCls.liveShort, txt: 'SHORT CONFIRMED' }
-  if (l?.state === 'LIVE') return { cls: chipCls.liveLong, txt: 'LONG CONFIRMED' }
-  // entry hit = confirmed: zone was triggered by a wick, price moved on
-  if (sh?.state === 'HIT') return { cls: chipCls.hitShort, txt: 'SHORT HIT — CONFIRMED' }
-  if (l?.state === 'HIT') return { cls: chipCls.hitLong, txt: 'LONG HIT — CONFIRMED' }
+  if (sh?.state === 'LIVE') return { cls: chipCls.liveShort, txt: 'SHORT IN ZONE' }
+  if (l?.state === 'LIVE') return { cls: chipCls.liveLong, txt: 'LONG IN ZONE' }
+  // zone was triggered by a wick and price moved on — the confirmation lives on the Trade Confirmed tab
+  if (sh?.state === 'HIT') return { cls: chipCls.hitShort, txt: 'SHORT ZONE HIT' }
+  if (l?.state === 'HIT') return { cls: chipCls.hitLong, txt: 'LONG ZONE HIT' }
   const waits: string[] = []
   if (l?.state === 'WAITING' && l.distPct !== null) waits.push(`${l.distPct.toFixed(1)}% to LONG`)
   if (sh?.state === 'WAITING' && sh.distPct !== null) waits.push(`${sh.distPct.toFixed(1)}% to SHORT`)
@@ -169,7 +142,7 @@ function PlanRow({
 }
 
 function TradePlanCard({
-  side, kind, preferred, pair, currency, livePrice, confirmedAt,
+  side, kind, preferred, pair, currency, livePrice,
 }: {
   side: SideSetup
   kind: 'long' | 'short'
@@ -177,7 +150,6 @@ function TradePlanCard({
   pair: string
   currency: string
   livePrice: number
-  confirmedAt?: number
 }) {
   const isLong = kind === 'long'
   const [copied, setCopied] = useState(false)
@@ -187,11 +159,11 @@ function TradePlanCard({
   const stateChip =
     side.state === 'LIVE' ? (
       <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${isLong ? chipCls.liveLong : chipCls.liveShort}`}>
-        ✓ CONFIRMED — IN ENTRY ZONE
+        IN ENTRY ZONE
       </span>
     ) : side.state === 'HIT' ? (
       <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${isLong ? chipCls.hitLong : chipCls.hitShort}`}>
-        ✓ CONFIRMED — ENTRY HIT
+        ENTRY ZONE HIT
       </span>
     ) : side.state === 'VOID' ? (
       <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${chipCls.void}`}>VOID — THESIS DEAD</span>
@@ -220,11 +192,11 @@ function TradePlanCard({
 
   const entrySub =
     side.state === 'LIVE'
-      ? `✓ confirmed${confirmedAt ? ` ${new Date(confirmedAt).toLocaleTimeString()}` : ''} — price ${fmtPrice(livePrice, currency)} inside entry zone`
+      ? `price ${fmtPrice(livePrice, currency)} is inside the entry zone`
       : side.state === 'HIT'
-        ? `✓ entry triggered — wick ${side.touchedPrice !== null ? fmtPrice(side.touchedPrice, currency) : '—'}${
-            side.touchedAt !== null ? ` ${fmtWhen(side.touchedAt)}` : ''
-          } · price now ${fmtPrice(livePrice, currency)} (${side.distPct?.toFixed(1) ?? '?'}% away) — trade confirmed`
+        ? `wick ${side.touchedPrice !== null ? fmtPrice(side.touchedPrice, currency) : '—'}${
+            side.touchedAt !== null ? ` hit ${fmtWhen(side.touchedAt)}` : ''
+          } · price now ${fmtPrice(livePrice, currency)} (${side.distPct?.toFixed(1) ?? '?'}% away)`
         : side.state === 'VOID'
           ? 'setup invalidated — wait for fresh structure'
           : `live ${fmtPrice(livePrice, currency)} — ${side.distPct?.toFixed(1) ?? '?'}% away, set limits and wait`
@@ -332,149 +304,6 @@ function TradePlanCard({
   )
 }
 
-function ConfirmationCard({
-  side, setup, s, info, sizingTxt, onDismiss,
-}: {
-  side: 'long' | 'short'
-  setup: BoardSetup
-  s: SideSetup
-  info: ConfirmInfo
-  sizingTxt: string | null
-  onDismiss: () => void
-}) {
-  const isLong = side === 'long'
-  const [copied, setCopied] = useState(false)
-  const accent = isLong ? 'var(--bull)' : 'var(--bear)'
-  const mid = (s.entryLow + s.entryHigh) / 2
-  const risk = Math.abs(mid - s.stop)
-  const rr1 = risk > 0 ? (Math.abs(s.t1 - mid) / risk).toFixed(1) : '—'
-
-  const copyConfirmation = async () => {
-    const txt = `${setup.pair} ${isLong ? 'LONG' : 'SHORT'} trade CONFIRMED @ ${fmtPrice(info.price, setup.currency)} — Entry ${fmtPrice(
-      s.entryLow,
-      setup.currency,
-    )}–${fmtPrice(s.entryHigh, setup.currency)} · SL ${fmtPrice(s.stop, setup.currency)} · TP1 ${fmtPrice(s.t1, setup.currency)} · TP2 ${fmtPrice(
-      s.t2,
-      setup.currency,
-    )}${s.runner !== null ? ` · TP3 ${fmtPrice(s.runner, setup.currency)}` : ''} · R:R 1:${rr1} at T1`
-    try {
-      await navigator.clipboard.writeText(txt)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    } catch {
-      /* clipboard unavailable — silent */
-    }
-  }
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="rounded-2xl border p-4 sm:p-5 flex flex-col gap-3"
-      style={{
-        background: isLong ? 'var(--bull-soft)' : 'var(--bear-soft)',
-        borderColor: isLong ? 'var(--bull-line)' : 'var(--bear-line)',
-        boxShadow: `0 0 34px ${isLong ? 'var(--bull-soft)' : 'var(--bear-soft)'}`,
-      }}
-    >
-      <div className="flex items-start gap-3 flex-wrap">
-        <span className="relative h-9 w-9 shrink-0" aria-hidden="true">
-          <span className="absolute inset-0 animate-ping rounded-full opacity-40" style={{ background: accent }} />
-          <span
-            className="relative grid h-9 w-9 place-items-center rounded-full text-[15px] font-extrabold"
-            style={{ background: accent, color: 'var(--tv-bg)' }}
-          >
-            ✓
-          </span>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[14.5px] font-extrabold tracking-wide" style={{ color: accent }}>
-            TRADE CONFIRMED — {setup.pair} {isLong ? 'LONG' : 'SHORT'}
-          </div>
-          <div className={`mt-0.5 text-[11.5px] tabular-nums ${C.muted}`}>
-            {s.state === 'HIT'
-              ? `Wick ${fmtPrice(info.price, setup.currency)} hit the entry zone${info.at ? ` ${fmtWhen(info.at)}` : ''} · price now ${fmtPrice(
-                  setup.price,
-                  setup.currency,
-                )} — entry triggered`
-              : `Price ${fmtPrice(info.price, setup.currency)} reached the entry zone · confirmed ${new Date(info.at).toLocaleTimeString()} · live ${
-                  fmtPrice(setup.price, setup.currency)
-                }`}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={copyConfirmation}
-            suppressHydrationWarning
-            aria-label={`Copy ${setup.pair} ${side} trade confirmation`}
-            className="rounded-xl border bg-tv-panel2 px-3 py-2 text-[11px] font-bold text-tv-ink transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
-            style={{ borderColor: isLong ? 'var(--bull-line)' : 'var(--bear-line)' }}
-          >
-            {copied ? '✓ Copied' : '⧉ Copy confirmation'}
-          </button>
-          <button
-            onClick={onDismiss}
-            aria-label={`Dismiss ${setup.pair} ${side} confirmation`}
-            suppressHydrationWarning
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-tv-line bg-tv-panel2 text-xs text-tv-muted transition hover:border-tv-line-strong hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-
-      {/* checklist */}
-      <div className="flex flex-wrap gap-1.5">
-        {[
-          s.state === 'HIT' ? 'Entry zone hit (candle wick)' : 'Price inside entry zone',
-          isLong ? 'Stop not breached (price above stop)' : 'Stop not breached (price below stop)',
-          `R:R gate passed — 1:${rr1} at T1`,
-        ].map(
-          (t) => (
-            <span
-              key={t}
-              className="rounded-full border bg-tv-panel/60 px-2.5 py-0.5 text-[11px] font-bold"
-              style={{ borderColor: 'var(--bull-line)', color: 'var(--bull)' }}
-            >
-              ✓ {t}
-            </span>
-          ),
-        )}
-      </div>
-
-      {/* plan recap */}
-      <div className="text-[12.5px] font-semibold flex flex-wrap gap-x-4 gap-y-1 tabular-nums text-tv-ink">
-        <span>
-          Entry <span className="text-warn">{fmtPrice(s.entryLow, setup.currency)} – {fmtPrice(s.entryHigh, setup.currency)}</span>
-        </span>
-        <span>
-          SL <span className="text-bear">{fmtPrice(s.stop, setup.currency)}</span>
-        </span>
-        <span>
-          TP1 <span className="text-info">{fmtPrice(s.t1, setup.currency)}</span>
-        </span>
-        <span>
-          TP2 <span className="text-info">{fmtPrice(s.t2, setup.currency)}</span>
-        </span>
-        {s.runner !== null && (
-          <span>
-            TP3 <span className="text-info">{fmtPrice(s.runner, setup.currency)}</span>
-          </span>
-        )}
-      </div>
-      {sizingTxt && (
-        <div className={`text-[11px] tabular-nums ${C.muted}`}>
-          Suggested size: <b className="text-warn">{sizingTxt}</b>
-        </div>
-      )}
-      <span className="sr-only">
-        {setup.pair} {side} trade confirmed at {new Date(info.at).toLocaleTimeString()} — entry {fmtPrice(s.entryLow, setup.currency)} to{' '}
-        {fmtPrice(s.entryHigh, setup.currency)}, stop {fmtPrice(s.stop, setup.currency)}
-      </span>
-    </div>
-  )
-}
-
 export function SetupBoard() {
   const [symbols, setSymbols] = useState<string[]>(DEFAULT_WATCHLIST)
   const [data, setData] = useState<SetupsPayload | null>(null)
@@ -482,14 +311,10 @@ export function SetupBoard() {
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState('BTC')
   const [input, setInput] = useState('')
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
-  const [confirms, setConfirms] = useState<Record<string, ConfirmInfo>>({})
   const [acct, setAcct] = useState('')
   const [riskPct, setRiskPct] = useState('1')
   const mounted = useRef(true)
-  const confirmsRef = useRef<Record<string, ConfirmInfo>>({})
   const wlLoaded = useRef(false)
-  const { toast } = useToast()
 
   useEffect(() => {
     mounted.current = true
@@ -501,9 +326,6 @@ export function SetupBoard() {
     setSymbols(wl)
     saveWatchlist(wl)
     wlLoaded.current = true
-    const c = loadConfirms()
-    confirmsRef.current = c
-    setConfirms(c)
     return () => {
       mounted.current = false
     }
@@ -536,64 +358,6 @@ export function SetupBoard() {
     if (!wlLoaded.current) return
     saveWatchlist(symbols)
   }, [symbols])
-
-  // confirmation tracker — when price reaches an entry zone, record it once,
-  // fire a toast, and re-arm automatically if the zone is left/voided
-  useEffect(() => {
-    if (!data) return
-    const prev = confirmsRef.current
-    const next: Record<string, ConfirmInfo> = {}
-    const fired: Array<{ key: string; symbol: string; side: 'long' | 'short'; info: ConfirmInfo; s: SideSetup; setup: BoardSetup }> = []
-    for (const setup of data.setups) {
-      for (const kind of ['long', 'short'] as const) {
-        const s = setup[kind]
-        if (!s) continue
-        const key = `${setup.symbol}:${kind}`
-        if (s.state === 'LIVE') {
-          const prior = prev[key]
-          const info: ConfirmInfo = prior ? { ...prior, price: setup.price } : { at: Date.now(), price: setup.price }
-          next[key] = info
-          if (!prior) fired.push({ key, symbol: setup.symbol, side: kind, info, s, setup })
-        } else if (s.state === 'HIT') {
-          // entry hit (wick) = confirmed — record with the wick print + candle
-          // time so the banner reflects the real trigger, not the poll time
-          const prior = prev[key]
-          const info: ConfirmInfo = prior
-            ? { ...prior }
-            : { at: s.touchedAt ?? Date.now(), price: s.touchedPrice ?? setup.price }
-          next[key] = info
-          if (!prior) fired.push({ key, symbol: setup.symbol, side: kind, info, s, setup })
-        }
-      }
-    }
-    confirmsRef.current = next
-    setConfirms(next)
-    saveConfirms(next)
-    for (const f of fired) {
-      setDismissed((d) => {
-        if (!d.has(f.key)) return d
-        const n = new Set(d)
-        n.delete(f.key)
-        return n
-      })
-      toast({
-        title:
-          f.s.state === 'HIT'
-            ? `🎯 ${f.symbol} ${f.side.toUpperCase()} CONFIRMED — ENTRY HIT`
-            : `✅ ${f.symbol} ${f.side.toUpperCase()} CONFIRMED`,
-        description:
-          f.s.state === 'HIT'
-            ? `A candle wick reached ${fmtPrice(f.info.price, f.setup.currency)} inside the entry zone ${fmtPrice(
-                f.s.entryLow,
-                f.setup.currency,
-              )} – ${fmtPrice(f.s.entryHigh, f.setup.currency)} · SL ${fmtPrice(f.s.stop, f.setup.currency)} · TP1 ${fmtPrice(f.s.t1, f.setup.currency)}`
-            : `Price ${fmtPrice(f.info.price, f.setup.currency)} reached the entry zone ${fmtPrice(
-                f.s.entryLow,
-                f.setup.currency,
-              )} – ${fmtPrice(f.s.entryHigh, f.setup.currency)} · SL ${fmtPrice(f.s.stop, f.setup.currency)} · TP1 ${fmtPrice(f.s.t1, f.setup.currency)}`,
-      })
-    }
-  }, [data, toast])
 
   // keep selection valid
   const active: BoardSetup | undefined =
@@ -631,34 +395,6 @@ export function SetupBoard() {
     return {
       unitsTxt: `${units >= 100 ? Math.round(units).toLocaleString('en-US') : Math.round(units * 10000) / 10000} ${unitName}`,
       notionalTxt: `notional ≈ ${fmtPrice(notional, 'USD')} · risk $${Math.round(riskDollars).toLocaleString('en-US')} · stop dist ${fmtPrice(dist, 'USD')}`,
-    }
-  }
-
-  // active trade confirmations — LIVE state + tracked confirmation info
-  const confirmations: Array<{ key: string; side: 'long' | 'short'; setup: BoardSetup; s: SideSetup; info: ConfirmInfo; sizingTxt: string | null }> = []
-  const aNum = parseFloat(acct)
-  const rNum = parseFloat(riskPct)
-  for (const setup of data?.setups ?? []) {
-    for (const kind of ['long', 'short'] as const) {
-      const s = setup[kind]
-      const key = `${setup.symbol}:${kind}`
-      const info = confirms[key]
-      if ((s?.state === 'LIVE' || s?.state === 'HIT') && info && !dismissed.has(key)) {
-        let sizingTxt: string | null = null
-        if (aNum > 0 && rNum > 0) {
-          const m = (s.entryLow + s.entryHigh) / 2
-          const dist = Math.abs(m - s.stop)
-          if (dist > 0) {
-            const units = (aNum * rNum) / 100 / dist
-            const unitName = setup.market === 'crypto' ? setup.symbol : 'shares'
-            sizingTxt = `${units >= 100 ? Math.round(units).toLocaleString('en-US') : Math.round(units * 10000) / 10000} ${unitName} (${fmtPrice(
-              dist,
-              setup.currency,
-            )} stop distance)`
-          }
-        }
-        confirmations.push({ key, side: kind, setup, s, info, sizingTxt })
-      }
     }
   }
 
@@ -729,19 +465,6 @@ export function SetupBoard() {
           </span>
         </div>
       </div>
-
-      {/* trade confirmations — fire when price genuinely reaches an entry zone */}
-      {confirmations.map((c) => (
-        <ConfirmationCard
-          key={c.key}
-          side={c.side}
-          setup={c.setup}
-          s={c.s}
-          info={c.info}
-          sizingTxt={c.sizingTxt}
-          onDismiss={() => setDismissed((prev) => new Set(prev).add(c.key))}
-        />
-      ))}
 
       {/* ZoneWatch strip */}
       <section aria-label="ZoneWatch — live zone monitor">
@@ -898,7 +621,6 @@ export function SetupBoard() {
                       pair={active.pair}
                       currency={active.currency}
                       livePrice={active.price}
-                      confirmedAt={confirms[`${active.symbol}:${kind}`]?.at}
                     />
                   </motion.div>
                 ))}

@@ -396,3 +396,21 @@ Work Log:
 Stage Summary:
 - Trade Confirmed page now displays ALL confirmed trades as cards: LIVE (in zone) + HIT (entry triggered by wick). Confirmed count chip reflects both. Persistence unchanged: tracker still logs wick events so trades stay visible after the server lookback expires.
 - Files changed: src/components/confirmed/ConfirmedBoard.tsx. Pending push/deploy approval.
+---
+Task ID: 20
+Agent: Z.ai Code (main)
+Task: User request — "do not show TRADE CONFIRMED in Trade setup page" (remove the confirmation banner/announcement layer from Trade Setups; confirmations live only on the Trade Confirmed tab)
+
+Work Log:
+- Confirmed Trade Confirmed tab already renders HIT cards correctly (Task 19) via /api/setups live state — BTC long state=HIT (touchedAt Oct 08 04:00 UTC, wick $82,228), BTC short also HIT.
+- SetupBoard.tsx cleanup — removed the whole confirmation presentation layer:
+  - Deleted ConfirmationCard component (the big "TRADE CONFIRMED — SYMBOL SIDE" banner card with checklist + copy-confirmation).
+  - Deleted the client confirmation tracker effect (ConfirmInfo map, 'tw_confirmed' localStorage, toast firing, dismiss handling) — no more toasts on the Setups tab.
+  - Deleted the confirmations[] derivation and its render block; removed useToast usage/import.
+  - Reworded all remaining zone-state labels so nothing on the tab says "CONFIRMED": ZoneWatch chips now 'LONG/SHORT IN ZONE' (LIVE) and 'LONG/SHORT ZONE HIT' (HIT); TradePlanCard chips now 'IN ENTRY ZONE' / 'ENTRY ZONE HIT'; entry row subs now 'price $X is inside the entry zone' (LIVE) and 'wick $X hit <when> · price now $Y (Z% away)' (HIT). Removed now-unused confirmedAt prop plumbing.
+- Verified: grep clean (no CONFIRMED/toast/ConfirmInfo refs); bun run lint passes; agent-browser on / shows ZoneWatch 'SHORT ZONE HIT'/'LONG ZONE HIT' chips + 'ENTRY ZONE HIT' plan chips with ZERO 'confirmed' strings in page content (only the nav tab label '✅ Trade Confirmed'); Trade Confirmed tab still shows '7 confirmed now' with BTC/USD LONG entry-hit card (wick $82,228 hit 04:00 AM); zero page errors; desktop + mobile (390px) screenshots clean, footer pinned. Screenshots: /tmp/setups-no-banner.png, /tmp/confirmed-tab-cards.png, /tmp/setups-mobile.png.
+- Still local-only: not pushed to git, not deployed to Vercel.
+
+Stage Summary:
+- Separation of concerns is now clean: Trade Setups tab = live zones/levels only (state chips are neutral: IN ZONE / ZONE HIT / WAITING / VOID); all confirmation UI (banner, toasts, cards) lives exclusively on the ✅ Trade Confirmed tab.
+- Files changed: src/components/setups/SetupBoard.tsx. Pending push/deploy approval.
