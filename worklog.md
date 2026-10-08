@@ -335,3 +335,17 @@ Work Log:
 
 Stage Summary:
 - Home route restored to the exact pre-spec state (teal-on-paper Trade2Watch, HEAD 7d3cfc3, origin/main untouched at b233e18); no remote or production impact; Mosaic design spec preserved in chat history if ever wanted again
+
+---
+Task ID: 16-b
+Agent: Z.ai Code (main)
+Task: "check the UI its looking different" — post-revert UI regression
+
+Work Log:
+- Diagnosis: src/ was byte-identical to b233e18, but agent-browser eval showed logo tile computed bg = rgba(0,0,0,0) — the served Turbopack stylesheet was STALE from the Mosaic build (no --color-bull/--tv-* tokens), so bg-bull/bg-tv-panel/etc. resolved to transparent: invisible logo tile, transparent nav, washed-out UI
+- Root cause: Turbopack incremental cache missed globals.css recompile after `git reset --hard` rewrote it
+- Fix: killed dev server, rm -rf .next, restarted fresh. Sandbox kills direct background children at command end → used double-fork orphan trick `(setsid bun run dev >/dev/null 2>&1 </dev/null &)` which reparents the server to PID 1 (same mechanism the boot-time start.sh used; verified surviving across commands)
+- Verified: logo tile rgb(15,118,110) = teal #0f766e exact; nav white/85; light + dark + 390px mobile screenshots all correct; live prices streaming (BTC $82,903 / AAPL $336.67 / TSLA $377.81); zero page errors
+
+Stage Summary:
+- UI fully restored to the teal-on-paper design; dev server healthy and persistent; production (Vercel) was never affected
