@@ -429,3 +429,19 @@ Work Log:
 Stage Summary:
 - Confirmation rule is now temporally honest: the app can only confirm entries it could have suggested. Any wick touch on a candle opened before 2026-10-07 00:00 IST is ignored by the engine and purged from the persisted log; live (in-zone) and post-launch wick hits confirm as before. As the app ages, this cutoff stays fixed — new hits keep confirming normally.
 - Files changed: src/lib/setups/generate.ts, src/components/confirmed/ConfirmedBoard.tsx. Pending push/deploy approval.
+---
+Task ID: 22
+Agent: Z.ai Code (main)
+Task: User approved — build "I took this trade" feature: freeze a confirmed setup as the user's own trade, track TP1/TP2/SL outcomes from real candles, separate "my open trade" from "next setups"
+
+Work Log:
+- New API src/app/api/candles/route.ts: GET /api/candles?symbol=&market= returns recent candles (crypto 4h / stocks 1d) with no-store — the data source for outcome tracking.
+- New engine src/lib/mytrades.ts: MyTrade type (frozen plan: entryFill=zone mid, stop, t1, t2, takenAt, status, tp1HitAt/tp2HitAt/slHitAt, outcome TP2|TP1_BE|SL|MANUAL, netR); localStorage 'tw_my_trades' (open kept, closed capped 40); trackTrade() walks candles from takenAt onward (candles still forming at press included), same-candle ambiguity resolved pessimistically (stop before targets), implements the plan's own rule — after TP1 the stop moves to entry, so a later stop-out = TP1_BE (half banked at TP1, rest at breakeven); netR: SL -1R, TP1_BE .5*R(t1), TP2 .5*R(t1)+.5*R(t2), MANUAL per actual close; outcomeTxt labels.
+- ConfirmedBoard.tsx: '▶ I took this trade' button on every confirmed card (disabled '✓ In your trades' while that SYMBOL:side is open); new 'My open trades' section with OpenTradeCard (live price + R-now, TP2/TP1/Entry/SL ladder with hit times, stop-at-entry after TP1, '✋ I closed this trade' manual close); 'My trade history' section (outcome badge, netR, taken/closed times, Clear closed); candle-tracking effect polls /api/candles every 45s per open-trade symbol, advances trades via trackTrade, fires toasts: TP1 hit (move stop to entry), TP2 full win, TP1_BE, stopped out.
+- SetupBoard.tsx: '🎯 IN TRADE' amber strip between toolbar and ZoneWatch for every open trade (pair/side, filled ≈, now price, live R, TP1/TP2/SL with ✓ marks, SL shows entry after TP1) with the explicit note 'manage this trade by its plan — new SYM zones below are your next opportunity' — directly resolves the user's confusion about zones rebuilding while in a trade.
+- Verified end-to-end with agent-browser: took BTC long (toast, open-trade card +0.43R live, button disabled), candle tracker polling /api/candles 200, Setups strip renders frozen plan; synthetic trade injected into localStorage with TP1/TP2 below current price → tracker auto-closed it at TP2 with correct math (+0.15R = 0.5*(t1-fill)/risk + 0.5*(t2-fill)/risk), toast fired, history row correct; manual close logged '+0.47R'; zero page errors; lint clean; test data cleared afterwards. Screenshots: /tmp/setups-in-trade-strip.png, /tmp/my-trades-history.png.
+- Local-only: not pushed to git, not deployed to Vercel.
+
+Stage Summary:
+- The app now supports the full trading loop: WAITING zone → entry confirmed → 'I took this trade' freezes the ticket → candles tracked every 45s (TP1 half-bank + breakeven stop, TP2 win, SL loss, manual close) → outcome logged in My trade history — while the Setups tab keeps labeling fresh zones as 'next opportunity' so an open trade is never confused with new suggestions.
+- Files: src/app/api/candles/route.ts (new), src/lib/mytrades.ts (new), src/components/confirmed/ConfirmedBoard.tsx, src/components/setups/SetupBoard.tsx. Pending push/deploy approval.

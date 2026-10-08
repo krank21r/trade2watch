@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { fmtPrice } from '@/components/signals/types'
 import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
+import { loadMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 
 // Trade2watch design tokens (mirrors public/app.html)
@@ -313,6 +314,7 @@ export function SetupBoard() {
   const [input, setInput] = useState('')
   const [acct, setAcct] = useState('')
   const [riskPct, setRiskPct] = useState('1')
+  const [myTrades, setMyTrades] = useState<MyTrade[]>([])
   const mounted = useRef(true)
   const wlLoaded = useRef(false)
 
@@ -339,6 +341,8 @@ export function SetupBoard() {
       if (!mounted.current) return
       setData(d)
       setError(null)
+      // refresh my open trades (taken via "I took this trade" on Trade Confirmed)
+      setMyTrades(loadMyTrades())
     } catch (e) {
       if (mounted.current) setError(String(e).slice(0, 120))
     } finally {
@@ -397,6 +401,9 @@ export function SetupBoard() {
       notionalTxt: `notional ≈ ${fmtPrice(notional, 'USD')} · risk $${Math.round(riskDollars).toLocaleString('en-US')} · stop dist ${fmtPrice(dist, 'USD')}`,
     }
   }
+
+  // my open trades (from "I took this trade") — frozen plans shown as a reminder
+  const openMyTrades = myTrades.filter((t) => t.status === 'OPEN')
 
   const gaugePct = (v: number) =>
     active ? savePct(((v - active.gauge.min) / (active.gauge.max - active.gauge.min)) * 100, 0, 100) : 0
@@ -465,6 +472,40 @@ export function SetupBoard() {
           </span>
         </div>
       </div>
+
+      {/* in-trade strip — frozen plans so fresh zones never confuse */}
+      {openMyTrades.map((t) => {
+        const price = data?.setups.find((x) => x.symbol === t.symbol)?.price ?? null
+        const r = price !== null ? rNow(t, price) : null
+        const stopNow = t.tp1HitAt !== null ? t.entryFill : t.stop
+        return (
+          <div
+            key={t.id}
+            role="status"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-warn/40 bg-warn/5 px-3.5 py-2.5 text-[12px]"
+          >
+            <span className="font-bold text-warn">🎯 IN TRADE</span>
+            <span className="font-bold text-tv-ink">
+              {t.pair} {t.side.toUpperCase()}
+            </span>
+            <span className="tabular-nums text-tv-muted">filled ≈ {fmtPrice(t.entryFill, t.currency)}</span>
+            {price !== null && <span className="tabular-nums text-tv-ink">now {fmtPrice(price, t.currency)}</span>}
+            {r !== null && (
+              <span className={`font-bold tabular-nums ${r >= 0 ? 'text-bull' : 'text-bear'}`}>
+                {r > 0 ? '+' : ''}
+                {r.toFixed(2)}R
+              </span>
+            )}
+            <span className="tabular-nums text-tv-muted">
+              TP1 {fmtPrice(t.t1, t.currency)}{t.tp1HitAt !== null ? ' ✓' : ''} · TP2 {fmtPrice(t.t2, t.currency)}
+              {t.tp2HitAt !== null ? ' ✓' : ''} · SL {fmtPrice(stopNow, t.currency)}{t.slHitAt !== null ? ' ✓' : ''}
+            </span>
+            <span className="ml-auto text-[11px] text-tv-muted">
+              manage this trade by its plan — new {t.symbol} zones below are your <b className="text-warn">next</b> opportunity
+            </span>
+          </div>
+        )
+      })}
 
       {/* ZoneWatch strip */}
       <section aria-label="ZoneWatch — live zone monitor">
