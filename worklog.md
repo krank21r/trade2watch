@@ -321,3 +321,17 @@ Work Log:
 
 Stage Summary:
 - App re-skinned to the calm teal-on-paper design system on local + production (commit b233e18); both themes coherent, all functionality intact, deploy tooling restored after container restart wipe
+
+---
+Task ID: 16
+Agent: Z.ai Code (main)
+Task: Build Mosaic Help Center page from user's Layout & Structure spec — then REVERTED by user request
+
+Work Log:
+- Implemented per spec: src/components/help/HelpCenter.tsx (sticky nav, gradient hero + ⌘K search, category pills filtering native <details> FAQ groups, trust band with metric strip + featured quote card, teal-800 CTA card, minimal footer), icons.tsx (19 Phosphor icons inlined as SVG bodies, zero deps), globals.css rewritten to minimal teal/paper system, layout.tsx stripped to Inter + Mosaic metadata, page.tsx replaced
+- Auto-commit tooling committed the change as 8d6edad (never pushed/deployed)
+- User said "revert it" → verified origin/main still at b233e18 (teal trading app), then `git reset --hard 7d3cfc3` — dropped the Mosaic commit entirely (no revert commit noise), src/components/help removed, globals.css/layout.tsx/page.tsx restored
+- Verified: page compiles, GET / 200, agent-browser screenshot shows full Trade2Watch UI (3 tabs, watchlist BTC/ETH/SOL/AAPL/TSLA/NVDA, live prices, teal-on-paper theme), zero page errors
+
+Stage Summary:
+- Home route restored to the exact pre-spec state (teal-on-paper Trade2Watch, HEAD 7d3cfc3, origin/main untouched at b233e18); no remote or production impact; Mosaic design spec preserved in chat history if ever wanted again
