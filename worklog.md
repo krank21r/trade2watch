@@ -544,3 +544,19 @@ Work Log:
 
 Stage Summary:
 - Freshness of a live signal is now visible at a glance — user asked for exactly this after the "when do setups display" explanation. No breaking contract change (additive required field, both sides updated together).
+
+---
+Task ID: 27
+Agent: Z.ai Code (main)
+Task: Push all pending commits to GitHub with user PAT; deploy to Vercel production; connect Git auto-deploy
+
+Work Log:
+- Confirmed 15 local commits ahead (all SMC engine work); pushed via one-shot URL `git push https://<PAT>@github.com/krank21r/trade2watch.git main` → `b233e18..8aa8c3c main -> main`. Ran `git fetch origin` to sync tracking ref (direct-URL push doesn't update origin/main locally).
+- Checked Vercel via API: project `trade2watch` (prj_txPQOmSe2ycpMcpUVwIsRwvRW6or) existed with `link: null` — previous deploys were CLI-based, no GitHub auto-deploy.
+- Installed vercel CLI (bun global), wrote `.vercel/project.json` link (orgId team_yw5IimAWjFFNH2J8YIQJWWyE, already gitignored), deployed `vercel --prod --yes --token=…` → built in ~52s, aliased to trade2watch.vercel.app.
+- Verified production: homepage HTTP 200, title "Trade2watch — Multi-Asset Trade Setup", all 4 tabs present in HTML; /api/smc/analysis returns ok:true BTCUSDT NO_TRADE score 0.
+- Connected repo to Vercel: CLI `vercel git connect` failed ("Could not retrieve Project Settings"); REST API `POST /v1/projects/{id}/link` with {"type":"github","orgId","repo":"krank21r/trade2watch"} succeeded → link now {type:github, org:krank21r, productionBranch:main}. Every future push to main auto-deploys.
+- No commit needed for .gitignore (.vercel already ignored at lines 36-37).
+
+Stage Summary:
+- GitHub main = 8aa8c3c, fully synced. Production live at trade2watch.vercel.app with full SMC stack. Auto-deploy on push enabled. Note: project env has only DATABASE_URL; SMC alerts env vars (SMC_ALERTS_ENABLED etc.) still unset in Vercel, and public LLM key / persistent prod DB remain open production todos.
