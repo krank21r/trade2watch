@@ -99,6 +99,17 @@ function rMult(v: number, mid: number, risk: number): string {
   return risk > 0 ? `${(Math.abs(v - mid) / risk).toFixed(1)}R` : '—'
 }
 
+/** time-only for today, date+time otherwise — wick hits are often hours/days old */
+function fmtWhen(t: number): string {
+  const d = new Date(t)
+  const now = new Date()
+  const sameDay =
+    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 function Badge({ children }: { children: ReactNode }) {
   return (
     <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-bold tabular-nums text-tv-muted whitespace-nowrap">{children}</span>
@@ -203,7 +214,11 @@ function TradePlanCard({
       ? `✓ confirmed${confirmedAt ? ` ${new Date(confirmedAt).toLocaleTimeString()}` : ''} — price ${fmtPrice(livePrice, currency)} inside entry zone`
       : side.state === 'VOID'
         ? 'setup invalidated — wait for fresh structure'
-        : `live ${fmtPrice(livePrice, currency)} — ${side.distPct?.toFixed(1) ?? '?'}% away, set limits and wait`
+        : `live ${fmtPrice(livePrice, currency)} — ${side.distPct?.toFixed(1) ?? '?'}% away, set limits and wait${
+            side.touchedAt !== null && side.touchedPrice !== null
+              ? ` · 🎯 wick hit ${fmtPrice(side.touchedPrice, currency)} ${fmtWhen(side.touchedAt)}`
+              : ''
+          }`
 
   // targets in the plan's own order: TP3 (furthest) → TP2 → TP1
   const targetRows = (

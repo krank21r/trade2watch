@@ -40,6 +40,8 @@ interface ConfirmEvent {
   lastSeenAt: number
   lastPrice: number
   exitedAt: number | null // set when price left the entry zone
+  via?: 'spot' | 'wick' // wick = discovered from candle history (spot polls missed it)
+  loggedAt?: number // when this row was created (dedupe window for wick hits)
 }
 
 function lsGet(k: string, d: string): string {
@@ -69,6 +71,17 @@ function saveLog(events: ConfirmEvent[]) {
 
 const fmtTime = (t: number) =>
   new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+/** time-only for today, date+time otherwise — wick hits are often hours/days old */
+const fmtWhen = (t: number) => {
+  const d = new Date(t)
+  const now = new Date()
+  const sameDay =
+    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 const fmtDur = (ms: number) => {
   const m = Math.max(0, Math.round(ms / 60_000))
@@ -325,7 +338,10 @@ export function ConfirmedBoard() {
     return () => clearInterval(t)
   }, [load])
 
-  // confirmation tracker — append new LIVE entries to the log, mark exits
+  // confirmation tracker — append new LIVE entries to the log, mark exits.
+  // Also reconciles WICK HITS the spot polls missed: the server checks real
+  // candle highs/lows against each entry zone, so a touch that happened
+  // between polls (or while the tab was closed) still gets logged here.
   useEffect(() => {
     if (!data) return
     const now = Date.now()
@@ -335,39 +351,84 @@ export function ConfirmedBoard() {
     for (const setup of data.setups) {
       for (const kind of ['long', 'short'] as const) {
         const s = setup[kind]
-        if (!s || s.state !== 'LIVE') continue
+        if (!s) continue
         const key = `${setup.symbol}:${kind}`
-        liveKeys.add(key)
-        const existing = next.find((e) => e.key === key && !e.exitedAt)
-        if (existing) {
-          existing.lastSeenAt = now
-          existing.lastPrice = setup.price
-        } else {
-          const ev: ConfirmEvent = {
-            key,
-            symbol: setup.symbol,
-            market: setup.market,
-            displayName: setup.displayName,
-            pair: setup.pair,
-            currency: setup.currency,
-            side: kind,
-            tag: s.tag,
-            strategy: s.strategy,
-            entryLow: s.entryLow,
-            entryHigh: s.entryHigh,
-            stop: s.stop,
-            t1: s.t1,
-            t2: s.t2,
-            runner: s.runner,
-            rr: s.rr,
-            confirmedAt: now,
-            confirmedPrice: setup.price,
-            lastSeenAt: now,
-            lastPrice: setup.price,
-            exitedAt: null,
+        const isLive = s.state === 'LIVE'
+        if (isLive) {
+          liveKeys.add(key)
+          const existing = next.find((e) => e.key === key && !e.exitedAt)
+          if (existing) {
+            existing.lastSeenAt = now
+            existing.lastPrice = setup.price
+          } else {
+            const ev: ConfirmEvent = {
+              key,
+              symbol: setup.symbol,
+              market: setup.market,
+              displayName: setup.displayName,
+              pair: setup.pair,
+              currency: setup.currency,
+              side: kind,
+              tag: s.tag,
+              strategy: s.strategy,
+              entryLow: s.entryLow,
+              entryHigh: s.entryHigh,
+              stop: s.stop,
+              t1: s.t1,
+              t2: s.t2,
+              runner: s.runner,
+              rr: s.rr,
+              confirmedAt: now,
+              confirmedPrice: setup.price,
+              lastSeenAt: now,
+              lastPrice: setup.price,
+              exitedAt: null,
+              via: 'spot',
+              loggedAt: now,
+            }
+            next.unshift(ev)
+            fired.push(ev)
           }
-          next.unshift(ev)
-          fired.push(ev)
+        } else if (s.touchedAt !== null && s.touchedPrice !== null) {
+          // price is NOT in the zone now, but a recent candle wick was —
+          // record it as history (already exited). Dedupe: same candle touch
+          // yields the same touchedAt; also suppress re-logs within 6h of the
+          // last recorded wick for this key so drifting zones can't spam rows.
+          const dupe = next.some(
+            (e) =>
+              e.key === key &&
+              (e.confirmedAt === s.touchedAt ||
+                (e.via === 'wick' && typeof e.loggedAt === 'number' && now - e.loggedAt < 6 * 3_600_000)),
+          )
+          if (!dupe) {
+            const ev: ConfirmEvent = {
+              key,
+              symbol: setup.symbol,
+              market: setup.market,
+              displayName: setup.displayName,
+              pair: setup.pair,
+              currency: setup.currency,
+              side: kind,
+              tag: s.tag,
+              strategy: s.strategy,
+              entryLow: s.entryLow,
+              entryHigh: s.entryHigh,
+              stop: s.stop,
+              t1: s.t1,
+              t2: s.t2,
+              runner: s.runner,
+              rr: s.rr,
+              confirmedAt: s.touchedAt,
+              confirmedPrice: s.touchedPrice,
+              lastSeenAt: s.touchedAt,
+              lastPrice: s.touchedPrice,
+              exitedAt: now,
+              via: 'wick',
+              loggedAt: now,
+            }
+            next.unshift(ev)
+            fired.push(ev) // toast below — the user deserves to know the zone was hit
+          }
         }
       }
     }
@@ -384,13 +445,23 @@ export function ConfirmedBoard() {
     setLog(trimmed)
     saveLog(trimmed)
     for (const f of fired) {
-      toast({
-        title: `✅ ${f.symbol} ${f.side.toUpperCase()} CONFIRMED`,
-        description: `Price ${fmtPrice(f.confirmedPrice, f.currency)} is inside the entry zone ${fmtPrice(
-          f.entryLow,
-          f.currency,
-        )} – ${fmtPrice(f.entryHigh, f.currency)} · SL ${fmtPrice(f.stop, f.currency)}`,
-      })
+      if (f.via === 'wick') {
+        toast({
+          title: `🎯 ${f.symbol} ${f.side.toUpperCase()} zone was hit`,
+          description: `A candle wick reached ${fmtPrice(f.confirmedPrice, f.currency)} inside the entry zone ${fmtPrice(
+            f.entryLow,
+            f.currency,
+          )} – ${fmtPrice(f.entryHigh, f.currency)} (${fmtWhen(f.confirmedAt)}) — spot polls missed it`,
+        })
+      } else {
+        toast({
+          title: `✅ ${f.symbol} ${f.side.toUpperCase()} CONFIRMED`,
+          description: `Price ${fmtPrice(f.confirmedPrice, f.currency)} is inside the entry zone ${fmtPrice(
+            f.entryLow,
+            f.currency,
+          )} – ${fmtPrice(f.entryHigh, f.currency)} · SL ${fmtPrice(f.stop, f.currency)}`,
+        })
+      }
     }
   }, [data, toast])
 
@@ -537,10 +608,19 @@ export function ConfirmedBoard() {
                 >
                   {e.side}
                 </span>
-                <span className="tabular-nums text-tv-muted">
-                  confirmed {fmtTime(e.confirmedAt)} · in zone {fmtDur((e.exitedAt ?? e.lastSeenAt) - e.confirmedAt)} ·
-                  exited {fmtTime(e.exitedAt ?? now)} · last {fmtPrice(e.lastPrice, e.currency)}
-                </span>
+                {e.via === 'wick' ? (
+                  <span className="tabular-nums text-tv-muted">
+                    🎯 wick {fmtPrice(e.confirmedPrice, e.currency)} hit {fmtWhen(e.confirmedAt)} · zone {fmtPrice(
+                      e.entryLow,
+                      e.currency,
+                    )} – {fmtPrice(e.entryHigh, e.currency)} · last {fmtPrice(e.lastPrice, e.currency)}
+                  </span>
+                ) : (
+                  <span className="tabular-nums text-tv-muted">
+                    confirmed {fmtTime(e.confirmedAt)} · in zone {fmtDur((e.exitedAt ?? e.lastSeenAt) - e.confirmedAt)} ·
+                    exited {fmtTime(e.exitedAt ?? now)} · last {fmtPrice(e.lastPrice, e.currency)}
+                  </span>
+                )}
                 <span className="ml-auto rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-bold text-tv-muted">
                   {e.tag}
                 </span>

@@ -349,3 +349,21 @@ Work Log:
 
 Stage Summary:
 - UI fully restored to the teal-on-paper design; dev server healthy and persistent; production (Vercel) was never affected
+---
+Task ID: 17
+Agent: Z.ai Code (main)
+Task: Investigate user report — BTC hit $82,300 on TradingView but the app's entry zone $82,077–$82,530 was never marked as hit
+
+Work Log:
+- Fetched live Binance data: current BTC ~$82,9xx; scanned 4h candles and found the smoking gun — the Oct 08 04:00 UTC candle wick-low hit $82,228, INSIDE the $82,077–$82,530 zone (same move user saw on TradingView). Confirmed the app missed it.
+- Root cause: confirmation logic only sampled SPOT price every 45s (client-side, tab-open only). A wick that dips into the zone and bounces between polls is invisible.
+- Fix (server, src/lib/setups/generate.ts): added detectZoneTouch() — scans the last 30 candles for high/low overlap with each entry zone (wick-touch test: low <= entryHigh && high >= entryLow), rejects touches later invalidated by a close beyond the stop; added touchedAt/touchedPrice to SideSetup, wired into buildBoardSetup for long+short.
+- Fix (client, ConfirmedBoard.tsx): tracker now logs wick hits the spot polls missed — recorded as via:'wick' history events (confirmedAt = candle time, confirmedPrice = wick extreme), with dedupe by touchedAt + 6h loggedAt window against zone-drift spam; dedicated "🎯 zone was hit" toast; history rows render wick-specific info with fmtWhen (date+time for non-today hits).
+- Fix (client, SetupBoard.tsx): WAITING entry rows now append "· 🎯 wick hit $82,228 04:00 AM" so the main board answers "did price hit the zone?" at a glance.
+- Verified: lint clean; /api/setups?symbols=BTC returns long.touchedAt=Oct 08 04:00 UTC wick=$82,228 for zone 82,076–82,531; agent-browser confirmed "🎯 wick hit $82,228" renders on the Trade Setups card and localStorage tw_confirmed_log gained "BTC long via=wick price=82227.56" + BTC short wick hit; zero page errors; dev.log clean.
+- NOT pushed to git / NOT deployed to Vercel yet (user's design question about teal restyle still open; awaiting go-ahead).
+
+Stage Summary:
+- Answer to user: YES, price DID hit the limit zone — 4h candle wick $82,228 at Oct 08 04:00 UTC inside $82,077–$82,530; the app's spot-poll confirmation design missed fast touches.
+- The app now detects zone hits from real candle wicks (server-side, 30-candle lookback, invalidation-aware), so hits between polls or with the tab closed are recovered and shown on both Trade Setups and Trade Confirmed tabs.
+- Files changed: src/lib/setups/generate.ts, src/components/confirmed/ConfirmedBoard.tsx, src/components/setups/SetupBoard.tsx. Change is local-only, pending push/deploy approval.

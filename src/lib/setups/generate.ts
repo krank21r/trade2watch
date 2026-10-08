@@ -13,6 +13,7 @@
  * follow the market and never go stale.
  */
 
+import type { Candle } from '@/lib/market/indicators'
 import { CRYPTO_HINT, getCandles, getTicker, searchStockTicker } from '@/lib/market/providers'
 import { buildSnapshot, type Regime, type TechnicalSnapshot } from '@/lib/market/snapshot'
 
@@ -36,6 +37,8 @@ export interface SideSetup {
   state: SideState
   dist: number | null // price distance to the zone edge (null when LIVE/VOID)
   distPct: number | null
+  touchedAt: number | null // candle open time of the most recent wick into the zone
+  touchedPrice: number | null // extreme wick print of that touch (candle low/high)
 }
 
 export interface LevelRow {
@@ -119,6 +122,36 @@ function rrString(mid: number, risk: number, t1: number, t2: number): string {
   return `1 : ${(Math.abs(t1 - mid) / risk).toFixed(1)} at T1 · 1 : ${(Math.abs(t2 - mid) / risk).toFixed(1)} at T2`
 }
 
+// ─── wick-touch detection ────────────────────────────────────────────────────
+// Spot-polling alone misses fast touches: price can dip into an entry zone and
+// bounce back between two polls (the client samples every 45s, only while the
+// tab is open), so a legitimate hit stays invisible. The candle history we
+// already fetch is the honest fix — if ANY recent candle's high/low range
+// overlapped the zone, the zone WAS hit, exactly as the chart shows it.
+
+const TOUCH_LOOKBACK = 30 // candles ≈ 5 days on 4h crypto · ≈ 6 weeks on 1d stocks
+
+export function detectZoneTouch(
+  candles: Candle[],
+  side: Pick<SideSetup, 'entryLow' | 'entryHigh' | 'stop'>,
+  isLong: boolean,
+): { at: number; price: number } | null {
+  const recent = candles.slice(-TOUCH_LOOKBACK)
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const c = recent[i]
+    if (!(c.low <= side.entryHigh && c.high >= side.entryLow)) continue // no overlap
+    // A close beyond the stop AFTER the touch killed the thesis — don't
+    // resurface hits the market has already invalidated.
+    const after = recent.slice(i + 1)
+    const voided = isLong
+      ? after.some((k) => k.close <= side.stop)
+      : after.some((k) => k.close >= side.stop)
+    if (voided) return null
+    return { at: c.time, price: isLong ? c.low : c.high }
+  }
+  return null
+}
+
 /**
  * The zone state machine — single source of truth, shared by the generator
  * and the UI contract. Invalidation (VOID) is checked BEFORE "zone live",
@@ -194,6 +227,8 @@ export function buildLong(s: TechnicalSnapshot, tag: string): SideSetup {
     state,
     dist,
     distPct: dist !== null ? (dist / px) * 100 : null,
+    touchedAt: null,
+    touchedPrice: null,
   }
 }
 
@@ -245,6 +280,8 @@ export function buildShort(s: TechnicalSnapshot, tag: string): SideSetup {
     state,
     dist,
     distPct: dist !== null ? (dist / px) * 100 : null,
+    touchedAt: null,
+    touchedPrice: null,
   }
 }
 
@@ -318,6 +355,15 @@ async function buildBoardSetup(symbol: string, market: 'crypto' | 'stock', nameH
   const { bias, biasTag, biasNote } = biasFor(s)
   const long = buildLong(s, bias === 'LONG' ? 'PREFERRED' : s.regime === 'RANGING' ? 'EDGE ONLY' : 'COUNTER-TREND')
   const short = buildShort(s, bias === 'SHORT' ? 'PREFERRED' : s.regime === 'RANGING' ? 'EDGE ONLY' : 'COUNTER-TREND')
+
+  // wick-touch detection from real candles — catches hits that happened
+  // between spot polls (or while the tab was closed)
+  const longTouch = detectZoneTouch(candles, long, true)
+  const shortTouch = detectZoneTouch(candles, short, false)
+  long.touchedAt = longTouch?.at ?? null
+  long.touchedPrice = longTouch?.price ?? null
+  short.touchedAt = shortTouch?.at ?? null
+  short.touchedPrice = shortTouch?.price ?? null
 
   const display =
     market === 'crypto' ? CRYPTO_NAMES[ticker.symbol] ?? ticker.symbol : ticker.displayName || nameHint || ticker.symbol
