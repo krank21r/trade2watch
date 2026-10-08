@@ -151,8 +151,12 @@ function ConfirmedCard({
   const copyPlan = async () => {
     const runner = s.runner ? ` · Runner ${fmtPrice(s.runner, setup.currency)}` : ''
     const txt =
-      `${setup.pair} ${kind.toUpperCase()} trade confirmed` +
-      (event ? ` at ${fmtTime(event.confirmedAt)}` : '') +
+      (s.state === 'HIT'
+        ? `${setup.pair} ${kind.toUpperCase()} trade confirmed — ENTRY HIT by wick ${fmtPrice(
+            s.touchedPrice,
+            setup.currency,
+          )}${s.touchedAt !== null ? ` ${fmtWhen(s.touchedAt)}` : ''}`
+        : `${setup.pair} ${kind.toUpperCase()} trade confirmed` + (event ? ` at ${fmtTime(event.confirmedAt)}` : '')) +
       ` — entry ${fmtPrice(s.entryLow, setup.currency)} to ${fmtPrice(s.entryHigh, setup.currency)}` +
       ` · SL ${fmtPrice(s.stop, setup.currency)}` +
       ` · TP1 ${fmtPrice(s.t1, setup.currency)} · TP2 ${fmtPrice(s.t2, setup.currency)}${runner} · RR ${s.rr}`
@@ -227,12 +231,24 @@ function ConfirmedCard({
 
       {/* live line */}
       <div className="mt-3 flex flex-wrap items-center gap-2 text-[11.5px]">
-        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-bold ${isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'}`}>
-          <span className={`inline-block h-1.5 w-1.5 animate-pulse rounded-full ${isLong ? 'bg-bull' : 'bg-bear'}`} aria-hidden="true" />
-          IN ZONE
-        </span>
+        {s.state === 'HIT' ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-warn/10 px-2.5 py-1 font-bold text-warn">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-warn" aria-hidden="true" />
+            🎯 ENTRY HIT
+          </span>
+        ) : (
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-bold ${isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'}`}>
+            <span className={`inline-block h-1.5 w-1.5 animate-pulse rounded-full ${isLong ? 'bg-bull' : 'bg-bear'}`} aria-hidden="true" />
+            IN ZONE
+          </span>
+        )}
         <span className="text-tv-muted">
-          {event ? (
+          {s.state === 'HIT' ? (
+            <>
+              wick {fmtPrice(s.touchedPrice, setup.currency)} hit {s.touchedAt !== null ? fmtWhen(s.touchedAt) : '—'} · price now{' '}
+              {fmtPrice(setup.price, setup.currency)} ({s.distPct?.toFixed(1) ?? '?'}% away) — entry triggered
+            </>
+          ) : event ? (
             <>
               confirmed {fmtTime(event.confirmedAt)} · in zone {fmtDur(Date.now() - event.confirmedAt)}
             </>
@@ -467,31 +483,48 @@ export function ConfirmedBoard() {
     }
   }, [data, toast])
 
-  // ── derive live confirmations ──
+  // ── derive confirmed trades ──
+  // LIVE = price inside the zone right now · HIT = entry triggered by a wick,
+  // price has since moved on. Both are confirmed trades and render as cards.
+  type CardItem = {
+    key: string
+    setup: BoardSetup
+    s: SideSetup
+    kind: 'long' | 'short'
+    event: ConfirmEvent | undefined
+    sizingTxt: string | null
+  }
   const aNum = parseFloat(acct)
   const rNum = parseFloat(riskPct)
-  const live: Array<{ key: string; setup: BoardSetup; s: SideSetup; kind: 'long' | 'short'; event: ConfirmEvent | undefined; sizingTxt: string | null }> = []
+  const sizingFor = (setup: BoardSetup, s: SideSetup): string | null => {
+    if (!(aNum > 0) || !(rNum > 0)) return null
+    const m = (s.entryLow + s.entryHigh) / 2
+    const dist = Math.abs(m - s.stop)
+    if (!(dist > 0)) return null
+    const units = (aNum * rNum) / 100 / dist
+    const unitName = setup.market === 'crypto' ? setup.symbol : 'shares'
+    return `size ≈ ${
+      units >= 100 ? Math.round(units).toLocaleString('en-US') : Math.round(units * 10000) / 10000
+    } ${unitName} · risk $${Math.round((aNum * rNum) / 100).toLocaleString('en-US')}`
+  }
+  const live: CardItem[] = []
+  const hits: CardItem[] = []
   for (const setup of data?.setups ?? []) {
     for (const kind of ['long', 'short'] as const) {
       const s = setup[kind]
-      if (s?.state !== 'LIVE') continue
-      const event = log.find((e) => e.key === `${setup.symbol}:${kind}` && !e.exitedAt)
-      let sizingTxt: string | null = null
-      if (aNum > 0 && rNum > 0) {
-        const m = (s.entryLow + s.entryHigh) / 2
-        const dist = Math.abs(m - s.stop)
-        if (dist > 0) {
-          const units = (aNum * rNum) / 100 / dist
-          const unitName = setup.market === 'crypto' ? setup.symbol : 'shares'
-          sizingTxt = `size ≈ ${
-            units >= 100 ? Math.round(units).toLocaleString('en-US') : Math.round(units * 10000) / 10000
-          } ${unitName} · risk $${Math.round((aNum * rNum) / 100).toLocaleString('en-US')}`
-        }
+      if (!s) continue
+      if (s.state === 'LIVE') {
+        const event = log.find((e) => e.key === `${setup.symbol}:${kind}` && !e.exitedAt)
+        live.push({ key: `${setup.symbol}:${kind}`, setup, s, kind, event, sizingTxt: sizingFor(setup, s) })
+      } else if (s.state === 'HIT') {
+        hits.push({ key: `${setup.symbol}:${kind}`, setup, s, kind, event: undefined, sizingTxt: sizingFor(setup, s) })
       }
-      live.push({ key: `${setup.symbol}:${kind}`, setup, s, kind, event, sizingTxt })
     }
   }
-  const history = log.filter((e) => e.exitedAt)
+  const confirmedCount = live.length + hits.length
+  // hide history rows that duplicate a currently displayed HIT card
+  const hitTouchIds = new Set(hits.map((h) => `${h.key}:${h.s.touchedAt}`))
+  const history = log.filter((e) => e.exitedAt && !hitTouchIds.has(`${e.key}:${e.confirmedAt}`))
   const now = Date.now()
 
   return (
@@ -514,10 +547,12 @@ export function ConfirmedBoard() {
           role="status"
           aria-live="polite"
           className={`rounded-full border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
-            live.length ? 'border-bull/40 bg-bull/10 text-bull' : 'border-tv-line bg-tv-panel2 text-tv-muted'
+            confirmedCount ? 'border-bull/40 bg-bull/10 text-bull' : 'border-tv-line bg-tv-panel2 text-tv-muted'
           }`}
         >
-          {live.length} live now
+          {confirmedCount
+            ? `${confirmedCount} confirmed now${live.length && hits.length ? ` · ${live.length} in zone · ${hits.length} hit` : ''}`
+            : '0 confirmed now'}
         </span>
         <div className="flex flex-wrap items-center gap-1.5">
           {symbols.map((sym) => (
@@ -540,39 +575,49 @@ export function ConfirmedBoard() {
         </div>
       )}
 
-      {/* live confirmations */}
+      {/* confirmed trades — in zone + entry hits */}
       <section aria-label="Confirmed entries" className="flex flex-col gap-4">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-          Confirmed right now <span className="text-warn">— price inside entry zone</span>
-        </div>
         {loading && !data ? (
           <>
             <div className="h-[280px] animate-pulse rounded-2xl border border-tv-line bg-tv-panel" />
             <div className="h-[280px] animate-pulse rounded-2xl border border-tv-line bg-tv-panel" />
           </>
-        ) : live.length === 0 ? (
+        ) : confirmedCount === 0 ? (
           <div className="rounded-2xl border border-dashed border-tv-line-strong bg-tv-panel2/50 p-10 text-center">
             <div className="text-[15px] font-semibold text-tv-ink">No confirmed entries right now</div>
             <div className="mx-auto mt-1.5 max-w-md text-[12.5px] leading-relaxed text-tv-muted">
               The tracker is watching {symbols.length} symbol{symbols.length === 1 ? '' : 's'} (
-              {symbols.join(', ')}). The moment price touches an entry zone on any setup — crypto or stocks —
-              the trade appears here automatically.
+              {symbols.join(', ')}). The moment price touches an entry zone — or a candle wick hits one —
+              the trade is confirmed and appears here automatically.
             </div>
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {live.map((c, i) => (
-              <ConfirmedCard
-                key={c.key}
-                setup={c.setup}
-                s={c.s}
-                kind={c.kind}
-                event={c.event}
-                sizingTxt={c.sizingTxt}
-                index={i}
-              />
-            ))}
-          </div>
+          <>
+            {live.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+                  In entry zone right now <span className="text-warn">— price inside the zone</span>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {live.map((c, i) => (
+                    <ConfirmedCard key={c.key} setup={c.setup} s={c.s} kind={c.kind} event={c.event} sizingTxt={c.sizingTxt} index={i} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {hits.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+                  Entry hit <span className="text-warn">— zone triggered by a candle wick, price moved on · still confirmed</span>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {hits.map((c, i) => (
+                    <ConfirmedCard key={c.key} setup={c.setup} s={c.s} kind={c.kind} event={c.event} sizingTxt={c.sizingTxt} index={i} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -633,7 +678,7 @@ export function ConfirmedBoard() {
       )}
 
       {/* sizing hint */}
-      {live.length > 0 && !(aNum > 0 && rNum > 0) && (
+      {confirmedCount > 0 && !(aNum > 0 && rNum > 0) && (
         <div className="text-[11.5px] text-tv-muted">
           Tip: set your account size and risk % on the Trade Setups page to see suggested position sizes here.
         </div>

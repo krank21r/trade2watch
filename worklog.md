@@ -382,3 +382,17 @@ Work Log:
 Stage Summary:
 - The app's decision logic now treats "entry hit = trade confirmed": any recent candle wick into an entry zone flips the side from WAITING to HIT/confirmed across the engine, Trade Setups (chips, entry row, banner, toast, ZoneWatch strip) and Trade Confirmed (history + future logs). Invalidation still wins — a close beyond stop after the touch suppresses the hit.
 - Files changed: src/lib/setups/generate.ts, src/components/setups/SetupBoard.tsx, src/components/confirmed/ConfirmedBoard.tsx. Local-only, pending push/deploy approval.
+---
+Task ID: 19
+Agent: Z.ai Code (main)
+Task: User report — entry-hit confirmed trades showed on Trade Setups but NOT on the Trade Confirmed page; make confirmed trades display there
+
+Work Log:
+- Diagnosed: ConfirmedBoard only derived cards from state==='LIVE' (price physically in zone). HIT sides rendered nowhere on the page except tiny 'Earlier' log rows, and those rows required the tab to have polled at least once (tracker is client-side). User's BTC long (HIT, price 0.2% above zone) was invisible there.
+- Fix (ConfirmedBoard.tsx): derivation now builds two card lists — live (LIVE) and hits (HIT) — both rendered as full ConfirmedCards directly from server state (no dependency on prior polling/log). New section 'Entry hit — zone triggered by a candle wick, price moved on · still confirmed'; LIVE section renamed 'In entry zone right now'. ConfirmedCard gained a HIT variant: 🎯 ENTRY HIT badge (warn), line 'wick $82,228 hit 04:00 AM · price now $82,687 (0.2% away) — entry triggered', copy-plan includes wick info. Header chip now '{n} confirmed now' with in-zone/hit breakdown; empty state only when both lists empty (copy mentions wick hits). Sizing hint uses total count. History rows that duplicate a displayed HIT card (same key+touchedAt) are filtered from 'Earlier'.
+- Verified: lint clean; agent-browser on Trade Confirmed tab shows header '7 confirmed now' + 'ENTRY HIT' section with BTC/USD LONG CONFIRMED card (wick $82,228, entry zone $82,074–$82,534, SL $81,499, TP1/TP2) and BTC SHORT, ETH, AAPL, NVDA hit cards; zero page errors; screenshot /tmp/confirmed-page-hit-cards.png.
+- Still local-only: not pushed to git, not deployed to Vercel.
+
+Stage Summary:
+- Trade Confirmed page now displays ALL confirmed trades as cards: LIVE (in zone) + HIT (entry triggered by wick). Confirmed count chip reflects both. Persistence unchanged: tracker still logs wick events so trades stay visible after the server lookback expires.
+- Files changed: src/components/confirmed/ConfirmedBoard.tsx. Pending push/deploy approval.
