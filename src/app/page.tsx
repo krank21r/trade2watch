@@ -6,14 +6,16 @@ import { TrendingUp } from 'lucide-react'
 import { ConfirmedBoard } from '@/components/confirmed/ConfirmedBoard'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
 import { SetupBoard } from '@/components/setups/SetupBoard'
+import { SmcBoard } from '@/components/smc/SmcBoard'
 import { ThemeToggle } from '@/components/theme-toggle'
 
-type Tab = 'setups' | 'confirmed' | 'signals'
+type Tab = 'setups' | 'confirmed' | 'signals' | 'smc'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'setups', label: 'Trade Setups' },
   { key: 'confirmed', label: '✅ Trade Confirmed' },
   { key: 'signals', label: '⚡ AI Signals' },
+  { key: 'smc', label: '🎯 SMC Setup' },
 ]
 
 export default function Home() {
@@ -48,11 +50,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* segmented tabs */}
+        {/* segmented tabs — horizontally scrollable when 4 tabs exceed narrow screens */}
         <div
           role="tablist"
           aria-label="Sections"
-          className="flex items-center rounded-full border border-tv-line bg-tv-panel2 p-1"
+          className="flex max-w-full items-center overflow-x-auto rounded-full border border-tv-line bg-tv-panel2 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {TABS.map((t) => {
             const active = tab === t.key
@@ -64,7 +66,7 @@ export default function Home() {
                 aria-current={active ? 'page' : undefined}
                 onClick={() => setTab(t.key)}
                 suppressHydrationWarning
-                className={`relative rounded-full px-3.5 sm:px-4 py-1.5 text-[12.5px] sm:text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                className={`relative shrink-0 rounded-full px-3.5 sm:px-4 py-1.5 text-[12.5px] sm:text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
                   active ? 'text-bull' : 'text-tv-muted hover:text-tv-ink'
                 }`}
               >
@@ -88,7 +90,7 @@ export default function Home() {
               className="inline-block w-2 h-2 rounded-full animate-pulse"
               style={{ background: 'var(--bull)' }}
             />
-            {tab === 'setups' ? 'Live setups' : tab === 'confirmed' ? 'Entry confirmations' : 'AI desk ready'}
+            {tab === 'setups' ? 'Live setups' : tab === 'confirmed' ? 'Entry confirmations' : tab === 'signals' ? 'AI desk ready' : 'SMC desk — Bybit'}
           </span>
           <ThemeToggle />
         </div>
@@ -105,7 +107,7 @@ export default function Home() {
             transition={{ duration: 0.22, ease: 'easeOut' }}
             className="absolute inset-0 overflow-y-auto"
           >
-            {tab === 'setups' ? <SetupBoard /> : tab === 'confirmed' ? <ConfirmedBoard /> : <SignalDashboard />}
+            {tab === 'setups' ? <SetupBoard /> : tab === 'confirmed' ? <ConfirmedBoard /> : tab === 'signals' ? <SignalDashboard /> : <SmcBoard />}
           </motion.div>
         </AnimatePresence>
       </main>

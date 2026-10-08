@@ -445,3 +445,67 @@ Work Log:
 Stage Summary:
 - The app now supports the full trading loop: WAITING zone → entry confirmed → 'I took this trade' freezes the ticket → candles tracked every 45s (TP1 half-bank + breakeven stop, TP2 win, SL loss, manual close) → outcome logged in My trade history — while the Setups tab keeps labeling fresh zones as 'next opportunity' so an open trade is never confused with new suggestions.
 - Files: src/app/api/candles/route.ts (new), src/lib/mytrades.ts (new), src/components/confirmed/ConfirmedBoard.tsx, src/components/setups/SetupBoard.tsx. Pending push/deploy approval.
+---
+Task ID: 24 (kickoff)
+Agent: Z.ai Code (main)
+Task: User request — build BTC Smart Money / Order Block trade setup engine (full SMC spec, 64 sections) as an addition to Trade2Watch
+
+Work Log:
+- Inspected existing repo: Next.js 16 + TS + Tailwind + Prisma SQLite; tabs in src/app/page.tsx (setups/confirmed/signals); market providers in src/lib/market; per-feature component folders. Existing Candle type (time/open/high/low/close/volume) reused.
+- Stack adaptation decided (per spec §61 "reuse existing"): TypeScript pure-function engine modules instead of FastAPI/pandas; SQLite+Prisma instead of PostgreSQL; in-memory cache instead of Redis; REST polling (45s) instead of WebSocket; single /api/smc/analysis consolidated endpoint as primary (§25).
+- Bybit v5 public REST verified working from this sandbox (kline + tickers, retCode 0). Provider written with Binance official-mirror fallback per-TF; forming candles dropped on BOTH sources (closed-candles-only contract); DATA UNAVAILABLE path when both fail (§62) — no fake data ever.
+- Foundation written by main agent (contracts everything builds against):
+  - src/lib/smc/types.ts — SwingPoint/StructureEvent/OrderBlock/FVG/LiquidityLevel/LiquiditySweep/TfSummary/Reason/SmcHistoryRow + SmcAnalysis consolidated response contract; no-look-ahead rules documented in header (swings confirmed only after right-bar candles CLOSE; events fire on candle CLOSES).
+  - src/lib/smc/config.ts — all strategy tunables (§40): swing 2/2, ATR 14, volume 1.5x/20, displacement 1.2xATR, SL 0.15xATR OB-stop, min RR 2.0 (TP2), min score 80, STRICT default, OB + signal score weights (§10/§21), quality bands, lifecycle windows.
+  - src/lib/smc/bybit.ts — multi-TF loader (1D/4H/1H/15M/5M), per-TF cache TTLs, ticker 24h, fallback source labeling.
+  - prisma/schema.prisma — SmcSignal model (unique symbol+obTime+direction dedupe, status/result/rMultiple lifecycle, TP/SL hit timestamps); pushed with bun run db:push.
+- Two parallel build tasks launched: 24-a (engine libs + orchestrator + API route), 24-b (frontend SMC tab UI against the contract).
+
+Stage Summary:
+- Foundation complete; engine + UI build in parallel. NO automatic trading anywhere (§58) — analysis + signals + persistence only. Risk disclaimer (§59) embedded in contract.
+---
+Task ID: 24-b
+Agent: full-stack-developer
+Task: Build the SMC tab frontend — SmcBoard consuming GET /api/smc/analysis (SmcAnalysis contract) with dark-teal Trade2watch design language, added as 4th tab '🎯 SMC Setup'
+
+Work Log:
+- Studied design system from SetupBoard.tsx + ConfirmedBoard.tsx (tv-* tokens, bull/bear/warn/info tints, LadderRow/PlanRow ladder, pill chips, rounded-2xl/3xl cards, framer-motion staggered entrance, uppercase tracking headers) and the SmcAnalysis/SmcAnalysisError/SmcHistoryRow contract in src/lib/smc/types.ts (read-only import; nothing under src/lib or src/app/api touched)
+- Created src/components/smc/ui.tsx — shared primitives: Chip, SmcPanel (uppercase header + count badge), LadderRow (ConfirmedBoard-style icon disc rows), EmptyLine, thin-scrollbar utility class (Tailwind arbitrary variants), fmtClock/fmtWhen/fmtDay (hydration-safe time helpers), and semantic color maps (biasCls, trendCls, dirDot/Text/SoftBg, obStatusCls, fvgStatusCls/Label, LIQ_LABEL friendly names, qualityCls)
+- Created src/components/smc/SmcBoard.tsx ('use client'): 45s setInterval polling of /api/smc/analysis?symbol=BTCUSDT with AbortController + unmount cleanup + mountedRef async guards and isMounted state flag for all time strings (hydration-safe); payload union narrowed via body.ok (503 {ok:false} → DATA UNAVAILABLE; 404/parse failure → same panel; never fake data §62)
+- Sections built per spec: header card (🧠 tile, 'SMC setup' label, BTCUSDT + live price via fmtPrice $81,424 style + 24h chip, BULLISH/quality·score/mode/data-source chips, 'refreshed HH:MM:SS · auto every 45s'); MTF strip grid-cols-2 lg:grid-cols-4 (4H Trend/1H Structure/15M Setup/5M Entry with colored trend word, truncated note, BOS/CHoCH mini-chips); signal hero (LONG bull-glow gradient card / SHORT bear / WATCHLIST warn / NO_TRADE muted, quality badge, big score X/100 + MANDATORY 'quality score — not a win probability' subtext + score bar); LadderRow plan (Entry zone with 'assumed fill ≈ mid', Stop, TP1/2/3 with +R subs from risk_reward, chart-order rows per direction, '1 : 4.3 at TP2' RR chip) or watch-note from explanation[0]/reasons when no trade; score breakdown (reasons[], +points bull / − bear / 0 muted) + engine explanation bullets in a lg:grid-cols-2 section; panels grid lg:grid-cols-2 (Order Blocks 1H with status/fresh/tests/⭐strength chips, FVGs with fillPct progress bars, Liquidity Levels with friendly type names + SWEPT·time/ARMED chips, Liquidity Sweeps with wick extremes + mount-guarded times; all max-h-72 scrollable with 'none right now' empty states); signal history table (max-h-96 scroll, sticky header, min-w-720 for mobile h-scroll, ALL/LONG/SHORT/WIN/LOSS client filter chips min-h-[44px], ACTIVE pulsing chip, TP*/SL/EXPIRED status chips, result + R-multiple chips ±colored, 'no signals yet — the engine is conservative by design' empty state); footer with payload disclaimer + 'Data: Bybit public API · analysis only — no auto-trading'
+- Edited src/app/page.tsx only: Tab union += 'smc', TABS += { key:'smc', label:'🎯 SMC Setup' } after '⚡ AI Signals', status text 'SMC desk — Bybit', ternary chain extended to render <SmcBoard />; import added
+- Verified with agent-browser: SMC tab selects, status text updates; with the real API 404ing (24-a still building) the board shows the DATA UNAVAILABLE panel (bear-tinted, error string, working ⟳ Retry button, zero fake data); mocked a contract-valid SmcAnalysis payload via network route to exercise the full success path — header chips, MTF strip, LONG hero with complete plan ladder + RR chip, breakdown (+/−/0 points), explanation, all 4 panels with correct chip colors/counts, history table rows (ACTIVE pulse, TP1/TP3 HIT, SL HIT, EXPIRED, WIN +2.15R / LOSS -1.00R) and filters (Win→2 rows, Long→3, All→5) all render correctly; desktop + 390px mobile screenshots captured; zero page errors, zero console errors
+- bun run lint clean; bunx tsc --noEmit: zero errors in new files (remaining pre-existing errors are in examples/, skills/, signals/, and src/lib/smc/structure.ts owned by task 24-a, out of my scope); dev.log clean, GET / 200
+
+Stage Summary:
+- Files created: src/components/smc/SmcBoard.tsx, src/components/smc/ui.tsx. Files edited: src/app/page.tsx (tab registration only). No files under src/lib/, src/app/api/, or other boards touched.
+- SMC tab is fully wired against the documented contract: polling, hydration-safe rendering, loading skeletons, graceful DATA UNAVAILABLE (live-verified against the not-yet-built endpoint) and a contract-mocked full-success render of every section. It will go live the moment task 24-a's /api/smc/analysis route lands.
+- lint: PASS. Deviations: none functional — only additions are a thin-scrollbar utility class and the 'Binance fallback' wording in the footer/header source chip when dataSource is BINANCE_FALLBACK.
+---
+Task ID: 24-a
+Agent: full-stack-developer (report reconstructed by main agent — subagent hit context deadline after completing all files, before writing its worklog entry)
+Task: SMC engine backend — pure-function modules, orchestrator, /api/smc/analysis endpoint
+
+Work Log (verified by main agent inspection + live tests):
+- Created 14 modules under src/lib/smc/: atr.ts (Wilder ATR), swings.ts (left/right=2 strict swings with confirmedAt = time[i+right]+tfMs, developing swings excluded), structure.ts (confirmed-swing walk, BOS on CLOSE beyond swing / CHoCH against trend, confirmedAt<=closeTime no-look-ahead guard, HH/HL/LH/LL labels), displacement.ts (body>=1.2xATR), volume.ts (SMA20 ratio), fvg.ts (3-candle gaps, fill%/status tracking), orderblocks.ts (last opposite candle before displacement→BOS; FULL_RANGE; ACTIVE/TESTED/MITIGATED/INVALIDATED/EXPIRED lifecycle; 8-factor strength score per §10 weights), liquidity.ts (EQH/EQL + swing pools + PDH/PDL from 15M + PWH/PWL from 1D, sweep = wick beyond + close back, per-type strengths), mtf.ts, risk.ts (OB_RANGE entry, ORDER_BLOCK_STOP + 0.15xATR, liquidity-priority TPs with 2R/3.5R/5.5R floors, RR@TP2>=2.0 gate), scoring.ts (§21 weights, all 10 reason rows always returned), signal.ts (STRICT/BALANCED/AGGRESSIVE §17 conditions, WATCHLIST vs NO_TRADE per §45, SHORT mirrored), analysis.ts (orchestrator: per-TF analysis → liquidity/OBs on 1H with 4H bias → signal → SmcSignal persistence incl. dedupe (symbol,obTime,direction), never-resurrect-closed rule, 5M-candle lifecycle tracker with pessimistic same-candle SL-first, WIN/LOSS/BREAKEVEN/EXPIRED + R multiples, 30s cache), app/api/smc/analysis/route.ts (GET, symbol+mode params, 503 {ok:false,dataSource:UNAVAILABLE} on failure).
+- Lint: clean. tsc: zero errors in smc files.
+
+Stage Summary:
+- Endpoint verified live: HTTP 200 in ~0.5s, BYBIT source, correct conservative NO_TRADE with 10 explainable reasons; OBs/FVGs/liquidity/sweeps all detected from real data (e.g. bullish PDL sweep 82,759 wick 82,222; fresh bearish OB 84,099-84,312 score 85).
+- Main-agent integration fixes recorded under Task ID 24 (below).
+---
+Task ID: 24
+Agent: Z.ai Code (main)
+Task: Integrate + verify SMC engine & frontend; fix defects
+
+Work Log:
+- Verified Task 24-b frontend (SmcBoard + ui.tsx + page.tsx 4th tab '🎯 SMC Setup') renders all sections from the live API: header (price/24h/bias/mode/source), MTF strip, signal hero with score + 'not a win probability' note, plan ladder, score breakdown, explanation, OB/FVG/liquidity/sweep panels with real data, signal history with filters, disclaimer; DATA UNAVAILABLE + retry path exercised pre-API. Screenshots /tmp/smc-tab.png, /tmp/smc-panels2.png, /tmp/smc-mobile*.png.
+- FIXED (page.tsx): 4th tab was clipped off-screen on mobile (390px) — tablist now max-w-full overflow-x-auto with hidden scrollbar + shrink-0 buttons; verified scrollable + last tab visible at 390px.
+- FIXED (prisma/schema.prisma): SmcSignal ms-epoch columns were Int (INT32) → overflow ('Value 1791306444513 does not fit in an INT column'); migrated obTime/tp*At/slAt/closedAt/createdAt/updatedAt to Float (SQLite REAL exact < 2^53, JSON-safe) + db:push. Endpoint then error-free on fresh requests.
+- PURGED synthetic test row left by the 24-a agent (obTime=123456, mocked Oct-6 timestamps, no reasons — violated §62 no-fake-data); lifecycle had resolved it to TP3_HIT/WIN against candles after its mocked creation date — pipeline behavior consistent, data was garbage-in.
+- PROVEN Prisma round-trip via throwaway script (deleted after): create + compound-unique findUnique dedupe + reasons JSON + ms timestamps + delete all ok; final SmcSignal row count 0.
+- risk.ts inspected: liquidity-priority TPs with 2R/3.5R/5.5R fallback floors correct (mock row's 1R/2R/3R ladder was hand-made test data, not engine output).
+- bun run lint clean; zero browser errors; dev.log clean of smc errors after fixes.
+
+Stage Summary:
+- SMC engine end-to-end operational on real Bybit data: analysis → signal (conservative STRICT) → persistence → candle-based lifecycle tracking → history API. Remaining from spec, deferred as future iterations: chart overlays (TradingView lightweight-charts), backtester + walk-forward, performance analytics page, alerts (Telegram/webhook, config-gated), CoinGlass optional adapter, 1M timeframe. No automatic trading anywhere (§58); disclaimer surfaced in UI (§59).

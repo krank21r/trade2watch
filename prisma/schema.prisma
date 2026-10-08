@@ -53,3 +53,48 @@ model SignalRun {
   @@index([status])
   @@index([createdAt])
 }
+
+// ─── SMC engine (Smart Money Concepts) signal log ───────────────────────────
+
+model SmcSignal {
+  id        String @id @default(cuid())
+  symbol    String
+  direction String // LONG | SHORT
+  setup     String @default("SMC_ORDER_BLOCK")
+  quality   String // A+ | A | B | C
+  score     Int
+  mode      String @default("STRICT")
+
+  entryLow  Float
+  entryHigh Float
+  entryMid  Float
+  stopLoss  Float
+  tp1       Float
+  tp2       Float
+  tp3       Float
+  rr1       Float
+  rr2       Float
+  rr3       Float
+
+  obTime  Float // ms epoch — Float: SQLite REAL is exact for epoch-ms (< 2^53) // OB candle open time (ms) — part of the natural dedupe key
+  obLow   Float
+  obHigh  Float
+  reasons Json?
+
+  status    String @default("ACTIVE") // ACTIVE | TP1_HIT | TP2_HIT | TP3_HIT | SL_HIT | EXPIRED | INVALIDATED
+  result    String? // WIN | LOSS | BREAKEVEN | EXPIRED
+  rMultiple Float?
+
+  tp1At    Float?
+  tp2At    Float?
+  tp3At    Float?
+  slAt     Float?
+  closedAt Float?
+
+  createdAt Float
+  updatedAt Float
+
+  @@unique([symbol, obTime, direction])
+  @@index([symbol, status])
+  @@index([symbol, createdAt])
+}
