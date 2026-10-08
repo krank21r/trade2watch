@@ -8,11 +8,13 @@ import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 
 // ─── Trade Confirmed board ───────────────────────────────────────────────────
-// A dedicated page that only shows trades whose entry is confirmed — i.e. the
-// live price is inside the entry zone (side state === 'LIVE' from the setups
-// engine). Shares the watchlist with the Trade Setups tab via localStorage
-// ('tw_watchlist') and keeps an append-only confirmation log ('tw_confirmed_log')
-// so entries confirmed earlier stay visible after price moves on.
+// A dedicated page that only shows trades whose entry is confirmed. Two ways
+// to confirm: price is inside the entry zone right now (state 'LIVE'), or the
+// zone was HIT by a candle wick recently (state 'HIT') — an entry hit counts
+// as a confirmed trade even after price moves on. Shares the watchlist with
+// the Trade Setups tab via localStorage ('tw_watchlist') and keeps an
+// append-only confirmation log ('tw_confirmed_log') so entries confirmed
+// earlier stay visible after price moves on.
 
 const POLL_MS = 45_000
 const LOG_KEY = 'tw_confirmed_log'

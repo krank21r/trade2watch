@@ -19,7 +19,7 @@ import { buildSnapshot, type Regime, type TechnicalSnapshot } from '@/lib/market
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
-export type SideState = 'LIVE' | 'WAITING' | 'VOID'
+export type SideState = 'LIVE' | 'WAITING' | 'VOID' | 'HIT'
 
 export interface SideSetup {
   strategy: string
@@ -153,6 +153,14 @@ export function detectZoneTouch(
 }
 
 /**
+ * Zone lifecycle:
+ *   WAITING — price away, zone untouched
+ *   LIVE    — price inside the zone right now (entry active)
+ *   HIT     — entry was triggered: a recent candle wick reached the zone and
+ *             price has since moved out. The trade is CONFIRMED (entry hit),
+ *             not waiting — wicks between spot polls still count.
+ *   VOID    — thesis dead (price beyond stop / touch invalidated)
+ *
  * The zone state machine — single source of truth, shared by the generator
  * and the UI contract. Invalidation (VOID) is checked BEFORE "zone live",
  * which is exactly what the original app's zoneState() was missing.
@@ -364,6 +372,12 @@ async function buildBoardSetup(symbol: string, market: 'crypto' | 'stock', nameH
   long.touchedPrice = longTouch?.price ?? null
   short.touchedAt = shortTouch?.at ?? null
   short.touchedPrice = shortTouch?.price ?? null
+
+  // DECISION RULE — entry hit = trade confirmed: a wick into the zone triggers
+  // the entry even after price moves out, so the side stops being WAITING and
+  // becomes HIT (confirmed). LIVE keeps precedence (price in zone right now).
+  if (long.state === 'WAITING' && longTouch) long.state = 'HIT'
+  if (short.state === 'WAITING' && shortTouch) short.state = 'HIT'
 
   const display =
     market === 'crypto' ? CRYPTO_NAMES[ticker.symbol] ?? ticker.symbol : ticker.displayName || nameHint || ticker.symbol

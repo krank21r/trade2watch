@@ -40,6 +40,8 @@ function lsGet(k: string, d: string): string {
 const chipCls: Record<string, string> = {
   liveShort: 'bg-bear/15 text-bear border-bear/45',
   liveLong: 'bg-bull/15 text-bull border-bull/45',
+  hitShort: 'bg-bear/10 text-bear border-bear/35',
+  hitLong: 'bg-bull/10 text-bull border-bull/35',
   waiting: 'bg-warn/10 text-warn border-warn/35',
   void: 'bg-tv-muted/12 text-tv-muted border-tv-line-strong',
 }
@@ -76,6 +78,9 @@ function summarize(s: BoardSetup): { cls: string; txt: string } {
   const sh = s.short
   if (sh?.state === 'LIVE') return { cls: chipCls.liveShort, txt: 'SHORT CONFIRMED' }
   if (l?.state === 'LIVE') return { cls: chipCls.liveLong, txt: 'LONG CONFIRMED' }
+  // entry hit = confirmed: zone was triggered by a wick, price moved on
+  if (sh?.state === 'HIT') return { cls: chipCls.hitShort, txt: 'SHORT HIT — CONFIRMED' }
+  if (l?.state === 'HIT') return { cls: chipCls.hitLong, txt: 'LONG HIT — CONFIRMED' }
   const waits: string[] = []
   if (l?.state === 'WAITING' && l.distPct !== null) waits.push(`${l.distPct.toFixed(1)}% to LONG`)
   if (sh?.state === 'WAITING' && sh.distPct !== null) waits.push(`${sh.distPct.toFixed(1)}% to SHORT`)
@@ -184,6 +189,10 @@ function TradePlanCard({
       <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${isLong ? chipCls.liveLong : chipCls.liveShort}`}>
         ✓ CONFIRMED — IN ENTRY ZONE
       </span>
+    ) : side.state === 'HIT' ? (
+      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${isLong ? chipCls.hitLong : chipCls.hitShort}`}>
+        ✓ CONFIRMED — ENTRY HIT
+      </span>
     ) : side.state === 'VOID' ? (
       <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${chipCls.void}`}>VOID — THESIS DEAD</span>
     ) : (
@@ -212,13 +221,13 @@ function TradePlanCard({
   const entrySub =
     side.state === 'LIVE'
       ? `✓ confirmed${confirmedAt ? ` ${new Date(confirmedAt).toLocaleTimeString()}` : ''} — price ${fmtPrice(livePrice, currency)} inside entry zone`
-      : side.state === 'VOID'
-        ? 'setup invalidated — wait for fresh structure'
-        : `live ${fmtPrice(livePrice, currency)} — ${side.distPct?.toFixed(1) ?? '?'}% away, set limits and wait${
-            side.touchedAt !== null && side.touchedPrice !== null
-              ? ` · 🎯 wick hit ${fmtPrice(side.touchedPrice, currency)} ${fmtWhen(side.touchedAt)}`
-              : ''
-          }`
+      : side.state === 'HIT'
+        ? `✓ entry triggered — wick ${side.touchedPrice !== null ? fmtPrice(side.touchedPrice, currency) : '—'}${
+            side.touchedAt !== null ? ` ${fmtWhen(side.touchedAt)}` : ''
+          } · price now ${fmtPrice(livePrice, currency)} (${side.distPct?.toFixed(1) ?? '?'}% away) — trade confirmed`
+        : side.state === 'VOID'
+          ? 'setup invalidated — wait for fresh structure'
+          : `live ${fmtPrice(livePrice, currency)} — ${side.distPct?.toFixed(1) ?? '?'}% away, set limits and wait`
 
   // targets in the plan's own order: TP3 (furthest) → TP2 → TP1
   const targetRows = (
@@ -383,8 +392,14 @@ function ConfirmationCard({
             TRADE CONFIRMED — {setup.pair} {isLong ? 'LONG' : 'SHORT'}
           </div>
           <div className={`mt-0.5 text-[11.5px] tabular-nums ${C.muted}`}>
-            Price {fmtPrice(info.price, setup.currency)} reached the entry zone · confirmed {new Date(info.at).toLocaleTimeString()} · live{' '}
-            {fmtPrice(setup.price, setup.currency)}
+            {s.state === 'HIT'
+              ? `Wick ${fmtPrice(info.price, setup.currency)} hit the entry zone${info.at ? ` ${fmtWhen(info.at)}` : ''} · price now ${fmtPrice(
+                  setup.price,
+                  setup.currency,
+                )} — entry triggered`
+              : `Price ${fmtPrice(info.price, setup.currency)} reached the entry zone · confirmed ${new Date(info.at).toLocaleTimeString()} · live ${
+                  fmtPrice(setup.price, setup.currency)
+                }`}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -410,7 +425,11 @@ function ConfirmationCard({
 
       {/* checklist */}
       <div className="flex flex-wrap gap-1.5">
-        {['Price inside entry zone', isLong ? 'Stop not breached (price above stop)' : 'Stop not breached (price below stop)', `R:R gate passed — 1:${rr1} at T1`].map(
+        {[
+          s.state === 'HIT' ? 'Entry zone hit (candle wick)' : 'Price inside entry zone',
+          isLong ? 'Stop not breached (price above stop)' : 'Stop not breached (price below stop)',
+          `R:R gate passed — 1:${rr1} at T1`,
+        ].map(
           (t) => (
             <span
               key={t}
@@ -535,6 +554,15 @@ export function SetupBoard() {
           const info: ConfirmInfo = prior ? { ...prior, price: setup.price } : { at: Date.now(), price: setup.price }
           next[key] = info
           if (!prior) fired.push({ key, symbol: setup.symbol, side: kind, info, s, setup })
+        } else if (s.state === 'HIT') {
+          // entry hit (wick) = confirmed — record with the wick print + candle
+          // time so the banner reflects the real trigger, not the poll time
+          const prior = prev[key]
+          const info: ConfirmInfo = prior
+            ? { ...prior }
+            : { at: s.touchedAt ?? Date.now(), price: s.touchedPrice ?? setup.price }
+          next[key] = info
+          if (!prior) fired.push({ key, symbol: setup.symbol, side: kind, info, s, setup })
         }
       }
     }
@@ -549,11 +577,20 @@ export function SetupBoard() {
         return n
       })
       toast({
-        title: `✅ ${f.symbol} ${f.side.toUpperCase()} CONFIRMED`,
-        description: `Price ${fmtPrice(f.info.price, f.setup.currency)} reached the entry zone ${fmtPrice(
-          f.s.entryLow,
-          f.setup.currency,
-        )} – ${fmtPrice(f.s.entryHigh, f.setup.currency)} · SL ${fmtPrice(f.s.stop, f.setup.currency)} · TP1 ${fmtPrice(f.s.t1, f.setup.currency)}`,
+        title:
+          f.s.state === 'HIT'
+            ? `🎯 ${f.symbol} ${f.side.toUpperCase()} CONFIRMED — ENTRY HIT`
+            : `✅ ${f.symbol} ${f.side.toUpperCase()} CONFIRMED`,
+        description:
+          f.s.state === 'HIT'
+            ? `A candle wick reached ${fmtPrice(f.info.price, f.setup.currency)} inside the entry zone ${fmtPrice(
+                f.s.entryLow,
+                f.setup.currency,
+              )} – ${fmtPrice(f.s.entryHigh, f.setup.currency)} · SL ${fmtPrice(f.s.stop, f.setup.currency)} · TP1 ${fmtPrice(f.s.t1, f.setup.currency)}`
+            : `Price ${fmtPrice(f.info.price, f.setup.currency)} reached the entry zone ${fmtPrice(
+                f.s.entryLow,
+                f.setup.currency,
+              )} – ${fmtPrice(f.s.entryHigh, f.setup.currency)} · SL ${fmtPrice(f.s.stop, f.setup.currency)} · TP1 ${fmtPrice(f.s.t1, f.setup.currency)}`,
       })
     }
   }, [data, toast])
@@ -606,7 +643,7 @@ export function SetupBoard() {
       const s = setup[kind]
       const key = `${setup.symbol}:${kind}`
       const info = confirms[key]
-      if (s?.state === 'LIVE' && info && !dismissed.has(key)) {
+      if ((s?.state === 'LIVE' || s?.state === 'HIT') && info && !dismissed.has(key)) {
         let sizingTxt: string | null = null
         if (aNum > 0 && rNum > 0) {
           const m = (s.entryLow + s.entryHigh) / 2

@@ -367,3 +367,18 @@ Stage Summary:
 - Answer to user: YES, price DID hit the limit zone — 4h candle wick $82,228 at Oct 08 04:00 UTC inside $82,077–$82,530; the app's spot-poll confirmation design missed fast touches.
 - The app now detects zone hits from real candle wicks (server-side, 30-candle lookback, invalidation-aware), so hits between polls or with the tab closed are recovered and shown on both Trade Setups and Trade Confirmed tabs.
 - Files changed: src/lib/setups/generate.ts, src/components/confirmed/ConfirmedBoard.tsx, src/components/setups/SetupBoard.tsx. Change is local-only, pending push/deploy approval.
+---
+Task ID: 18
+Agent: Z.ai Code (main)
+Task: Change app decision rule per user — an entry-zone hit (wick touch) counts as a CONFIRMED trade, update all decisions/UI accordingly
+
+Work Log:
+- Extended the zone state machine (src/lib/setups/generate.ts): SideState now includes 'HIT' — zone was triggered by a recent candle wick, price has since moved out, setup not invalidated. Decision rule in buildBoardSetup: WAITING + detectZoneTouch() → state becomes HIT (LIVE keeps precedence while price is inside the zone; VOID wins if invalidated).
+- SetupBoard.tsx: new chipCls hitLong/hitShort; ZoneWatch strip chip "LONG/SHORT HIT — CONFIRMED"; plan-card chip "✓ CONFIRMED — ENTRY HIT"; entry row sub "✓ entry triggered — wick $82,228 04:00 AM · price now $82,7xx (0.2% away) — trade confirmed"; confirmation tracker records HIT with at=touchedAt/price=touchedPrice and fires a 🎯 "CONFIRMED — ENTRY HIT" toast; confirmation banner now shows HIT wording ("Wick $82,228 hit the entry zone … — entry triggered") and checklist item "Entry zone hit (candle wick)"; banner visibility condition includes HIT.
+- ConfirmedBoard.tsx: header docs updated — HIT counts as confirmed; tracker already routes HIT sides through the wick-event logging (🎯 history rows), live cards remain LIVE-only (price actually in zone).
+- Verified end-to-end: lint clean; /api/setups?symbols=BTC → long state=HIT (zone 82,075–82,533, touchedAt Oct 08 04:00 UTC wick=82,228); agent-browser confirmed banner "TRADE CONFIRMED — BTC/USD LONG", strip chips "LONG HIT — CONFIRMED", plan chip "✓ CONFIRMED — ENTRY HIT", Trade Confirmed tab row "🎯 wick $82,228 hit 04:00 AM · zone $82,075 – $82,533"; zero page errors; dev.log clean.
+- NOT pushed to git / NOT deployed to Vercel yet (also awaiting user's decision on teal restyle).
+
+Stage Summary:
+- The app's decision logic now treats "entry hit = trade confirmed": any recent candle wick into an entry zone flips the side from WAITING to HIT/confirmed across the engine, Trade Setups (chips, entry row, banner, toast, ZoneWatch strip) and Trade Confirmed (history + future logs). Invalidation still wins — a close beyond stop after the touch suppresses the hit.
+- Files changed: src/lib/setups/generate.ts, src/components/setups/SetupBoard.tsx, src/components/confirmed/ConfirmedBoard.tsx. Local-only, pending push/deploy approval.
