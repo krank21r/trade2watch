@@ -29,6 +29,7 @@ import type {
   Reason,
   SmcAnalysis,
   SmcHistoryRow,
+  SmcPerformance,
   StrategyMode,
   StructureEvent,
   SwingPoint,
@@ -45,6 +46,7 @@ import { detectOrderBlocks, isActiveOb } from './orderblocks'
 import { detectLiquidity, detectSweeps } from './liquidity'
 import { buildMtfs, type MtfTfInput } from './mtf'
 import { evaluateSignal } from './signal'
+import { sendSmcAlert } from './alerts'
 import type { TradePlan } from './risk'
 
 interface TfAnalysis {
@@ -195,6 +197,36 @@ async function updateLifecycle(symbol: string, candles5M: Candle[], cfg: SmcCfg,
         where: { id: row.id },
         data: { status, result, rMultiple, tp1At, tp2At, tp3At, slAt, closedAt, updatedAt: now },
       })
+      // lifecycle alert (§35/§36) — idempotent per (row.id, event), fire-and-forget
+      if (status !== row.status) {
+        const ev =
+          status === 'TP1_HIT'
+            ? 'TP1_HIT'
+            : status === 'TP2_HIT'
+              ? 'TP2_HIT'
+              : status === 'TP3_HIT'
+                ? 'TP3_HIT'
+                : status === 'SL_HIT'
+                  ? 'SL_HIT'
+                  : status === 'EXPIRED' && result === 'EXPIRED'
+                    ? 'EXPIRED'
+                    : null
+        if (ev) {
+          void sendSmcAlert({
+            signalId: row.id,
+            symbol,
+            event: ev,
+            direction: row.direction === 'SHORT' ? 'SHORT' : 'LONG',
+            rMultiple,
+            note:
+              ev === 'SL_HIT' && result === 'BREAKEVEN'
+                ? 'stopped after TP1 — half position banked'
+                : ev === 'TP2_HIT'
+                  ? 'final banked result — runner tracked to TP3'
+                  : undefined,
+          })
+        }
+      }
     }
   }
 }
@@ -336,6 +368,27 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
             updatedAt: now,
           },
         })
+        // new-signal alert (§35/§36) — idempotent per row, fire-and-forget
+        const created = await db.smcSignal.findUnique({
+          where: { symbol_obTime_direction: { symbol, obTime: ob.time, direction: signal } },
+        })
+        if (created) {
+          void sendSmcAlert({
+            signalId: created.id,
+            symbol,
+            event: 'SIGNAL_CREATED',
+            direction: signal,
+            quality,
+            score,
+            entryLow: trade.entry_low,
+            entryHigh: trade.entry_high,
+            entryMid: trade.entry_mid,
+            stopLoss: trade.stop_loss,
+            tp1: trade.tp1,
+            tp2: trade.tp2,
+            tp3: trade.tp3,
+          })
+        }
       } else if (existing.result !== null) {
         // this exact setup was already tracked and closed — never resurrect it
         signal = 'NO_TRADE'
@@ -383,6 +436,36 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
     }))
   } catch (err) {
     console.error('[smc] history load error:', err)
+  }
+
+  // ── live performance (all rows ever logged for this symbol, §32) ──────────
+  let performance: SmcPerformance | null = null
+  try {
+    const perfRows = await db.smcSignal.findMany({
+      where: { symbol },
+      select: { direction: true, status: true, result: true, rMultiple: true },
+    })
+    const done = perfRows.filter((r) => r.result !== null)
+    const wins = done.filter((r) => r.result === 'WIN').length
+    const losses = done.filter((r) => r.result === 'LOSS').length
+    const rs = done.map((r) => r.rMultiple ?? 0)
+    const totalR = Math.round(rs.reduce((a, b) => a + b, 0) * 100) / 100
+    performance = {
+      total: perfRows.length,
+      longs: perfRows.filter((r) => r.direction === 'LONG').length,
+      shorts: perfRows.filter((r) => r.direction === 'SHORT').length,
+      open: perfRows.filter((r) => r.result === null).length,
+      resolved: done.length,
+      wins,
+      losses,
+      breakevens: done.filter((r) => r.result === 'BREAKEVEN').length,
+      expired: done.filter((r) => r.result === 'EXPIRED').length,
+      winRatePct: wins + losses > 0 ? Math.round((wins / (wins + losses)) * 1000) / 10 : 0,
+      totalR,
+      avgR: done.length > 0 ? Math.round((totalR / done.length) * 100) / 100 : 0,
+    }
+  } catch (err) {
+    console.error('[smc] performance load error:', err)
   }
 
   // ── assemble the consolidated payload (§23/§25) ────────────────────────────
@@ -481,6 +564,7 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
     explanation,
     reasons,
     history,
+    performance,
     disclaimer: SMC_DISCLAIMER,
   }
 

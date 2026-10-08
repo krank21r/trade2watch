@@ -509,3 +509,24 @@ Work Log:
 
 Stage Summary:
 - SMC engine end-to-end operational on real Bybit data: analysis → signal (conservative STRICT) → persistence → candle-based lifecycle tracking → history API. Remaining from spec, deferred as future iterations: chart overlays (TradingView lightweight-charts), backtester + walk-forward, performance analytics page, alerts (Telegram/webhook, config-gated), CoinGlass optional adapter, 1M timeframe. No automatic trading anywhere (§58); disclaimer surfaced in UI (§59).
+
+---
+Task ID: 25
+Agent: Z.ai Code (main)
+Task: SMC spec completion round — backtester + walk-forward validation, alerts (Telegram/webhook), live performance analytics
+
+Work Log:
+- Read worklog + verified Tasks 24-a/24-b/24 state: SMC engine, /api/smc/analysis, SMC tab all live (NO_TRADE correct conservative default, BEARISH bias, bearish OBs flowing). Confirmed SHORT is a first-class signal path.
+- Built src/lib/smc/backtest.ts: paginated kline loader (Bybit primary + Binance mirror fallback, per-TF page walk to 90d, closed-candles-only, 10-min dataset cache), structural NO-LOOK-AHEAD via binary-search time-slicing (each TF sliced to closes <= t at every 15M-close decision point), pipeline replay using the exact live engine modules (atr/swings/structure/displacement/volume/fvg/orderblocks/liquidity/signal) with the same config gates, simulated trades following the identical pessimistic 5M lifecycle (SL-first, LOSS -1R / BREAKEVEN 0.5R(TP1) / WIN 0.5R(TP1)+0.5R(TP2)), MFE/MAE tracking, never re-enter a played OB, one position at a time, force-expire at horizon end. Walk-forward = K consecutive folds (params are FIXED everywhere -> every fold is out-of-sample by construction); stats: trades/W-L-BE-exp/win rate/total R/avg R/profit factor(nullable = no losers)/max drawdown R/avg MFE/MAE, plus long/short splits.
+- Built src/app/api/smc/backtest/route.ts: GET symbol/days(7-90)/mode/folds(2-8), 10-min result cache keyed by params, single-flight promise dedupe for concurrent identical requests, 503 {ok:false} on failure, maxDuration 120.
+- Built src/lib/smc/alerts.ts (S35/S36): Telegram sendMessage + generic webhook, env-gated (SMC_ALERTS_ENABLED=1 + TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or SMC_WEBHOOK_URL), idempotent per (signalId, event) with TTL GC, fire-and-forget with 8s timeout — analysis path can never break or hang on alerts. Read-only credentials only (S58).
+- Wired alerts into analysis.ts: SIGNAL_CREATED on new deduped row (fetches created id), TP1/TP2/TP3/SL/EXPIRED alerts on status transitions in updateLifecycle (note on SL-after-TP1 breakeven).
+- Performance analytics (S32): SmcPerformance added to types.ts (optional contract-safe field) + computed over ALL SmcSignal rows in analysis payload (total/L/S/open/resolved/W/L/BE/exp/win rate/totalR/avgR).
+- Frontend: src/components/smc/BacktestCard.tsx (on-demand only, never polled): 14/30/90d chips + run button with spinner state, 6-stat grid, 4-fold walk-forward strip with date ranges, provenance line (source, candle counts, entry model, disclaimer), error/retry state, 0-trades conservative message. SmcBoard.tsx: BacktestCard inserted between panels and history; live-log performance chip strip above history table (hidden while 0 signals). BacktestCard import is type-only over the pure backtest module — no client-side heaviness.
+- Verified live: 14d STRICT backtest 8s (2 SHORT trades: -1R / +2.75R, folds correct); 30d BALANCED 21s (7 trades 2L/5S, honest -3.25R total, per-direction + fold splits correct); analysis endpoint 200 with performance field + disclaimer intact; UI click-through of Run backtest renders all stats/folds; mobile 390px + desktop 1440px screenshots clean; sticky footer intact; zero page errors; prisma query load visible and healthy in dev.log; MTF strip/hero/panels/history all confirmed present.
+- bun run lint clean; bunx tsc --noEmit zero errors in touched files.
+
+Stage Summary:
+- SMC spec deferred items now DONE: backtester + walk-forward (S29-31), alerts (S35-36), live performance (S32). Remaining optional: chart overlays (lightweight-charts), CoinGlass adapter, 1M TF.
+- Backtest honestly reports BALANCED mode losing -3.25R over 30d while STRICT produced no trades — the engine reports what the data says, never fabricates (S62). SHORT setups fire in practice: 5 of 7 BALANCED trades and both 14d STRICT trades were SHORT.
+- Alerts dormant until user sets env vars in production (SMC_ALERTS_ENABLED + destinations); zero behavior change until then.

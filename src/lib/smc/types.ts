@@ -154,6 +154,23 @@ export interface SmcHistoryRow {
   slAt: number | null
 }
 
+// ─── live performance (computed from the SQLite signal log) ──────────────────
+
+export interface SmcPerformance {
+  total: number // rows ever logged for the symbol
+  longs: number
+  shorts: number
+  open: number // still ACTIVE / TP1_HIT / TP2_HIT
+  resolved: number
+  wins: number
+  losses: number
+  breakevens: number
+  expired: number
+  winRatePct: number // wins / (wins + losses); BEs excluded
+  totalR: number
+  avgR: number
+}
+
 // ─── THE consolidated response — primary contract (§23/§25/§50) ─────────────
 
 export interface SmcAnalysis {
@@ -199,6 +216,7 @@ export interface SmcAnalysis {
   explanation: string[]
   reasons: Reason[]
   history: SmcHistoryRow[]
+  performance: SmcPerformance | null
   disclaimer: string
 }
 

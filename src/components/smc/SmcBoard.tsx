@@ -30,6 +30,7 @@ import {
   trendCls,
 } from '@/components/smc/ui'
 import type { SmcAnalysis, SmcAnalysisError, SmcHistoryRow, SignalType } from '@/lib/smc/types'
+import { BacktestCard } from '@/components/smc/BacktestCard'
 
 const POLL_MS = 45_000
 const API = '/api/smc/analysis?symbol=BTCUSDT'
@@ -642,6 +643,9 @@ export function SmcBoard() {
         </SmcPanel>
       </motion.section>
 
+      {/* ── backtest (on-demand, never polled) ── */}
+      <BacktestCard />
+
       {/* ── signal history ── */}
       <motion.section {...motionT(0.25)} aria-label="Signal history" className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -666,6 +670,39 @@ export function SmcBoard() {
             ))}
           </div>
         </div>
+        {data.performance && data.performance.total > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-1.5" aria-label="Live signal performance">
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-tv-muted2">Live log</span>
+            <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
+              {data.performance.total} signals ({data.performance.longs}L/{data.performance.shorts}S)
+            </span>
+            {data.performance.open > 0 && (
+              <span className="rounded-full border border-warn/35 bg-warn/10 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-warn">
+                {data.performance.open} open
+              </span>
+            )}
+            {data.performance.resolved > 0 && (
+              <>
+                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
+                  win {data.performance.winRatePct}%
+                </span>
+                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
+                  avg {data.performance.avgR > 0 ? '+' : ''}{data.performance.avgR}R
+                </span>
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-[10.5px] font-bold tabular-nums ${
+                    data.performance.totalR > 0 ? 'border-bull/35 bg-bull/10 text-bull' : data.performance.totalR < 0 ? 'border-bear/35 bg-bear/10 text-bear' : 'border-tv-line bg-tv-panel2 text-tv-ink'
+                  }`}
+                >
+                  {data.performance.totalR > 0 ? '+' : ''}{data.performance.totalR}R total
+                </span>
+                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-muted">
+                  {data.performance.wins}W/{data.performance.losses}L/{data.performance.breakevens}BE/{data.performance.expired}exp
+                </span>
+              </>
+            )}
+          </div>
+        )}
         {histRows.length === 0 ? (
           <EmptyLine>no signals yet — the engine is conservative by design</EmptyLine>
         ) : (
