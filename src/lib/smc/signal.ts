@@ -78,6 +78,10 @@ export interface SignalEvaluation {
   quality: 'A+' | 'A' | 'B' | 'C' | '—'
   explanation: string[]
   watchNote?: string
+  /** close time of the LAST gate that passed — the entry trigger (5M BOS /
+   *  displacement in STRICT, latest 15M confirm in BALANCED, OB's own BOS in
+   *  AGGRESSIVE). null when nothing confirmed. Powers the UI "confirmed Xm ago". */
+  confirmAt: number | null
 }
 
 interface SideEval {
@@ -93,6 +97,7 @@ interface SideEval {
   inZone: boolean
   m15Ok: boolean
   m5Ok: boolean
+  confirmAt: number | null // close time of the last-passed confirmation gate
   trade: TradePlan | null
   score: number
   quality: 'A+' | 'A' | 'B' | 'C' | '—'
@@ -124,6 +129,7 @@ function evaluateSide(side: 'LONG' | 'SHORT', data: SignalInput, cfg: SmcCfg): S
     inZone: false,
     m15Ok: false,
     m5Ok: false,
+    confirmAt: null,
     trade: null,
     score: 0,
     quality: '—',
@@ -181,14 +187,25 @@ function evaluateSide(side: 'LONG' | 'SHORT', data: SignalInput, cfg: SmcCfg): S
     const m5Close = data.m5.lastCandleTime + TF_MS['5M']
     if (cfg.entryModeA === 'CONSERVATIVE') {
       const m5Recent = recentEvents(data.m5.events, TF_MS['5M'], cfg.confirm5Lookback, m5Close)
-      base.m5Ok = m5Recent.some((e) => e.type === 'BOS' && e.direction === dir)
+      const m5Triggers = m5Recent.filter((e) => e.type === 'BOS' && e.direction === dir)
+      base.m5Ok = m5Triggers.length > 0
+      if (base.m5Ok) base.confirmAt = Math.max(...m5Triggers.map((e) => e.confirmedAt))
     } else {
       // AGGRESSIVE 5M entry: displacement candle in the direction.
       base.m5Ok = data.m5.displacement !== null && data.m5.displacement.direction === dir
+      if (base.m5Ok && data.m5.displacement) base.confirmAt = data.m5.displacement.time + TF_MS['5M']
     }
   } else {
     base.m5Ok = true
+    // BALANCED: last passed gate is the 15M confirmation (AGGRESSIVE mode skips it).
+    if (data.mode === 'BALANCED') {
+      const m15Triggers = m15Recent.filter((e) => e.direction === dir)
+      if (m15Triggers.length > 0) base.confirmAt = Math.max(...m15Triggers.map((e) => e.confirmedAt))
+    }
   }
+
+  // final fallback: the OB's own 1H BOS is the last thing that provably confirmed
+  if (base.confirmAt === null && base.ob) base.confirmAt = base.ob.bosTime + h1TfMs
 
   // (g) trade plan (RR gate lives inside buildTrade).
   base.trade = base.ob ? buildTrade(base.ob, side, data.h1.atr, data.levels, data.h1.swings, cfg, undefined, data.htfSwings) : null
@@ -271,6 +288,7 @@ export function evaluateSignal(data: SignalInput, cfg: SmcCfg): SignalEvaluation
       score: chosen.score,
       quality: chosen.quality,
       explanation: [...chosen.explanation],
+      confirmAt: chosen.confirmAt,
     }
   }
 
@@ -305,6 +323,7 @@ export function evaluateSignal(data: SignalInput, cfg: SmcCfg): SignalEvaluation
       quality: watch.quality,
       explanation: [...watch.explanation],
       watchNote,
+      confirmAt: null,
     }
   }
 
@@ -328,5 +347,6 @@ export function evaluateSignal(data: SignalInput, cfg: SmcCfg): SignalEvaluation
     score: 0,
     quality: '—',
     explanation: explanations,
+    confirmAt: null,
   }
 }

@@ -285,6 +285,14 @@ export function SmcBoard() {
     (data.reasons[0] ? `${data.reasons[0].factor} — ${data.reasons[0].result}` : null) ??
     'No qualified setup — the engine is standing aside.'
 
+  // signal freshness — deterministic (both stamps come from the payload, hydration-safe)
+  const confirmAge = (() => {
+    if ((data.signal !== 'LONG' && data.signal !== 'SHORT') || !data.signal_confirmed_at) return null
+    const mins = Math.floor(Math.max(0, data.generatedAt - data.signal_confirmed_at) / 60_000)
+    const txt = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : `${Math.floor(mins / 60)}h ${mins % 60}m ago`
+    return { mins, txt }
+  })()
+
   const histRows = data.history.filter((h) =>
     histFilter === 'ALL'
       ? true
@@ -426,6 +434,20 @@ export function SmcBoard() {
               <span>{theme.word}</span>
             </div>
             <div className="mt-1.5 text-[12.5px] text-tv-muted">{theme.sub}</div>
+            {confirmAge && (
+              <div
+                className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
+                  confirmAge.mins > 60
+                    ? 'border-warn/40 bg-warn/10 text-warn'
+                    : data.signal === 'LONG'
+                      ? 'border-bull/30 bg-bull/10 text-bull'
+                      : 'border-bear/30 bg-bear/10 text-bear'
+                }`}
+                title="Close time of the entry-trigger event (the last confirmation gate)"
+              >
+                ⚡ confirmed {confirmAge.txt}
+              </div>
+            )}
           </div>
           <div className="shrink-0 text-right">
             <span className={`inline-block rounded-full border px-2.5 py-1 text-[12.5px] font-extrabold ${qualityCls(data.quality)}`}>

@@ -546,6 +546,7 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
     liquidity_levels: liquidityLevels,
     sweeps: sweeps.slice(0, 5),
     signal,
+    signal_confirmed_at: evaluation.confirmAt ?? null,
     quality,
     score,
     mode: cfg.mode,

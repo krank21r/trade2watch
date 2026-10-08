@@ -200,6 +200,10 @@ export interface SmcAnalysis {
   liquidity_levels: LiquidityLevel[]
   sweeps: LiquiditySweep[]
   signal: SignalType
+  /** close time of the entry-trigger event that confirmed the signal
+   *  (5M BOS/displacement in STRICT, 15M confirm in BALANCED, OB's 1H BOS
+   *  fallback) — null when the current state is WATCHLIST / NO_TRADE */
+  signal_confirmed_at: number | null
   quality: 'A+' | 'A' | 'B' | 'C' | '—'
   score: number
   mode: StrategyMode

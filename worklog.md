@@ -530,3 +530,17 @@ Stage Summary:
 - SMC spec deferred items now DONE: backtester + walk-forward (S29-31), alerts (S35-36), live performance (S32). Remaining optional: chart overlays (lightweight-charts), CoinGlass adapter, 1M TF.
 - Backtest honestly reports BALANCED mode losing -3.25R over 30d while STRICT produced no trades — the engine reports what the data says, never fabricates (S62). SHORT setups fire in practice: 5 of 7 BALANCED trades and both 14d STRICT trades were SHORT.
 - Alerts dormant until user sets env vars in production (SMC_ALERTS_ENABLED + destinations); zero behavior change until then.
+
+---
+Task ID: 26
+Agent: Z.ai Code (main)
+Task: SMC signal-freshness indicator ("confirmed Xm ago") on the hero card
+
+Work Log:
+- signal.ts: SideEval + SignalEvaluation gained confirmAt — close time of the LAST gate that passed: STRICT = latest in-direction 5M BOS confirmedAt (CONSERVATIVE) or 5M displacement candle close (AGGRESSIVE); BALANCED = latest 15M confirm; fallback = OB's own 1H BOS close; null for WATCHLIST/NO_TRADE.
+- types.ts: SmcAnalysis += signal_confirmed_at (number | null); analysis.ts passes evaluation.confirmAt through.
+- SmcBoard.tsx: deterministic hydration-safe age chip under the signal word (generatedAt − signal_confirmed_at, both server stamps): "⚡ confirmed just now / Xm ago / Xh Xm ago", bull tint for LONG, bear for SHORT, warn tint when >60min (possible in BALANCED/AGGRESSIVE where gates are older); hidden for WATCHLIST/NO_TRADE; tooltip explains the timestamp.
+- Verified live: API returns signal_confirmed_at correctly (null on NO_TRADE in all 3 modes); browser-verified via contract-valid browser-only mock: fresh SHORT → "⚡ confirmed 12 min ago" (bear tint), stale → "confirmed 3h 20m ago" (warn tint); unmocked → real NO_TRADE data restored, chip correctly hidden; 0 console/page errors. lint + tsc clean.
+
+Stage Summary:
+- Freshness of a live signal is now visible at a glance — user asked for exactly this after the "when do setups display" explanation. No breaking contract change (additive required field, both sides updated together).
