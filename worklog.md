@@ -304,3 +304,20 @@ Work Log:
 
 Stage Summary:
 - Trade Confirmed now checks crypto AND stocks by default on local + production; existing browsers self-migrate on next visit; NVDA real short zone was within ~1.2% of price at verification time
+
+---
+Task ID: 15
+Agent: Z.ai Code (orchestrator)
+Task: Full restyle to calm premium teal-on-paper SaaS design (user-provided Style + Spec)
+
+Work Log:
+- globals.css rewritten: LIGHT = spec-exact (paper #f8fafc, white panels, hairline borders rgba(15,23,42,.08), ink scale #0f172a/#475569/#64748b, teal scale bull #0f766e + bull-deep #115e59 + info/mid #0d9488 + soft #ccfbf1; bear #be123c + warn #b45309 kept muted for stop-loss/entry semantics); DARK = deep-teal night variant (bg #0a1014, teal-500 accents) so the theme toggle stays useful; shadow-sm globally overridden to ring-hair (0 1px 2px rgba(15,23,42,.04) + 0 0 0 1px rgba(15,23,42,.06)); tight-tracked headings; teal ::selection; .t2w-grid-bg (44px teal grid, masked fade)
+- layout.tsx: Inter via next/font (--font-inter) replaces Geist; theme-provider defaultTheme dark->light; theme-toggle pre-mount assumption flipped to light
+- page.tsx shell: teal grid + top glow + teal-soft glob backdrop, white-glass nav/footer, solid teal logo tile (hover teal-deep, dark icon teal-950), text-bull brand + active tabs, teal status dot
+- Teal accent sweep: SetupBoard watchlist chip + selected card + all focus rings -> bull; SignalDashboard Run CTA -> from-bull to-bull-deep gradient, market pill, New analysis disc, input/history rings -> bull; SignalCard + ReportsPanel input rings/hover -> bull; ConfirmedBoard rings -> bull (warn retained ONLY for entry-zone/ladder semantics)
+- ConfirmedBoard ConfirmedCard featured treatment: rounded-3xl, white->tint gradient fill, teal->teal-mid top hairline (rose for shorts), long card-glow shadow via new --card-glow/--card-glow-bear tokens
+- E2E verified: light setups/confirmed/signals, mock NVDA long LIVE -> featured card + toast, dark all tabs, mobile 390px light+dark, zero console/page errors, lint clean
+- Incidents fixed: container restart had wiped ~/.git-credentials + /home/z/.deploy/vercel-deploy.py and flipped exec bit repo-wide -> restored credentials (chmod 600), git config core.filemode false, rebuilt clean commit b233e18 (10 files only), recreated deploy script (v13 files field now uses `sha` not `sha1`); deployed READY 30s; prod verified (t2w-grid-bg in HTML, live prices, light+dark screenshots)
+
+Stage Summary:
+- App re-skinned to the calm teal-on-paper design system on local + production (commit b233e18); both themes coherent, all functionality intact, deploy tooling restored after container restart wipe
