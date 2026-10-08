@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast'
 import { fmtPrice } from '@/components/signals/types'
 import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
+import { APP_LAUNCH_MS } from '@/lib/setups/generate'
 
 // ─── Trade Confirmed board ───────────────────────────────────────────────────
 // A dedicated page that only shows trades whose entry is confirmed. Two ways
@@ -14,7 +15,8 @@ import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate
 // as a confirmed trade even after price moves on. Shares the watchlist with
 // the Trade Setups tab via localStorage ('tw_watchlist') and keeps an
 // append-only confirmation log ('tw_confirmed_log') so entries confirmed
-// earlier stay visible after price moves on.
+// after the app's launch (Oct 7 2026 IST — wicks before launch never confirm)
+// stay visible after price moves on.
 
 const POLL_MS = 45_000
 const LOG_KEY = 'tw_confirmed_log'
@@ -57,7 +59,12 @@ function lsGet(k: string, d: string): string {
 function loadLog(): ConfirmEvent[] {
   try {
     const raw = JSON.parse(localStorage.getItem(LOG_KEY) ?? '[]') as ConfirmEvent[]
-    return Array.isArray(raw) ? raw.filter((e) => e && typeof e.key === 'string') : []
+    if (!Array.isArray(raw)) return []
+    // drop malformed rows AND anything confirmed before the app existed —
+    // those hits predate the app's suggestions and must not be shown
+    return raw.filter(
+      (e) => e && typeof e.key === 'string' && typeof e.confirmedAt === 'number' && e.confirmedAt >= APP_LAUNCH_MS,
+    )
   } catch {
     return []
   }

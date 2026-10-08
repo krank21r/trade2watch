@@ -131,12 +131,19 @@ function rrString(mid: number, risk: number, t1: number, t2: number): string {
 
 const TOUCH_LOOKBACK = 30 // candles ≈ 5 days on 4h crypto · ≈ 6 weeks on 1d stocks
 
+// The app went live on Oct 7 2026 (IST) — it could only have suggested zones
+// from that moment on. A wick touching an entry zone BEFORE launch is not a
+// confirmation of an app suggestion (the suggestion didn't exist yet), so
+// candles that opened before this moment never count as entry hits.
+export const APP_LAUNCH_MS = Date.UTC(2026, 9, 6, 18, 30) // 2026-10-07 00:00 IST
+
 export function detectZoneTouch(
   candles: Candle[],
   side: Pick<SideSetup, 'entryLow' | 'entryHigh' | 'stop'>,
   isLong: boolean,
 ): { at: number; price: number } | null {
-  const recent = candles.slice(-TOUCH_LOOKBACK)
+  // only candles from app launch onward — the app's suggestions start there
+  const recent = candles.slice(-TOUCH_LOOKBACK).filter((c) => c.time >= APP_LAUNCH_MS)
   for (let i = recent.length - 1; i >= 0; i--) {
     const c = recent[i]
     if (!(c.low <= side.entryHigh && c.high >= side.entryLow)) continue // no overlap
@@ -156,9 +163,10 @@ export function detectZoneTouch(
  * Zone lifecycle:
  *   WAITING — price away, zone untouched
  *   LIVE    — price inside the zone right now (entry active)
- *   HIT     — entry was triggered: a recent candle wick reached the zone and
- *             price has since moved out. The trade is CONFIRMED (entry hit),
- *             not waiting — wicks between spot polls still count.
+ *   HIT     — entry was triggered: a recent candle wick (app launch or later)
+ *             reached the zone and price has since moved out. The trade is
+ *             CONFIRMED (entry hit), not waiting — wicks between spot polls
+ *             still count. Pre-launch candles never confirm.
  *   VOID    — thesis dead (price beyond stop / touch invalidated)
  *
  * The zone state machine — single source of truth, shared by the generator

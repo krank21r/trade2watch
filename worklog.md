@@ -414,3 +414,18 @@ Work Log:
 Stage Summary:
 - Separation of concerns is now clean: Trade Setups tab = live zones/levels only (state chips are neutral: IN ZONE / ZONE HIT / WAITING / VOID); all confirmation UI (banner, toasts, cards) lives exclusively on the ✅ Trade Confirmed tab.
 - Files changed: src/components/setups/SetupBoard.tsx. Pending push/deploy approval.
+---
+Task ID: 21
+Agent: Z.ai Code (main)
+Task: User request — app was created yesterday (Oct 7, 2026 IST), so only entry hits from launch onward may confirm; do NOT confirm past (pre-launch) wick touches
+
+Work Log:
+- Engine (src/lib/setups/generate.ts): added exported APP_LAUNCH_MS = Date.UTC(2026, 9, 6, 18, 30) = 2026-10-07 00:00 IST. detectZoneTouch() now filters the lookback window to candles that OPENED at/after launch — pre-launch candles can never produce a touch, so HIT never fires from old wicks. Updated zone-lifecycle doc comment.
+- ConfirmedBoard.tsx: imports APP_LAUNCH_MS; loadLog() now drops any persisted row with confirmedAt < APP_LAUNCH_MS (purges pre-launch wick history like BTC short Oct 5, AAPL Sep 28/Oct 1, NVDA Sep 24/Oct 6 from localStorage) and is defensive about malformed rows. Header docs updated.
+- API verification (all 6 symbols): BTC long HIT (Oct 08 04:00 UTC, post-launch) and ETH long HIT (Oct 07 16:00 UTC, post-launch) are the ONLY confirmed sides; BTC short (was Oct 5 touch), AAPL long/short, NVDA long/short all reverted to WAITING with distances shown.
+- Browser verified: Trade Setups tab shows two 'LONG ZONE HIT' chips (BTC, ETH) and zero 'confirmed' strings in page content; Trade Confirmed tab shows '2 confirmed now' with exactly two ENTRY HIT cards — BTC/USD LONG (wick $82,228 hit 04:00 AM) and ETH/USD LONG (wick $2,538 hit Oct 7, 04:00 PM) — and NO 'Earlier' history section (pre-launch rows purged). Zero page errors. Screenshot /tmp/confirmed-postlaunch.png.
+- bun run lint clean. Local-only: not pushed to git, not deployed to Vercel.
+
+Stage Summary:
+- Confirmation rule is now temporally honest: the app can only confirm entries it could have suggested. Any wick touch on a candle opened before 2026-10-07 00:00 IST is ignored by the engine and purged from the persisted log; live (in-zone) and post-launch wick hits confirm as before. As the app ages, this cutoff stays fixed — new hits keep confirming normally.
+- Files changed: src/lib/setups/generate.ts, src/components/confirmed/ConfirmedBoard.tsx. Pending push/deploy approval.
