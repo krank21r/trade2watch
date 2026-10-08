@@ -155,9 +155,22 @@ function ConfirmedCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(index, 8) * 0.05 }}
-      className={`rounded-2xl border bg-tv-panel p-4 shadow-sm sm:p-5 ${isLong ? 'border-bull/35' : 'border-bear/35'}`}
-      style={{ boxShadow: `0 0 28px ${isLong ? 'var(--bull-soft)' : 'var(--bear-soft)'}` }}
+      className={`relative overflow-hidden rounded-3xl border p-4 sm:p-5 ${isLong ? 'border-bull/25' : 'border-bear/25'}`}
+      style={{
+        background: `linear-gradient(180deg, var(--tv-panel) 55%, ${isLong ? 'var(--bull-soft)' : 'var(--bear-soft)'})`,
+        boxShadow: isLong ? 'var(--card-glow)' : 'var(--card-glow-bear)',
+      }}
     >
+      {/* featured top hairline — teal → teal-mid gradient (rose for shorts) */}
+      <span
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-px"
+        style={{
+          background: isLong
+            ? 'linear-gradient(90deg, transparent, var(--bull), var(--info), var(--bull), transparent)'
+            : 'linear-gradient(90deg, transparent, var(--bear), var(--bear-soft), var(--bear), transparent)',
+        }}
+      />
       {/* header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -244,7 +257,7 @@ function ConfirmedCard({
           onClick={copyPlan}
           suppressHydrationWarning
           aria-label={`Copy ${setup.pair} ${kind} trade plan`}
-          className="shrink-0 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+          className="shrink-0 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
         >
           {copied ? '✓ Copied' : '⧉ Copy plan'}
         </button>
@@ -505,7 +518,7 @@ export function ConfirmedBoard() {
               }}
               suppressHydrationWarning
               aria-label="Clear confirmation history"
-              className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11.5px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+              className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11.5px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
             >
               Clear history
             </button>

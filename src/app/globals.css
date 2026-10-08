@@ -6,7 +6,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -41,7 +41,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  /* Trade2watch trading-terminal palette (semantic tokens, theme-aware) */
+  /* Trade2watch palette (semantic tokens, theme-aware) — calm teal-on-paper SaaS */
   --color-tv-bg: var(--tv-bg);
   --color-tv-panel: var(--tv-panel);
   --color-tv-panel2: var(--tv-panel2);
@@ -53,6 +53,7 @@
   --color-tv-div: var(--tv-div);
   --color-tv-inset: var(--tv-inset);
   --color-bull: var(--bull);
+  --color-bull-deep: var(--bull-deep);
   --color-bear: var(--bear);
   --color-warn: var(--warn);
   --color-info: var(--info);
@@ -64,123 +65,142 @@
   --color-warn-line: var(--warn-line);
   --color-info-soft: var(--info-soft);
   --color-info-line: var(--info-line);
+  /* ring-hair utility — every shadow-sm becomes the barely-there hairline ring */
+  --shadow-sm: var(--hairline-shadow);
+  --shadow-xs: var(--hairline-shadow);
 }
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #0f766e;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #ccfbf1;
+  --accent-foreground: #115e59;
+  --destructive: #be123c;
+  --border: rgba(15, 23, 42, 0.08);
+  --input: rgba(15, 23, 42, 0.1);
+  --ring: #0f766e;
+  --chart-1: #0f766e;
+  --chart-2: #14b8a6;
+  --chart-3: #115e59;
+  --chart-4: #b45309;
+  --chart-5: #be123c;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #0f766e;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: rgba(15, 23, 42, 0.08);
+  --sidebar-ring: #0f766e;
 
-  /* Trade2watch terminal palette — LIGHT */
-  --tv-bg: #f2f4f8;
+  /* Trade2watch — LIGHT: near-white paper, white panels, single deep-teal accent */
+  --tv-bg: #f8fafc;
   --tv-panel: #ffffff;
-  --tv-panel2: #eef1f6;
-  --tv-line: #dde3ec;
-  --tv-line-strong: #b9c2d2;
-  --tv-ink: #1e2637;
-  --tv-muted: #5d6a82;
-  --tv-muted2: #9099ab;
-  --tv-div: rgba(30, 38, 55, 0.08);
-  --tv-inset: rgba(30, 38, 55, 0.05);
-  --bull: #0a8f7f;
-  --bear: #d9453d;
-  --warn: #a8760c;
-  --info: #1c6fd8;
-  --bull-soft: rgba(10, 143, 127, 0.12);
-  --bull-line: rgba(10, 143, 127, 0.38);
-  --bear-soft: rgba(217, 69, 61, 0.11);
-  --bear-line: rgba(217, 69, 61, 0.38);
-  --warn-soft: rgba(168, 118, 12, 0.1);
-  --warn-line: rgba(168, 118, 12, 0.35);
-  --info-soft: rgba(28, 111, 216, 0.1);
-  --info-line: rgba(28, 111, 216, 0.35);
+  --tv-panel2: #f1f5f9;
+  --tv-line: rgba(15, 23, 42, 0.08);
+  --tv-line-strong: rgba(15, 23, 42, 0.16);
+  --tv-ink: #0f172a;
+  --tv-muted: #475569;
+  --tv-muted2: #64748b;
+  --tv-div: rgba(15, 23, 42, 0.06);
+  --tv-inset: rgba(15, 23, 42, 0.03);
+  /* teal scale: DEFAULT #0f766e · deep #115e59 · mid #14b8a6 · soft #ccfbf1 */
+  --bull: #0f766e;
+  --bull-deep: #115e59;
+  --bull-soft: rgba(15, 118, 110, 0.1);
+  --bull-line: rgba(15, 118, 110, 0.32);
+  --bear: #be123c;
+  --bear-soft: rgba(190, 18, 60, 0.08);
+  --bear-line: rgba(190, 18, 60, 0.32);
+  --warn: #b45309;
+  --warn-soft: rgba(180, 83, 9, 0.08);
+  --warn-line: rgba(180, 83, 9, 0.32);
+  --info: #0d9488;
+  --info-soft: rgba(13, 148, 136, 0.1);
+  --info-line: rgba(13, 148, 136, 0.32);
+  /* surfaces + decoration */
+  --hairline-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --card-glow: 0 24px 70px -30px rgba(15, 118, 110, 0.35);
+  --card-glow-bear: 0 24px 70px -30px rgba(190, 18, 60, 0.28);
+  --grid-line: rgba(15, 118, 110, 0.05);
+  --glob: rgba(204, 251, 241, 0.6);
+  --glow-top: radial-gradient(60% 100% at 50% 0%, rgba(204, 251, 241, 0.55), transparent 70%);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0a1014;
+  --foreground: #f1f5f9;
+  --card: #0e181c;
+  --card-foreground: #f1f5f9;
+  --popover: #0e181c;
+  --popover-foreground: #f1f5f9;
+  --primary: #14b8a6;
+  --primary-foreground: #04201c;
+  --secondary: #12212a;
+  --secondary-foreground: #f1f5f9;
+  --muted: #12212a;
+  --muted-foreground: #94a3b8;
+  --accent: rgba(20, 184, 166, 0.16);
+  --accent-foreground: #99f6e4;
+  --destructive: #fb7185;
+  --border: rgba(204, 251, 241, 0.09);
+  --input: rgba(204, 251, 241, 0.12);
+  --ring: #14b8a6;
+  --chart-1: #14b8a6;
+  --chart-2: #2dd4bf;
+  --chart-3: #0f766e;
+  --chart-4: #fbbf24;
+  --chart-5: #fb7185;
+  --sidebar: #0e181c;
+  --sidebar-foreground: #f1f5f9;
+  --sidebar-primary: #14b8a6;
+  --sidebar-primary-foreground: #04201c;
+  --sidebar-accent: #12212a;
+  --sidebar-accent-foreground: #f1f5f9;
+  --sidebar-border: rgba(204, 251, 241, 0.09);
+  --sidebar-ring: #14b8a6;
 
-  /* Trade2watch terminal palette — DARK (original TradingView-style values) */
-  --tv-bg: #0b0e14;
-  --tv-panel: #131722;
-  --tv-panel2: #1a2030;
-  --tv-line: #232b3d;
-  --tv-line-strong: #3a4560;
-  --tv-ink: #e6e9f0;
-  --tv-muted: #8b93a7;
-  --tv-muted2: #5a6377;
+  /* Trade2watch — DARK: deep-teal night variant of the same design language */
+  --tv-bg: #0a1014;
+  --tv-panel: #0e181c;
+  --tv-panel2: #12212a;
+  --tv-line: rgba(204, 251, 241, 0.08);
+  --tv-line-strong: rgba(204, 251, 241, 0.16);
+  --tv-ink: #f1f5f9;
+  --tv-muted: #94a3b8;
+  --tv-muted2: #64748b;
   --tv-div: rgba(255, 255, 255, 0.06);
-  --tv-inset: rgba(26, 32, 48, 0.6);
-  --bull: #26a69a;
-  --bear: #ef5350;
-  --warn: #f5b544;
-  --info: #4a9eff;
-  --bull-soft: rgba(38, 166, 154, 0.14);
-  --bull-line: rgba(38, 166, 154, 0.45);
-  --bear-soft: rgba(239, 83, 80, 0.13);
-  --bear-line: rgba(239, 83, 80, 0.45);
-  --warn-soft: rgba(245, 181, 68, 0.1);
-  --warn-line: rgba(245, 181, 68, 0.4);
-  --info-soft: rgba(74, 158, 255, 0.13);
-  --info-line: rgba(74, 158, 255, 0.4);
+  --tv-inset: rgba(255, 255, 255, 0.03);
+  --bull: #14b8a6;
+  --bull-deep: #0d9488;
+  --bull-soft: rgba(20, 184, 166, 0.13);
+  --bull-line: rgba(20, 184, 166, 0.4);
+  --bear: #fb7185;
+  --bear-soft: rgba(251, 113, 133, 0.12);
+  --bear-line: rgba(251, 113, 133, 0.4);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.1);
+  --warn-line: rgba(251, 191, 36, 0.38);
+  --info: #2dd4bf;
+  --info-soft: rgba(45, 212, 191, 0.12);
+  --info-line: rgba(45, 212, 191, 0.38);
+  --hairline-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(204, 251, 241, 0.07);
+  --card-glow: 0 24px 70px -30px rgba(20, 184, 166, 0.3);
+  --card-glow-bear: 0 24px 70px -30px rgba(251, 113, 133, 0.22);
+  --grid-line: rgba(204, 251, 241, 0.04);
+  --glob: rgba(20, 184, 166, 0.1);
+  --glow-top: radial-gradient(60% 100% at 50% 0%, rgba(20, 184, 166, 0.1), transparent 70%);
 }
 
 @layer base {
@@ -190,6 +210,30 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* tight-tracked headings — Inter extrabold scale lives in component classes */
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: #ccfbf1;
+    color: #115e59;
+  }
+  .dark ::selection {
+    background: rgba(20, 184, 166, 0.28);
+    color: #f0fdfa;
+  }
 }
 
-/* theme palette bump */
+/* faint teal editorial grid — sits behind the app shell panels */
+.t2w-grid-bg {
+  background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: linear-gradient(to bottom, black, transparent 90%);
+  mask-image: linear-gradient(to bottom, black, transparent 90%);
+}
+
+/* theme palette bump 2 — teal paper */

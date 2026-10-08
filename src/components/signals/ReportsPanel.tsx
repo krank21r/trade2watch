@@ -27,12 +27,12 @@ function Section({
     <div className="border-b border-dashed border-tv-div last:border-0">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-3 py-3 text-left group rounded-lg px-1 hover:bg-tv-panel2/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+        className="w-full flex items-center justify-between gap-3 py-3 text-left group rounded-lg px-1 hover:bg-tv-panel2/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
         aria-expanded={open}
         suppressHydrationWarning
       >
         <span className="flex flex-col">
-          <span className="text-[13px] font-semibold text-tv-ink group-hover:text-warn transition-colors">{title}</span>
+          <span className="text-[13px] font-semibold text-tv-ink group-hover:text-bull transition-colors">{title}</span>
           {subtitle && <span className="text-[11.5px] text-tv-muted mt-0.5">{subtitle}</span>}
         </span>
         <span

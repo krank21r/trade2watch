@@ -176,7 +176,7 @@ export function SignalDashboard() {
           >
             <div className="flex items-center gap-2.5">
               <span
-                className="h-8 w-8 rounded-xl bg-warn/15 border border-warn/30 text-warn inline-flex items-center justify-center text-sm"
+                className="h-8 w-8 rounded-xl bg-bull/10 border border-bull/25 text-bull inline-flex items-center justify-center text-sm"
                 aria-hidden="true"
               >
                 🎯
@@ -190,8 +190,8 @@ export function SignalDashboard() {
                   key={m}
                   onClick={() => setMarket(m)}
                   suppressHydrationWarning
-                  className={`relative flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
-                    market === m ? 'text-warn' : 'text-tv-muted hover:text-tv-ink'
+                  className={`relative flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                    market === m ? 'text-bull' : 'text-tv-muted hover:text-tv-ink'
                   }`}
                 >
                   {market === m && (
@@ -216,7 +216,7 @@ export function SignalDashboard() {
                 }}
                 suppressHydrationWarning
                 placeholder={market === 'crypto' ? 'BTC, ETH, SOL…' : 'AAPL, TSLA, NVDA…'}
-                className="w-full rounded-xl bg-tv-panel2 border border-tv-line px-3 py-2 text-sm font-bold tracking-wide text-tv-ink placeholder:text-tv-muted2 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-warn/40 focus:border-warn/60 transition"
+                className="w-full rounded-xl bg-tv-panel2 border border-tv-line px-3 py-2 text-sm font-bold tracking-wide text-tv-ink placeholder:text-tv-muted2 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60 transition"
               />
             </label>
 
@@ -229,7 +229,7 @@ export function SignalDashboard() {
                     setMarket(q.market)
                   }}
                   suppressHydrationWarning
-                  className={`rounded-full px-3 py-1 text-[12px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
+                  className={`rounded-full px-3 py-1 text-[12px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
                     symbol === q.symbol
                       ? 'bg-info/12 text-info border-info/35'
                       : 'bg-tv-panel2 border-tv-line text-tv-muted hover:text-tv-ink'
@@ -244,7 +244,7 @@ export function SignalDashboard() {
               onClick={() => startRun(symbol, market)}
               disabled={busy || starting}
               suppressHydrationWarning
-              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-gradient-to-b from-warn to-warn/90 text-tv-bg hover:brightness-110 active:scale-[0.99] transition shadow-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-gradient-to-b from-bull to-bull-deep text-white hover:brightness-110 active:scale-[0.99] transition shadow-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 dark:text-teal-950"
             >
               {busy || starting ? 'Analysis running…' : 'Run multi-agent analysis'}
             </button>
@@ -293,8 +293,8 @@ export function SignalDashboard() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(i, 15) * 0.03 }}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 border-b border-tv-div last:border-0 hover:bg-tv-panel2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
-                      selected ? 'bg-tv-panel2 ring-1 ring-warn/40' : ''
+                    className={`w-full text-left rounded-xl px-3 py-2.5 border-b border-tv-div last:border-0 hover:bg-tv-panel2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                      selected ? 'bg-tv-panel2 ring-1 ring-bull/40' : ''
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">

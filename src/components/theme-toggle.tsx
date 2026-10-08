@@ -15,8 +15,8 @@ export function ThemeToggle() {
     () => false,
   )
 
-  // Before mount, assume the default (dark) — avoids hydration mismatch.
-  const isDark = mounted ? resolvedTheme !== 'light' : true
+  // Before mount, assume the default (light) — avoids hydration mismatch.
+  const isDark = mounted ? resolvedTheme !== 'light' : false
 
   return (
     <button

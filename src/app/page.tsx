@@ -21,24 +21,30 @@ export default function Home() {
 
   return (
     <div className="relative h-[100dvh] flex flex-col bg-tv-bg text-tv-ink overflow-hidden">
-      {/* ambient top glow — theme-aware */}
+      {/* editorial backdrop — faint teal grid + top glow + soft teal glob off the left edge */}
+      <div aria-hidden className="t2w-grid-bg pointer-events-none absolute inset-0 opacity-60" />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-56 opacity-70"
-        style={{
-          background: 'radial-gradient(60% 100% at 50% 0%, var(--warn-soft), transparent 70%)',
-        }}
+        className="pointer-events-none absolute inset-x-0 top-0 h-56"
+        style={{ background: 'var(--glow-top)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-24 top-24 h-72 w-72 rounded-full blur-3xl"
+        style={{ background: 'var(--glob)' }}
       />
 
       {/* top bar */}
-      <nav className="relative z-10 shrink-0 flex items-center gap-2 sm:gap-3 flex-wrap px-3 sm:px-5 py-2.5 border-b border-tv-line bg-tv-bg/80 backdrop-blur-xl">
-        {/* brand */}
+      <nav className="relative z-10 shrink-0 flex items-center gap-2 sm:gap-3 flex-wrap px-3 sm:px-5 py-2.5 border-b border-tv-line bg-tv-panel/85 backdrop-blur-xl">
+        {/* brand — solid teal logo tile */}
         <div className="flex items-center gap-2.5 mr-1 sm:mr-3">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-warn/15 border border-warn/30 text-warn">
+          <span
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-bull text-white shadow-sm transition-colors hover:bg-[var(--bull-deep)] dark:text-teal-950"
+          >
             <TrendingUp className="h-4.5 w-4.5" aria-hidden />
           </span>
           <div className="text-base sm:text-lg font-extrabold tracking-tight leading-none">
-            Trade<b className="text-warn">2watch</b>
+            Trade<b className="text-bull">2watch</b>
           </div>
         </div>
 
@@ -58,8 +64,8 @@ export default function Home() {
                 aria-current={active ? 'page' : undefined}
                 onClick={() => setTab(t.key)}
                 suppressHydrationWarning
-                className={`relative rounded-full px-3.5 sm:px-4 py-1.5 text-[12.5px] sm:text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
-                  active ? 'text-warn' : 'text-tv-muted hover:text-tv-ink'
+                className={`relative rounded-full px-3.5 sm:px-4 py-1.5 text-[12.5px] sm:text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                  active ? 'text-bull' : 'text-tv-muted hover:text-tv-ink'
                 }`}
               >
                 {active && (
@@ -80,7 +86,7 @@ export default function Home() {
           <span className="hidden sm:inline-flex items-center gap-1.5">
             <span
               className="inline-block w-2 h-2 rounded-full animate-pulse"
-              style={{ background: tab === 'setups' ? 'var(--warn)' : 'var(--bull)' }}
+              style={{ background: 'var(--bull)' }}
             />
             {tab === 'setups' ? 'Live setups' : tab === 'confirmed' ? 'Entry confirmations' : 'AI desk ready'}
           </span>
@@ -105,7 +111,7 @@ export default function Home() {
       </main>
 
       {/* status footer — always pinned to the bottom of the shell */}
-      <footer className="relative z-10 shrink-0 flex items-center justify-between gap-3 px-3 sm:px-5 py-2 border-t border-tv-line bg-tv-bg/80 backdrop-blur-xl text-[11px] text-tv-muted">
+      <footer className="relative z-10 shrink-0 flex items-center justify-between gap-3 px-3 sm:px-5 py-2 border-t border-tv-line bg-tv-panel/85 backdrop-blur-xl text-[11px] text-tv-muted">
         <span className="hidden sm:block truncate">
           Live data · Binance · Yahoo Finance · setups refresh every 45s
         </span>

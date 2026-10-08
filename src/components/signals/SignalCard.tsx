@@ -139,7 +139,7 @@ export function SignalCard({ run }: { run: SignalRunDetail }) {
                     } catch {}
                   }}
                   suppressHydrationWarning
-                  className="w-40 rounded-xl bg-tv-panel2 border border-tv-line px-3 py-2 text-sm text-tv-ink focus:outline-none focus:ring-2 focus:ring-warn/40 focus:border-warn/60 transition"
+                  className="w-40 rounded-xl bg-tv-panel2 border border-tv-line px-3 py-2 text-sm text-tv-ink focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60 transition"
                 />
               </label>
               <label className="flex flex-col gap-1.5 text-xs font-semibold text-tv-muted">
@@ -157,7 +157,7 @@ export function SignalCard({ run }: { run: SignalRunDetail }) {
                     } catch {}
                   }}
                   suppressHydrationWarning
-                  className="w-32 rounded-xl bg-tv-panel2 border border-tv-line px-3 py-2 text-sm text-tv-ink focus:outline-none focus:ring-2 focus:ring-warn/40 focus:border-warn/60 transition"
+                  className="w-32 rounded-xl bg-tv-panel2 border border-tv-line px-3 py-2 text-sm text-tv-ink focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60 transition"
                 />
               </label>
             </div>

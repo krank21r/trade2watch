@@ -270,7 +270,7 @@ function TradePlanCard({
             onClick={copyPlan}
             suppressHydrationWarning
             aria-label={`Copy ${pair} ${isLong ? 'long' : 'short'} plan to clipboard`}
-            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[11px] font-bold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[11px] font-bold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
           >
             {copied ? '✓ Copied' : '⧉ Copy plan'}
           </button>
@@ -377,7 +377,7 @@ function ConfirmationCard({
             onClick={copyConfirmation}
             suppressHydrationWarning
             aria-label={`Copy ${setup.pair} ${side} trade confirmation`}
-            className="rounded-xl border bg-tv-panel2 px-3 py-2 text-[11px] font-bold text-tv-ink transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+            className="rounded-xl border bg-tv-panel2 px-3 py-2 text-[11px] font-bold text-tv-ink transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
             style={{ borderColor: isLong ? 'var(--bull-line)' : 'var(--bear-line)' }}
           >
             {copied ? '✓ Copied' : '⧉ Copy confirmation'}
@@ -386,7 +386,7 @@ function ConfirmationCard({
             onClick={onDismiss}
             aria-label={`Dismiss ${setup.pair} ${side} confirmation`}
             suppressHydrationWarning
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-tv-line bg-tv-panel2 text-xs text-tv-muted transition hover:border-tv-line-strong hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-tv-line bg-tv-panel2 text-xs text-tv-muted transition hover:border-tv-line-strong hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
           >
             ✕
           </button>
@@ -624,9 +624,9 @@ export function SetupBoard() {
             onClick={() => setSelected(s.symbol)}
             suppressHydrationWarning
             aria-pressed={active?.symbol === s.symbol}
-            className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
+            className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
               active?.symbol === s.symbol
-                ? 'border-warn/40 bg-warn/15 text-warn'
+                ? 'border-bull/40 bg-bull/10 text-bull'
                 : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink hover:border-tv-line-strong'
             }`}
           >
@@ -641,20 +641,20 @@ export function SetupBoard() {
             placeholder="Add symbol (BTC, AAPL…)"
             aria-label="Add symbol"
             suppressHydrationWarning
-            className="w-40 sm:w-48 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-warn/40 focus:border-warn/60"
+            className="w-40 sm:w-48 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
           />
           <button
             onClick={addSymbol}
             suppressHydrationWarning
             aria-label="Add symbol to watchlist"
-            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
           >
             + Add
           </button>
           <button
             onClick={() => { setLoading(true); load() }}
             suppressHydrationWarning
-            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
             aria-label="Refresh setups"
           >
             ⟳ Refresh
@@ -667,7 +667,7 @@ export function SetupBoard() {
               key={q}
               onClick={() => { setSymbols((prev) => [...prev, q].slice(0, 8)); setSelected(q) }}
               suppressHydrationWarning
-              className="rounded-full border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[12px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50"
+              className="rounded-full border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[12px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
             >
               +{q}
             </button>
@@ -710,8 +710,8 @@ export function SetupBoard() {
                   onClick={() => setSelected(s.symbol)}
                   suppressHydrationWarning
                   aria-pressed={active?.symbol === s.symbol}
-                  className={`rounded-2xl border p-4 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
-                    active?.symbol === s.symbol ? 'border-warn/45 bg-tv-panel2' : 'border-tv-line bg-tv-panel hover:border-tv-line-strong'
+                  className={`rounded-2xl border p-4 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                    active?.symbol === s.symbol ? 'border-bull/40 bg-tv-panel2' : 'border-tv-line bg-tv-panel hover:border-tv-line-strong'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -741,7 +741,7 @@ export function SetupBoard() {
         {error && (
           <p className="text-[12px] mt-2 text-bear">
             Feed error: {error} — retrying automatically.{' '}
-            <button onClick={() => { setLoading(true); load() }} suppressHydrationWarning className="underline transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50">Retry now</button>
+            <button onClick={() => { setLoading(true); load() }} suppressHydrationWarning className="underline transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50">Retry now</button>
           </p>
         )}
       </section>
@@ -865,7 +865,7 @@ export function SetupBoard() {
                   inputMode="decimal"
                   placeholder="10000"
                   suppressHydrationWarning
-                  className="w-36 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-warn/40 focus:border-warn/60"
+                  className="w-36 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
                 />
               </label>
               <label className={`text-[12px] ${C.muted}`}>
@@ -876,7 +876,7 @@ export function SetupBoard() {
                   inputMode="decimal"
                   placeholder="1"
                   suppressHydrationWarning
-                  className="w-28 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-warn/40 focus:border-warn/60"
+                  className="w-28 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
                 />
               </label>
             </div>
