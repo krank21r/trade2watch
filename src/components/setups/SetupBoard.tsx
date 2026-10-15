@@ -7,6 +7,7 @@ import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist
 import { fetchMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { scopedGet, scopedSet } from '@/lib/user-scope'
+import { ConfirmedSection } from '@/components/confirmed/ConfirmedBoard'
 
 // Trade2watch design tokens (mirrors public/app.html)
 const C = {
@@ -112,21 +113,21 @@ function PlanRow({
   return (
     <div
       role="listitem"
-      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${rowCls}`}
+      className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-1.5 ${rowCls}`}
     >
       <span
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[14px]"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px]"
         style={{ background: ICON_SOFT[cls] ?? 'var(--tv-panel2)' }}
         aria-hidden="true"
       >
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-tv-muted">{label}</div>
-        {sub && <div className={`mt-0.5 text-[10.5px] ${C.muted}`}>{sub}</div>}
+        <div className="text-[10px] font-bold uppercase tracking-wider text-tv-muted">{label}</div>
+        {sub && <div className={`mt-0.5 truncate text-[10px] ${C.muted}`}>{sub}</div>}
       </div>
       <div className="shrink-0 text-right">
-        <div className={`font-bold tabular-nums ${cls} ${big ? 'text-[16.5px]' : 'text-[15px]'}`}>{price}</div>
+        <div className={`font-bold tabular-nums ${cls} ${big ? 'text-[15px]' : 'text-[13.5px]'}`}>{price}</div>
         {badges && badges.some((b) => b) && (
           <div className="flex gap-1 justify-end mt-0.5 flex-wrap">
             {badges.filter((b): b is string => !!b).map((b, i) => (
@@ -236,7 +237,7 @@ function TradePlanCard({
 
   return (
     <div
-      className={`flex h-full flex-col gap-4 rounded-2xl border p-4 sm:p-6 ${
+      className={`flex h-full flex-col gap-2.5 rounded-2xl border p-3.5 sm:p-4 ${
         preferred
           ? 'border-warn/50 bg-tv-panel shadow-[0_0_28px_var(--warn-soft)]'
           : 'border-tv-line bg-tv-panel shadow-sm'
@@ -272,7 +273,7 @@ function TradePlanCard({
       </div>
 
       {/* the ladder — reads top-down like a chart (highest price first) */}
-      <div className="flex flex-col gap-2" role="list" aria-label={`${pair} ${isLong ? 'long' : 'short'} plan levels`}>
+      <div className="flex flex-col gap-1.5" role="list" aria-label={`${pair} ${isLong ? 'long' : 'short'} plan levels`}>
         {isLong ? (
           <>
             {targetRows}
@@ -355,7 +356,19 @@ export function SetupBoard() {
     return () => clearInterval(t)
   }, [load])
 
-  // persist watchlist so the Trade Confirmed board tracks the same symbols
+  // refresh the IN TRADE strip the moment a trade is taken/closed in the
+  // Trade Confirmed section below (same page — instant feedback)
+  useEffect(() => {
+    const h = () => {
+      void fetchMyTrades().then((mt) => {
+        if (mounted.current) setMyTrades(mt)
+      })
+    }
+    window.addEventListener('t2w:trades-changed', h)
+    return () => window.removeEventListener('t2w:trades-changed', h)
+  }, [])
+
+  // persist watchlist so the Trade Confirmed section tracks the same symbols
   useEffect(() => {
     if (!wlLoaded.current) return
     saveWatchlist(symbols)
@@ -405,7 +418,7 @@ export function SetupBoard() {
     active ? savePct(((v - active.gauge.min) / (active.gauge.max - active.gauge.min)) * 100, 0, 100) : 0
 
   return (
-    <div className="min-h-full mx-auto flex w-full max-w-[1400px] flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6">
+    <div className="min-h-full mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6 sm:py-6">
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-3 sm:p-4">
         <div className="mr-1 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Watchlist</div>
@@ -507,13 +520,13 @@ export function SetupBoard() {
       <section aria-label="ZoneWatch — live zone monitor">
         <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">ZoneWatch — every zone, one board</h2>
         {loading && !data ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[0, 1, 2].map((i) => (
               <div key={i} className="h-[92px] rounded-2xl border border-tv-line bg-tv-panel animate-pulse" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {(data?.setups ?? []).map((s) => {
               const chip = summarize(s)
               return (
@@ -522,7 +535,7 @@ export function SetupBoard() {
                   onClick={() => setSelected(s.symbol)}
                   suppressHydrationWarning
                   aria-pressed={active?.symbol === s.symbol}
-                  className={`rounded-2xl border p-4 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                  className={`rounded-2xl border p-3.5 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
                     active?.symbol === s.symbol ? 'border-bull/40 bg-tv-panel2' : 'border-tv-line bg-tv-panel hover:border-tv-line-strong'
                   }`}
                 >
@@ -534,10 +547,10 @@ export function SetupBoard() {
                       {s.change24h >= 0 ? '+' : ''}{s.change24h.toFixed(2)}%
                     </span>
                   </div>
-                  <div className="mt-1 text-xl font-bold tabular-nums tracking-tight text-tv-ink">
+                  <div className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-tv-ink">
                     {fmtPrice(s.price, s.currency)}
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-1.5">
                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${chip.cls}`}>{chip.txt}</span>
                   </div>
                 </button>
@@ -560,9 +573,9 @@ export function SetupBoard() {
 
       {/* selected asset detail */}
       {active && (
-        <section aria-label={`${active.displayName} setup detail`} className="flex flex-col gap-5">
+        <section aria-label={`${active.displayName} setup detail`} className="flex flex-col gap-4">
           {/* header + gauge */}
-          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-6">
+          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
@@ -600,10 +613,10 @@ export function SetupBoard() {
               </div>
             </div>
 
-            <p className="mt-3 text-[13px] text-warn">{active.biasNote}</p>
+            <p className="mt-2 text-[13px] text-warn">{active.biasNote}</p>
 
             {/* gauge */}
-            <div className="mt-4" aria-hidden="true">
+            <div className="mt-3" aria-hidden="true">
               <div className="relative h-2.5 rounded-full bg-tv-panel2 border border-tv-line overflow-visible">
                 {active.long && (
                   <div
@@ -640,7 +653,7 @@ export function SetupBoard() {
               Trade plans — <span className="text-warn">entry levels</span>, <span className="text-bear">stop loss</span> &amp;{' '}
               <span className="text-info">targets</span>
             </h2>
-            <div className="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2">
               {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>)
                 .filter((pair): pair is ['long' | 'short', SideSetup] => pair[1] !== null)
                 .sort((a, b) => (a[1].tag === 'PREFERRED' ? -1 : 0) - (b[1].tag === 'PREFERRED' ? -1 : 0))
@@ -665,9 +678,9 @@ export function SetupBoard() {
           </div>
 
           {/* sizing */}
-          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-6">
+          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
             <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Position sizing — risk-first</h3>
-            <div className="flex flex-wrap gap-3 mb-4">
+            <div className="flex flex-wrap gap-3 mb-3">
               <label className={`text-[12px] ${C.muted}`}>
                 <span className="block mb-1">Account ($)</span>
                 <input
@@ -697,7 +710,7 @@ export function SetupBoard() {
                   const sz = sizingFor(side)
                   const label = kind === 'long' ? 'LONG side' : 'SHORT side'
                   return (
-                    <div key={kind} className="rounded-xl border border-tv-line bg-tv-panel2 p-3">
+                    <div key={kind} className="rounded-xl border border-tv-line bg-tv-panel2 p-2.5">
                       <div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-warn">{label}</div>
                       {sz ? (
                         <>
@@ -715,11 +728,11 @@ export function SetupBoard() {
           </div>
 
           {/* key levels */}
-          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-6">
-            <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Key levels — live structure</h3>
-            <ul className="flex flex-col gap-1.5">
+          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
+            <h3 className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Key levels — live structure</h3>
+            <ul className="grid grid-cols-1 gap-x-6 gap-y-1 md:grid-cols-2">
               {active.levels.map((l, i) => (
-                <li key={i} className="flex items-baseline gap-3 text-[13px]">
+                <li key={i} className="flex items-baseline gap-3 text-[12.5px]">
                   <span className={`w-28 shrink-0 font-semibold tabular-nums whitespace-nowrap ${l.t === 'res' ? C.red : l.t === 'sup' ? C.green : C.blue}`}>
                     {l.t === 'res' ? 'RES' : l.t === 'sup' ? 'SUP' : 'EMA'} {fmtPrice(l.v, active.currency)}
                   </span>
@@ -730,6 +743,9 @@ export function SetupBoard() {
           </div>
         </section>
       )}
+
+      {/* ── trade confirmed — same page, compact section ── */}
+      <ConfirmedSection data={data} loading={loading} />
 
       {/* footer / disclaimer */}
       <footer className={`mt-auto pt-2 pb-4 text-[11px] leading-relaxed ${C.muted} border-t border-tv-line`}>

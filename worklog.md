@@ -723,3 +723,21 @@ Work Log:
 
 Stage Summary:
 - The SMC tab is now a card-first signal board: every pair's trade signal (direction, price, entry zone, stop, targets, R:R, score, cross-tape verdict) fits in one compact card and live signals float to the top. Diagnostics panels are gone from the tab per the user's "cards only" ask; scan API is the single data source (payload is a superset, so old consumers unaffected).
+
+---
+Task ID: 36
+Agent: Z.ai Code (main)
+Task: Compact Trade Setups + merge Trade Confirmed into the same page
+
+Work Log:
+- User request: compact the Trade Setups and Trade Confirmed boards, and show Trade Confirmed on the same page (no tab switch).
+- ConfirmedBoard.tsx rewritten as ConfirmedSection({data, loading}): it now RECEIVES the shared /api/setups payload from SetupBoard instead of polling it itself (one fetch feeds the whole page; duplicate 45s poll removed). All logic preserved verbatim: confirmation log (LIVE/HIT + wick dedupe), account-synced trade journal (cache paint → server truth), TP/SL candle tracking with toasts, take/close trade.
+- Compact restyle: ConfirmedCard/OpenTradeCard rounded-3xl→2xl, p-5→3.5, ping disc removed, ladder rows py-2→1.5 (13.5px values, h-6 discs), merged state line into header, live+hit cards in one 2-col grid, history/closed rows tightened (11.5px, py-1.5), empty state halved. Whole section sits in one bordered panel under the plans: header (✅ count chip + auto-45s), open trades, confirmed cards, earlier rows, my trade history.
+- SetupBoard compacted: root gap-5→4, ZoneWatch cards p-4→3.5 (price xl→lg), detail cards p-6→4, PlanRow py-2.5→1.5 + smaller discs/values, plan grid gaps tightened, sizing/levels cards slimmed, key levels now a 2-col grid on md.
+- page.tsx: "✅ Trade Confirmed" tab removed (3 tabs now: Trade Setups / AI Signals / SMC Setup); status line reads "Live setups + confirmations".
+- New window event 't2w:trades-changed': ConfirmedSection dispatches on take/close; SetupBoard listens and refetches the journal so the IN TRADE strip at the top updates instantly (verified live: strip showed both trades immediately after taking ETH).
+- Bug caught by browser verification (dev overlay): rNow missing from ConfirmedSection imports — crashed OpenTradeCard render for users with open trades. Fixed; eslint doesn't catch missing-value imports across modules, so browser pass was essential.
+- Verified end-to-end (agent-browser): merged page renders top (watchlist/IN TRADE/ZoneWatch/gauge/plans) and ✅ Trade Confirmed below on the same page; took the ETH long test trade → toast + instant open-trade card + "✓ In your trades" + top strip refresh; closed it + cleared rows → server journal back to exactly the real BTC/USD OPEN trade (curl-verified); mobile 390px wraps cleanly; zero page errors; lint clean.
+
+Stage Summary:
+- Trade Setups is now the single trading page: zones → plan detail → confirmed entries → my trades, all compact, one 45s shared feed. The Confirmed tab is gone; nothing was lost — confirmation log, trade taking, tracking and history all live in the inline section.

@@ -3,18 +3,16 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { TrendingUp } from 'lucide-react'
-import { ConfirmedBoard } from '@/components/confirmed/ConfirmedBoard'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
 import { SetupBoard } from '@/components/setups/SetupBoard'
 import { SmcBoard } from '@/components/smc/SmcBoard'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { UserMenu } from '@/components/user-menu'
 
-type Tab = 'setups' | 'confirmed' | 'signals' | 'smc'
+type Tab = 'setups' | 'signals' | 'smc'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'setups', label: 'Trade Setups' },
-  { key: 'confirmed', label: '✅ Trade Confirmed' },
   { key: 'signals', label: '⚡ AI Signals' },
   { key: 'smc', label: '🎯 SMC Setup' },
 ]
@@ -79,7 +77,7 @@ export default function Home() {
               className="inline-block w-2 h-2 rounded-full animate-pulse"
               style={{ background: 'var(--bull)' }}
             />
-            {tab === 'setups' ? 'Live setups' : tab === 'confirmed' ? 'Entry confirmations' : tab === 'signals' ? 'AI desk ready' : 'SMC desk — Bybit × Binance'}
+            {tab === 'setups' ? 'Live setups + confirmations' : tab === 'signals' ? 'AI desk ready' : 'SMC desk — Bybit × Binance'}
           </span>
           <UserMenu />
           <ThemeToggle />
@@ -97,7 +95,7 @@ export default function Home() {
             transition={{ duration: 0.22, ease: 'easeOut' }}
             className="absolute inset-0 overflow-y-auto"
           >
-            {tab === 'setups' ? <SetupBoard /> : tab === 'confirmed' ? <ConfirmedBoard /> : tab === 'signals' ? <SignalDashboard /> : <SmcBoard />}
+            {tab === 'setups' ? <SetupBoard /> : tab === 'signals' ? <SignalDashboard /> : <SmcBoard />}
           </motion.div>
         </AnimatePresence>
       </main>

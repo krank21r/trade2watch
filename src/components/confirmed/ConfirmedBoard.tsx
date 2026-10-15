@@ -1,25 +1,22 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+// ─── Trade Confirmed — inline section of the Trade Setups page ──────────────
+// Compact by design: shows trades whose entry is confirmed (price inside the
+// entry zone right now, or the zone was HIT by a candle wick), the user's
+// open trades with frozen-plan TP/SL tracking, and history rows. Receives the
+// shared /api/setups payload from SetupBoard as a prop — one fetch feeds the
+// whole page (no duplicate polling). Personal state keeps the same scoped
+// keys: 'confirmed_log' + the account-synced trade journal.
+
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { fmtPrice } from '@/components/signals/types'
-import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
 import { loadMyTrades, saveMyTrades, fetchMyTrades, trackTrade, zoneMid, rNow, netR, netRTxt, outcomeTxt, type MyTrade } from '@/lib/mytrades'
 import type { Candle } from '@/lib/market/indicators'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { APP_LAUNCH_MS } from '@/lib/setups/generate'
 import { scopedGet, scopedGetJson, scopedSetJson } from '@/lib/user-scope'
-
-// ─── Trade Confirmed board ───────────────────────────────────────────────────
-// A dedicated page that only shows trades whose entry is confirmed. Two ways
-// to confirm: price is inside the entry zone right now (state 'LIVE'), or the
-// zone was HIT by a candle wick recently (state 'HIT') — an entry hit counts
-// as a confirmed trade even after price moves on. Shares the watchlist with
-// the Trade Setups tab via localStorage ('tw_watchlist') and keeps an
-// append-only confirmation log ('tw_confirmed_log') so entries confirmed
-// after the app's launch (Oct 7 2026 IST — wicks before launch never confirm)
-// stay visible after price moves on.
 
 const POLL_MS = 45_000
 const LOG_KEY = 'confirmed_log'
@@ -49,10 +46,6 @@ interface ConfirmEvent {
   exitedAt: number | null // set when price left the entry zone
   via?: 'spot' | 'wick' // wick = discovered from candle history (spot polls missed it)
   loggedAt?: number // when this row was created (dedupe window for wick hits)
-}
-
-function lsGet(k: string, d: string): string {
-  return scopedGet(k.replace(/^tw_/, '')) ?? d
 }
 
 function loadLog(): ConfirmEvent[] {
@@ -94,7 +87,7 @@ function tagCls(tag: string): string {
   return 'border-tv-line bg-tv-panel2 text-tv-muted'
 }
 
-// ─── plan ladder row ─────────────────────────────────────────────────────────
+// ─── compact plan ladder row ─────────────────────────────────────────────────
 
 function LadderRow({
   icon, label, sub, value, cls, accent,
@@ -113,24 +106,24 @@ function LadderRow({
       : 'border-tv-line bg-tv-panel2/50'
   const soft = accent ? 'var(--warn-soft)' : cls === 'text-bear' ? 'var(--bear-soft)' : 'var(--info-soft)'
   return (
-    <div role="listitem" className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${rowCls}`}>
+    <div role="listitem" className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-1.5 ${rowCls}`}>
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px]"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px]"
         style={{ background: soft }}
         aria-hidden="true"
       >
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[10.5px] font-bold uppercase tracking-wider text-tv-muted">{label}</div>
+        <div className="text-[10px] font-bold uppercase tracking-wider text-tv-muted">{label}</div>
         {sub && <div className="mt-0.5 truncate text-[10px] text-tv-muted2">{sub}</div>}
       </div>
-      <div className={`shrink-0 text-[14.5px] font-bold tabular-nums ${cls}`}>{value}</div>
+      <div className={`shrink-0 text-[13.5px] font-bold tabular-nums ${cls}`}>{value}</div>
     </div>
   )
 }
 
-// ─── live confirmation card ──────────────────────────────────────────────────
+// ─── compact confirmation card ───────────────────────────────────────────────
 
 function ConfirmedCard({
   setup, s, kind, event, sizingTxt, index, taken, onTake,
@@ -145,7 +138,6 @@ function ConfirmedCard({
   onTake: () => void
 }) {
   const isLong = kind === 'long'
-  const accent = isLong ? 'text-bull' : 'text-bear'
   const [copied, setCopied] = useState(false)
 
   const copyPlan = async () => {
@@ -173,93 +165,71 @@ function ConfirmedCard({
     <motion.article
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(index, 8) * 0.05 }}
-      className={`relative overflow-hidden rounded-3xl border p-4 sm:p-5 ${isLong ? 'border-bull/25' : 'border-bear/25'}`}
+      transition={{ duration: 0.22, ease: 'easeOut', delay: Math.min(index, 8) * 0.04 }}
+      className={`relative overflow-hidden rounded-2xl border p-3.5 ${isLong ? 'border-bull/25' : 'border-bear/25'}`}
       style={{
-        background: `linear-gradient(180deg, var(--tv-panel) 55%, ${isLong ? 'var(--bull-soft)' : 'var(--bear-soft)'})`,
-        boxShadow: isLong ? 'var(--card-glow)' : 'var(--card-glow-bear)',
+        background: `linear-gradient(180deg, var(--tv-panel) 60%, ${isLong ? 'var(--bull-soft)' : 'var(--bear-soft)'})`,
       }}
     >
-      {/* featured top hairline — teal → teal-mid gradient (rose for shorts) */}
       <span
         aria-hidden
         className="absolute inset-x-0 top-0 h-px"
         style={{
           background: isLong
-            ? 'linear-gradient(90deg, transparent, var(--bull), var(--info), var(--bull), transparent)'
-            : 'linear-gradient(90deg, transparent, var(--bear), var(--bear-soft), var(--bear), transparent)',
+            ? 'linear-gradient(90deg, transparent, var(--bull), transparent)'
+            : 'linear-gradient(90deg, transparent, var(--bear), transparent)',
         }}
       />
-      {/* header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center" aria-hidden="true">
-            <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${isLong ? 'bg-bull/30' : 'bg-bear/30'}`} />
-            <span
-              className={`relative inline-flex h-9 w-9 items-center justify-center rounded-full text-[15px] font-bold ${isLong ? 'bg-bull/20 text-bull' : 'bg-bear/20 text-bear'}`}
-            >
-              ✓
+      {/* header — pair + badges + state line · price right */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="text-[14px] font-bold tracking-tight text-tv-ink">{setup.pair}</h3>
+            <span className={`rounded-full border px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'}`}>
+              {kind} confirmed
             </span>
-          </span>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-[15.5px] font-bold tracking-tight text-tv-ink">{setup.pair}</h3>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'}`}>
-                {kind} confirmed
+            <span className={`rounded-full border px-2 py-0.5 text-[9.5px] font-bold ${tagCls(s.tag)}`}>{s.tag}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px]">
+            {s.state === 'HIT' ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-bold text-warn">
+                🎯 ENTRY HIT
               </span>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${tagCls(s.tag)}`}>{s.tag}</span>
-            </div>
-            <div className="mt-0.5 text-[11.5px] text-tv-muted">
-              {setup.displayName} · {setup.regime.toLowerCase().replace('_', ' ')} · {setup.timeframe}
-            </div>
+            ) : (
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-bold ${isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'}`}>
+                <span className={`inline-block h-1.5 w-1.5 animate-pulse rounded-full ${isLong ? 'bg-bull' : 'bg-bear'}`} aria-hidden="true" />
+                IN ZONE
+              </span>
+            )}
+            <span className="text-tv-muted">
+              {s.state === 'HIT' ? (
+                <>
+                  wick {fmtPrice(s.touchedPrice, setup.currency)} hit {s.touchedAt !== null ? fmtWhen(s.touchedAt) : '—'} · now{' '}
+                  {s.distPct?.toFixed(1) ?? '?'}% away
+                </>
+              ) : event ? (
+                <>
+                  confirmed {fmtTime(event.confirmedAt)} · in zone {fmtDur(Date.now() - event.confirmedAt)}
+                </>
+              ) : (
+                'price inside entry zone'
+              )}
+            </span>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-[19px] font-bold tabular-nums tracking-tight text-tv-ink">
+        <div className="shrink-0 text-right">
+          <div className="text-[16px] font-bold tabular-nums tracking-tight text-tv-ink">
             {fmtPrice(setup.price, setup.currency)}
           </div>
-          <span
-            className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold tabular-nums ${
-              setup.change24h >= 0 ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'
-            }`}
-          >
+          <span className={`text-[10.5px] font-bold tabular-nums ${setup.change24h >= 0 ? 'text-bull' : 'text-bear'}`}>
             {setup.change24h >= 0 ? '+' : ''}
             {setup.change24h.toFixed(2)}% 24h
           </span>
         </div>
       </div>
 
-      {/* live line */}
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11.5px]">
-        {s.state === 'HIT' ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-warn/40 bg-warn/10 px-2.5 py-1 font-bold text-warn">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-warn" aria-hidden="true" />
-            🎯 ENTRY HIT
-          </span>
-        ) : (
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-bold ${isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'}`}>
-            <span className={`inline-block h-1.5 w-1.5 animate-pulse rounded-full ${isLong ? 'bg-bull' : 'bg-bear'}`} aria-hidden="true" />
-            IN ZONE
-          </span>
-        )}
-        <span className="text-tv-muted">
-          {s.state === 'HIT' ? (
-            <>
-              wick {fmtPrice(s.touchedPrice, setup.currency)} hit {s.touchedAt !== null ? fmtWhen(s.touchedAt) : '—'} · price now{' '}
-              {fmtPrice(setup.price, setup.currency)} ({s.distPct?.toFixed(1) ?? '?'}% away) — entry triggered
-            </>
-          ) : event ? (
-            <>
-              confirmed {fmtTime(event.confirmedAt)} · in zone {fmtDur(Date.now() - event.confirmedAt)}
-            </>
-          ) : (
-            'price inside entry zone'
-          )}
-        </span>
-      </div>
-
-      {/* ladder */}
-      <div role="list" aria-label={`${setup.pair} ${kind} plan`} className="mt-3 space-y-1.5">
+      {/* compact ladder */}
+      <div role="list" aria-label={`${setup.pair} ${kind} plan`} className="mt-2.5 space-y-1">
         <LadderRow
           icon="◆"
           label="Entry zone"
@@ -276,21 +246,21 @@ function ConfirmedCard({
         )}
       </div>
 
-      {/* footer */}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-tv-div pt-3">
-        <div className="min-w-0 text-[11px] text-tv-muted">
+      {/* footer — R:R + sizing · actions */}
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-tv-div pt-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[10.5px]">
           <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 font-bold tabular-nums text-tv-ink">
             R:R {s.rr}
           </span>
-          {sizingTxt && <span className="ml-2 tabular-nums">{sizingTxt}</span>}
+          {sizingTxt && <span className="truncate tabular-nums text-tv-muted">{sizingTxt}</span>}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             onClick={onTake}
             disabled={taken}
             suppressHydrationWarning
             aria-label={`Mark this ${setup.pair} ${kind} setup as taken`}
-            className={`rounded-xl border px-3 py-2 text-[12px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+            className={`rounded-lg border px-2.5 py-1.5 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
               taken
                 ? 'cursor-default border-tv-line bg-tv-panel2 text-tv-muted'
                 : 'border-bull/50 bg-bull/15 text-bull hover:bg-bull/25'
@@ -302,9 +272,9 @@ function ConfirmedCard({
             onClick={copyPlan}
             suppressHydrationWarning
             aria-label={`Copy ${setup.pair} ${kind} trade plan`}
-            className="shrink-0 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+            className="shrink-0 rounded-lg border border-tv-line bg-tv-panel2 px-2.5 py-1.5 text-[11.5px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
           >
-            {copied ? '✓ Copied' : '⧉ Copy plan'}
+            {copied ? '✓' : '⧉'}
           </button>
         </div>
       </div>
@@ -312,7 +282,7 @@ function ConfirmedCard({
   )
 }
 
-// ─── my open trade — frozen plan + live TP/SL tracking ──────────────────────
+// ─── my open trade — compact frozen plan + live TP/SL tracking ──────────────
 
 function OpenTradeCard({
   t, livePrice, onRemove,
@@ -324,59 +294,38 @@ function OpenTradeCard({
   const isLong = t.side === 'long'
   const r = livePrice !== null ? rNow(t, livePrice) : null
   const afterTp1 = t.tp1HitAt !== null
-  const dist = (v: number): string | null =>
-    livePrice !== null ? `${Math.abs(((v - livePrice) / livePrice) * 100).toFixed(1)}% away` : null
   return (
     <motion.article
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
-      className="rounded-2xl border p-4 sm:p-5"
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="rounded-2xl border p-3.5"
       style={{
-        background: 'linear-gradient(180deg, var(--tv-panel) 55%, var(--warn-soft))',
+        background: 'linear-gradient(180deg, var(--tv-panel) 60%, var(--warn-soft))',
         borderColor: 'var(--warn-line)',
-        boxShadow: 'var(--card-glow)',
       }}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-warn/40 bg-warn/10 text-[15px]"
-            aria-hidden="true"
-          >
-            🎯
-          </span>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-[15.5px] font-bold tracking-tight text-tv-ink">{t.pair}</h3>
-              <span
-                className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                  isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'
-                }`}
-              >
-                {t.side}
-              </span>
-              <span className="rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 text-[10px] font-bold text-warn">
-                YOUR TRADE — OPEN
-              </span>
-            </div>
-            <div className="mt-0.5 text-[11.5px] text-tv-muted">
-              taken {fmtWhen(t.takenAt)} · fill assumed ≈ zone mid · plan frozen — new zones never change it
-            </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="text-[14px] font-bold tracking-tight text-tv-ink">{t.pair}</h3>
+            <span className={`rounded-full border px-2 py-0.5 text-[9.5px] font-bold uppercase ${isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'}`}>
+              {t.side}
+            </span>
+            <span className="rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 text-[9.5px] font-bold text-warn">
+              OPEN
+            </span>
+            <span className="text-[10.5px] text-tv-muted">taken {fmtWhen(t.takenAt)} · plan frozen</span>
           </div>
         </div>
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           {livePrice !== null && (
-            <div className="text-[19px] font-bold tabular-nums tracking-tight text-tv-ink">
+            <div className="text-[16px] font-bold tabular-nums tracking-tight text-tv-ink">
               {fmtPrice(livePrice, t.currency)}
             </div>
           )}
           {r !== null && (
-            <span
-              className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
-                r >= 0 ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'
-              }`}
-            >
+            <span className={`text-[10.5px] font-bold tabular-nums ${r >= 0 ? 'text-bull' : 'text-bear'}`}>
               {r > 0 ? '+' : ''}
               {r.toFixed(2)}R now
             </span>
@@ -384,7 +333,7 @@ function OpenTradeCard({
         </div>
       </div>
 
-      <div role="list" aria-label={`${t.pair} ${t.side} frozen plan`} className="mt-3 space-y-1.5">
+      <div role="list" aria-label={`${t.pair} ${t.side} frozen plan`} className="mt-2.5 space-y-1">
         <LadderRow
           icon="◎"
           label="TP2 — full close"
@@ -406,7 +355,7 @@ function OpenTradeCard({
         <LadderRow
           icon="◆"
           label="Entry — assumed fill"
-          sub={`${fmtPrice(t.entryLow, t.currency)} – ${fmtPrice(t.entryHigh, t.currency)} zone mid · ${t.strategy}`}
+          sub={`${fmtPrice(t.entryLow, t.currency)} – ${fmtPrice(t.entryHigh, t.currency)} zone mid`}
           value={fmtPrice(t.entryFill, t.currency)}
           cls="text-warn"
           accent
@@ -426,16 +375,15 @@ function OpenTradeCard({
         />
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-tv-div pt-3">
-        <div className="min-w-0 text-[11px] text-tv-muted">
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-tv-div pt-2">
+        <div className="min-w-0 text-[10.5px] text-tv-muted">
           {t.via === 'wick' ? 'wick-confirmed entry' : 'spot-confirmed entry'} · tracked against real candles every 45s
-          {livePrice !== null && dist(t.t1) ? ` · TP1 ${dist(t.t1)}` : ''}
         </div>
         <button
           onClick={onRemove}
           suppressHydrationWarning
           aria-label={`Remove ${t.pair} ${t.side} from tracking`}
-          className="shrink-0 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-muted transition hover:border-tv-line-strong hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+          className="shrink-0 rounded-lg border border-tv-line bg-tv-panel2 px-2.5 py-1.5 text-[11.5px] font-semibold text-tv-muted transition hover:border-tv-line-strong hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
         >
           ✋ I closed this trade
         </button>
@@ -444,19 +392,14 @@ function OpenTradeCard({
   )
 }
 
-// ─── board ───────────────────────────────────────────────────────────────────
+// ─── the section — mounted inside SetupBoard, shares its data ────────────────
 
-export function ConfirmedBoard() {
-  const [symbols, setSymbols] = useState<string[]>(DEFAULT_WATCHLIST)
-  const [data, setData] = useState<SetupsPayload | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export function ConfirmedSection({ data, loading }: { data: SetupsPayload | null; loading: boolean }) {
   const [log, setLog] = useState<ConfirmEvent[]>([])
   const [acct, setAcct] = useState('')
   const [riskPct, setRiskPct] = useState('1')
   const mounted = useRef(true)
   const logRef = useRef<ConfirmEvent[]>([])
-  const wlLoaded = useRef(false)
   const myTradesRef = useRef<MyTrade[]>([])
   const { toast } = useToast()
   const [myTrades, setMyTrades] = useState<MyTrade[]>([])
@@ -469,12 +412,9 @@ export function ConfirmedBoard() {
 
   useEffect(() => {
     mounted.current = true
-    setAcct(lsGet('tw_acct', ''))
-    setRiskPct(lsGet('tw_risk', '1'))
-    const wl = loadWatchlist()
-    setSymbols(wl)
-    saveWatchlist(wl)
-    wlLoaded.current = true
+    // sizing inputs — same scoped keys the sizing panel above writes to
+    setAcct(scopedGet('acct') ?? '')
+    setRiskPct(scopedGet('risk') ?? '1')
     const l = loadLog()
     logRef.current = l
     setLog(l)
@@ -492,34 +432,6 @@ export function ConfirmedBoard() {
       mounted.current = false
     }
   }, [])
-
-  // share watchlist edits with the Trade Setups tab (persist list)
-  useEffect(() => {
-    if (!wlLoaded.current) return
-    saveWatchlist(symbols)
-  }, [symbols])
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/setups?symbols=${symbols.join(',')}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error(`API ${res.status}`)
-      const d = (await res.json()) as SetupsPayload
-      if (!mounted.current) return
-      setData(d)
-      setError(null)
-    } catch (e) {
-      if (mounted.current) setError(String(e).slice(0, 120))
-    } finally {
-      if (mounted.current) setLoading(false)
-    }
-  }, [symbols])
-
-  useEffect(() => {
-    setLoading(true)
-    load()
-    const t = setInterval(load, POLL_MS)
-    return () => clearInterval(t)
-  }, [load])
 
   // ── my trades — take / remove ────────────────────────────────────────────
   const takeTrade = (setup: BoardSetup, s: SideSetup, kind: 'long' | 'short', event: ConfirmEvent | undefined) => {
@@ -561,6 +473,7 @@ export function ConfirmedBoard() {
     myTradesRef.current = next
     setMyTrades(next)
     saveMyTrades(next)
+    window.dispatchEvent(new Event('t2w:trades-changed'))
     toast({
       title: `🎯 Trade taken — ${t.pair} ${kind.toUpperCase()}`,
       description: `Plan frozen · fill assumed ${fmtPrice(t.entryFill, t.currency)} · TP1 ${fmtPrice(t.t1, t.currency)} · TP2 ${fmtPrice(
@@ -580,6 +493,7 @@ export function ConfirmedBoard() {
     myTradesRef.current = next
     setMyTrades(next)
     saveMyTrades(next)
+    window.dispatchEvent(new Event('t2w:trades-changed'))
     toast({
       title: `✋ ${tr.pair} ${tr.side.toUpperCase()} closed manually`,
       description: `Logged to your history · ${netRTxt(closed)}`,
@@ -642,7 +556,7 @@ export function ConfirmedBoard() {
           toast({
             title,
             description: `Closed ${fmtWhen(e.t.closedAt ?? Date.now())} · ${netRTxt(e.t)}${
-              e.t.outcome === 'TP2' ? ' — check Trade Setups for the next fresh zone' : ''
+              e.t.outcome === 'TP2' ? ' — check the setups above for the next fresh zone' : ''
             }`,
           })
         }
@@ -826,62 +740,41 @@ export function ConfirmedBoard() {
   const hitTouchIds = new Set(hits.map((h) => `${h.key}:${h.s.touchedAt}`))
   const history = log.filter((e) => e.exitedAt && !hitTouchIds.has(`${e.key}:${e.confirmedAt}`))
   const now = Date.now()
+  const symbols = data?.setups.map((s) => s.symbol) ?? []
 
   return (
-    <div className="min-h-full mx-auto flex w-full max-w-[1400px] flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6">
-      {/* header */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-3 sm:p-4">
-        <div className="mr-1 flex items-center gap-2">
-          <span
-            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border text-[14px]"
-            style={{ background: 'var(--bull-soft)', borderColor: 'var(--bull-line)' }}
-            aria-hidden="true"
-          >
-            ✅
-          </span>
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-            Trade confirmed
-          </div>
-        </div>
+    <section
+      aria-label="Trade confirmed"
+      className="flex flex-col gap-3 rounded-2xl border border-tv-line bg-tv-panel2/30 p-3.5 sm:p-4"
+    >
+      {/* section header */}
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+          <span className="text-[13px]" aria-hidden="true">✅</span> Trade confirmed
+        </h2>
         <span
           role="status"
           aria-live="polite"
-          className={`rounded-full border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
+          className={`rounded-full border px-2.5 py-0.5 text-[10.5px] font-bold tabular-nums ${
             confirmedCount ? 'border-bull/40 bg-bull/10 text-bull' : 'border-tv-line bg-tv-panel2 text-tv-muted'
           }`}
         >
           {confirmedCount
-            ? `${confirmedCount} confirmed now${live.length && hits.length ? ` · ${live.length} in zone · ${hits.length} hit` : ''}`
-            : '0 confirmed now'}
+            ? `${confirmedCount} confirmed${live.length && hits.length ? ` · ${live.length} in zone · ${hits.length} hit` : ''}`
+            : '0 confirmed'}
         </span>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {symbols.map((sym) => (
-            <span
-              key={sym}
-              className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[11px] font-semibold text-tv-muted"
-            >
-              {sym}
-            </span>
-          ))}
-        </div>
-        <div className="ml-auto text-[11px] tabular-nums text-tv-muted">
-          {loading ? 'refreshing…' : `refreshed ${data ? fmtTime(new Date(data.updatedAt).getTime()) : '—'} · auto every 45s`}
-        </div>
+        <span className="ml-auto text-[10.5px] tabular-nums text-tv-muted2">
+          {loading ? 'refreshing…' : 'auto every 45s'}
+        </span>
       </div>
-
-      {error && (
-        <div role="alert" className="rounded-xl border px-3 py-2.5 text-[13px]" style={{ background: 'var(--bear-soft)', borderColor: 'var(--bear-line)' }}>
-          <span className="text-bear">{error}</span>
-        </div>
-      )}
 
       {/* my open trades — frozen plans with live TP/SL tracking */}
       {openTrades.length > 0 && (
-        <section aria-label="My open trades" className="flex flex-col gap-3">
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+        <div className="flex flex-col gap-2">
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-tv-muted">
             My open trades <span className="text-warn">— frozen plans · tracked against real candles</span>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             {openTrades.map((t) => (
               <OpenTradeCard
                 key={t.id}
@@ -891,80 +784,43 @@ export function ConfirmedBoard() {
               />
             ))}
           </div>
-        </section>
+        </div>
       )}
 
       {/* confirmed trades — in zone + entry hits */}
-      <section aria-label="Confirmed entries" className="flex flex-col gap-4">
-        {loading && !data ? (
-          <>
-            <div className="h-[280px] animate-pulse rounded-2xl border border-tv-line bg-tv-panel" />
-            <div className="h-[280px] animate-pulse rounded-2xl border border-tv-line bg-tv-panel" />
-          </>
-        ) : confirmedCount === 0 ? (
-          <div className="rounded-2xl border border-dashed border-tv-line-strong bg-tv-panel2/50 p-10 text-center">
-            <div className="text-[15px] font-semibold text-tv-ink">No confirmed entries right now</div>
-            <div className="mx-auto mt-1.5 max-w-md text-[12.5px] leading-relaxed text-tv-muted">
-              The tracker is watching {symbols.length} symbol{symbols.length === 1 ? '' : 's'} (
-              {symbols.join(', ')}). The moment price touches an entry zone — or a candle wick hits one —
-              the trade is confirmed and appears here automatically.
-            </div>
+      {loading && !data ? (
+        <div className="h-40 animate-pulse rounded-2xl border border-tv-line bg-tv-panel" />
+      ) : confirmedCount === 0 ? (
+        <div className="rounded-xl border border-dashed border-tv-line-strong bg-tv-panel2/50 px-4 py-5 text-center">
+          <div className="text-[13px] font-semibold text-tv-ink">No confirmed entries right now</div>
+          <div className="mx-auto mt-1 max-w-md text-[11.5px] leading-relaxed text-tv-muted">
+            The tracker is watching {symbols.length ? symbols.join(', ') : 'your watchlist'}. The moment price touches an
+            entry zone — or a candle wick hits one — the trade is confirmed and appears here automatically.
           </div>
-        ) : (
-          <>
-            {live.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-                  In entry zone right now <span className="text-warn">— price inside the zone</span>
-                </div>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {live.map((c, i) => (
-                    <ConfirmedCard
-                      key={c.key}
-                      setup={c.setup}
-                      s={c.s}
-                      kind={c.kind}
-                      event={c.event}
-                      sizingTxt={c.sizingTxt}
-                      index={i}
-                      taken={openTradeKeys.has(c.key)}
-                      onTake={() => takeTrade(c.setup, c.s, c.kind, c.event)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-            {hits.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-                  Entry hit <span className="text-warn">— zone triggered by a candle wick, price moved on · still confirmed</span>
-                </div>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {hits.map((c, i) => (
-                    <ConfirmedCard
-                      key={c.key}
-                      setup={c.setup}
-                      s={c.s}
-                      kind={c.kind}
-                      event={c.event}
-                      sizingTxt={c.sizingTxt}
-                      index={i}
-                      taken={openTradeKeys.has(c.key)}
-                      onTake={() => takeTrade(c.setup, c.s, c.kind, c.event)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </section>
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {[...live, ...hits].map((c, i) => (
+            <ConfirmedCard
+              key={c.key}
+              setup={c.setup}
+              s={c.s}
+              kind={c.kind}
+              event={c.event}
+              sizingTxt={c.sizingTxt}
+              index={i}
+              taken={openTradeKeys.has(c.key)}
+              onTake={() => takeTrade(c.setup, c.s, c.kind, c.event)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* history */}
       {history.length > 0 && (
-        <section aria-label="Earlier confirmations" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-tv-muted">
               Earlier <span className="text-tv-muted2">— confirmed, then price moved on</span>
             </div>
             <button
@@ -975,20 +831,20 @@ export function ConfirmedBoard() {
               }}
               suppressHydrationWarning
               aria-label="Clear confirmation history"
-              className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11.5px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+              className="rounded-lg border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[11px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
             >
               Clear history
             </button>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             {history.slice(0, 8).map((e) => (
               <div
                 key={`${e.key}:${e.confirmedAt}`}
-                className="flex flex-wrap items-center gap-2.5 rounded-xl border border-tv-line bg-tv-panel px-3 py-2.5 text-[12px]"
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-tv-line bg-tv-panel px-2.5 py-1.5 text-[11.5px]"
               >
                 <span className="font-bold text-tv-ink">{e.pair}</span>
                 <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                  className={`rounded-full border px-1.5 py-0.5 text-[9.5px] font-bold uppercase ${
                     e.side === 'long' ? 'border-bull/35 bg-bull/10 text-bull' : 'border-bear/35 bg-bear/10 text-bear'
                   }`}
                 >
@@ -1007,21 +863,21 @@ export function ConfirmedBoard() {
                     exited {fmtTime(e.exitedAt ?? now)} · last {fmtPrice(e.lastPrice, e.currency)}
                   </span>
                 )}
-                <span className="ml-auto rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-bold text-tv-muted">
+                <span className="ml-auto rounded-full border border-tv-line bg-tv-panel2 px-1.5 py-0.5 text-[9.5px] font-bold text-tv-muted">
                   {e.tag}
                 </span>
               </div>
             ))}
           </div>
-        </section>
+        </div>
       )}
 
       {/* my trade history — taken setups with tracked outcomes */}
       {closedMyTrades.length > 0 && (
-        <section aria-label="My trade history" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-              My trade history <span className="text-tv-muted2">— taken from confirmed setups · outcomes tracked from candles</span>
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+              My trade history <span className="text-tv-muted2">— taken from confirmed setups · outcomes tracked</span>
             </div>
             <button
               onClick={() => {
@@ -1032,30 +888,30 @@ export function ConfirmedBoard() {
               }}
               suppressHydrationWarning
               aria-label="Clear my closed trades"
-              className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11.5px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+              className="rounded-lg border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[11px] font-semibold text-tv-muted transition hover:text-tv-ink hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
             >
               Clear closed
             </button>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             {closedMyTrades.slice(0, 10).map((t) => (
               <div
                 key={t.id}
-                className="flex flex-wrap items-center gap-2.5 rounded-xl border border-tv-line bg-tv-panel px-3 py-2.5 text-[12px]"
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-tv-line bg-tv-panel px-2.5 py-1.5 text-[11.5px]"
               >
                 <span className="font-bold text-tv-ink">{t.pair}</span>
                 <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                  className={`rounded-full border px-1.5 py-0.5 text-[9.5px] font-bold uppercase ${
                     t.side === 'long' ? 'border-bull/35 bg-bull/10 text-bull' : 'border-bear/35 bg-bear/10 text-bear'
                   }`}
                 >
                   {t.side}
                 </span>
-                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-bold">
+                <span className="rounded-full border border-tv-line bg-tv-panel2 px-1.5 py-0.5 text-[9.5px] font-bold">
                   {outcomeTxt(t)}
                 </span>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums ${
+                  className={`rounded-full px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums ${
                     netR(t) >= 0 ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'
                   }`}
                 >
@@ -1067,15 +923,15 @@ export function ConfirmedBoard() {
               </div>
             ))}
           </div>
-        </section>
+        </div>
       )}
 
       {/* sizing hint */}
       {confirmedCount > 0 && !(aNum > 0 && rNum > 0) && (
-        <div className="text-[11.5px] text-tv-muted">
-          Tip: set your account size and risk % on the Trade Setups page to see suggested position sizes here.
+        <div className="text-[11px] text-tv-muted">
+          Tip: set your account size and risk % in the sizing panel above to see suggested position sizes here.
         </div>
       )}
-    </div>
+    </section>
   )
 }
