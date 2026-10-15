@@ -184,6 +184,18 @@ export interface SmcPerformance {
  *  WATCHLIST — a real SMC zone exists on both tapes; signals require BOTH. */
 export type ConsensusAgreement = 'FULL' | 'PARTIAL' | 'CONFLICT' | 'SINGLE_SOURCE'
 
+/** One row of the live gate checklist (8 gates, display order). */
+export interface GateRow {
+  key: 'bias4h' | 'h1' | 'ob' | 'zone' | 'm15' | 'm5' | 'rr' | 'score'
+  label: string
+  /** gate passed */
+  ok: boolean
+  /** gate not applicable in the current strategy mode (rendered as "—") */
+  na: boolean
+  /** one human line: what the gate sees right now */
+  note: string | null
+}
+
 export interface ExchangeConsensus {
   bybit: SignalType | 'UNAVAILABLE'
   binance: SignalType | 'UNAVAILABLE'
@@ -212,6 +224,10 @@ export interface SmcAnalysis {
   exchanges: { bybit: boolean; binance: boolean }
   consensus: ExchangeConsensus
   ob_cross_check: ObCrossCheck | null
+  /** live gate checklist for the relevant side — answers "what is still missing" */
+  gates: GateRow[]
+  /** which side the checklist describes (null = no directional setup at all) */
+  gate_side: 'LONG' | 'SHORT' | null
   generatedAt: number
   current_price: number
   change24h: number

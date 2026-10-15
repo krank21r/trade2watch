@@ -33,6 +33,7 @@ import type { SmcCfg } from './cfg'
 import type {
   ExchangeConsensus,
   FVG,
+  GateRow,
   LiquidityLevel,
   LiquiditySweep,
   ObCrossCheck,
@@ -50,6 +51,7 @@ import type {
 } from './types'
 import { loadDualSmcMarketData, type FeedData } from './feeds'
 import { ensureSmcTables } from './ensure-tables'
+import { minimumScoreFor } from './cfg'
 import { atr } from './atr'
 import { detectSwings } from './swings'
 import { analyzeStructure } from './structure'
@@ -304,6 +306,66 @@ function crossCheck(chosen: CoreResult, other: CoreResult | null): ObCrossCheck 
   }
 }
 
+/**
+ * Dual-tape score-gate rescue: BOTH tapes stage the SAME directional setup,
+ * every gate passes on BOTH tapes except the score gate, and the OB zone is
+ * confirmed on both tapes (≥50% overlap) — then the +5 confluence bonus is
+ * applied BEFORE the score gate and can flip the staged setup into a live
+ * signal. The RR, zone and confirmation gates are NEVER rescued by
+ * confluence — only missing score can be.
+ */
+function tryPromote(a: CoreResult, b: CoreResult, cfg: SmcCfg): Reconciled | null {
+  const gateMap = (c: CoreResult) => {
+    const m = new Map<string, GateRow>()
+    for (const g of c.evaluation.gates) m.set(g.key, g)
+    return m
+  }
+  const side = a.evaluation.gateSide
+  if (!side || side !== b.evaluation.gateSide) return null
+  const chosen = a.evaluation.score >= b.evaluation.score ? a : b
+  const other = chosen === a ? b : a
+  const g = gateMap(chosen)
+  const og = gateMap(other)
+  const hardOk = (m: Map<string, GateRow>) => ['bias4h', 'h1', 'ob', 'rr'].every((k) => m.get(k)?.ok)
+  const confirmsOk = (m: Map<string, GateRow>) => ['m15', 'm5'].every((k) => m.get(k)?.na || m.get(k)?.ok)
+  if (!hardOk(g) || !hardOk(og) || !confirmsOk(g) || !confirmsOk(og)) return null
+  if (!g.get('zone')?.ok || !og.get('zone')?.ok) return null // price must sit in the zone on BOTH tapes
+  if (g.get('score')?.ok) return null // score gate already passed — normal signal path
+  const cc = crossCheck(chosen, other)
+  if (!cc || !cc.bybit || !cc.binance) return null // OB zone must exist on both tapes
+  const score = Math.min(100, Math.round(chosen.evaluation.score + CONFLUENCE_BONUS))
+  if (score < minimumScoreFor(cfg.mode)) return null
+  const reasons: Reason[] = [
+    ...chosen.evaluation.reasons,
+    {
+      factor: 'Cross-exchange confluence',
+      result: `setup staged on both tapes — OB zone confirmed on Bybit + Binance (+${CONFLUENCE_BONUS})`,
+      points: CONFLUENCE_BONUS,
+    },
+  ]
+  return {
+    chosen,
+    signal: side,
+    trade: chosen.evaluation.trade,
+    score,
+    quality: qualityFor(score),
+    explanation: [
+      ...chosen.evaluation.explanation,
+      `dual-tape confluence: both Bybit and Binance stage the same ${side.toLowerCase()} setup and every gate passes except the score — the +${CONFLUENCE_BONUS} cross-exchange bonus lifts ${chosen.evaluation.score} → ${score} (gate ${minimumScoreFor(cfg.mode)})`,
+    ],
+    reasons,
+    consensus: {
+      bybit: 'WATCHLIST',
+      binance: 'WATCHLIST',
+      agreement: 'FULL',
+      note: `both tapes stage the same ${side.toLowerCase()} setup — the +${CONFLUENCE_BONUS} confluence bonus crossed the score gate → ${side}`,
+    },
+    obCross: cc,
+    watchNoteOverride: null,
+    confirmations: 2,
+  }
+}
+
 const isTrade = (s: SignalType): s is 'LONG' | 'SHORT' => s === 'LONG' || s === 'SHORT'
 
 interface Reconciled {
@@ -324,7 +386,7 @@ interface Reconciled {
  * Merge the per-exchange verdicts into ONE signal (rules in the header).
  * `chosen` picks which tape feeds the payload + persistence.
  */
-function reconcile(cores: CoreResult[]): Reconciled {
+function reconcile(cores: CoreResult[], cfg: SmcCfg): Reconciled {
   if (cores.length === 1) {
     const c = cores[0]
     const e = c.evaluation
@@ -464,7 +526,10 @@ function reconcile(cores: CoreResult[]): Reconciled {
     }
   }
 
-  // neither tape fired — agree or not, there is no signal; keep the richer tape
+  // neither tape fired — try the dual-tape score-gate rescue first; otherwise
+  // keep the richer tape for the payload
+  const promo = tryPromote(by, bn, cfg)
+  if (promo) return promo
   const better = a.score >= b.score ? by : bn
   const e = better.evaluation
   const agree = a.signal === b.signal
@@ -661,7 +726,7 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
     throw new Error('DATA UNAVAILABLE: no usable closed candles from Bybit or Binance')
   }
 
-  const rec = reconcile(cores)
+  const rec = reconcile(cores, cfg)
   const chosen = rec.chosen
   const now = Date.now()
 
@@ -871,6 +936,8 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
     },
     consensus: rec.consensus,
     ob_cross_check: rec.obCross,
+    gates: chosen.evaluation.gates,
+    gate_side: chosen.evaluation.gateSide,
     generatedAt: now,
     current_price: currentPrice,
     change24h: chosen.change24h,

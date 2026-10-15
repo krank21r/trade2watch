@@ -66,9 +66,9 @@ function agreementChip(a: ConsensusAgreement, signal: SignalType): { cls: string
 }
 const MODE_OPTIONS: StrategyMode[] = ['STRICT', 'BALANCED', 'AGGRESSIVE']
 const MODE_HINT: Record<StrategyMode, string> = {
-  STRICT: 'every gate — rarest, highest confidence',
-  BALANCED: 'skips the 5M trigger — more signals',
-  AGGRESSIVE: 'structure + zone only — most signals, lowest quality',
+  STRICT: 'every gate — score ≥ 80 · rarest, highest confidence',
+  BALANCED: 'skips the 5M trigger — score ≥ 75 · more signals',
+  AGGRESSIVE: 'zone + structure only — score ≥ 70 · most signals',
 }
 
 type HistFilter = 'ALL' | 'LONG' | 'SHORT' | 'WIN' | 'LOSS'
@@ -777,6 +777,57 @@ export function SmcBoard() {
           </div>
         )}
       </motion.section>
+
+      {/* ── gate checklist — the live answer to "what is still missing" ── */}
+      {data.gates && data.gates.length > 0 && (
+        <motion.section
+          {...motionT(0.13)}
+          aria-label="Gate checklist"
+          className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5"
+        >
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+              Gate checklist{' '}
+              {data.gate_side ? (
+                <span className="normal-case tracking-normal text-tv-muted2">
+                  — {data.gate_side} setup · what stands between here and a live signal
+                </span>
+              ) : (
+                <span className="normal-case tracking-normal text-tv-muted2">— no directional setup right now</span>
+              )}
+            </h3>
+            <span className="ml-auto text-[10.5px] text-tv-muted2">{data.mode} mode · live every 45s</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {data.gates.map((g) => (
+              <div
+                key={g.key}
+                className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${
+                  g.na
+                    ? 'border-tv-line bg-tv-panel2/30 opacity-70'
+                    : g.ok
+                      ? 'border-bull/30 bg-bull/5'
+                      : 'border-warn/40 bg-warn/10'
+                }`}
+              >
+                <span
+                  className={`mt-0.5 text-[13px] font-bold ${g.na ? 'text-tv-muted2' : g.ok ? 'text-bull' : 'text-warn'}`}
+                  aria-hidden="true"
+                >
+                  {g.na ? '—' : g.ok ? '✓' : '✗'}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[12px] font-bold text-tv-ink">{g.label}</div>
+                  {g.note && <div className="mt-0.5 text-[10.5px] leading-snug text-tv-muted">{g.note}</div>}
+                </div>
+                <span className="sr-only">
+                  {g.label} {g.na ? 'not applicable' : g.ok ? 'passed' : 'failed'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </motion.section>
+      )}
 
       {/* ── score breakdown + engine explanation ── */}
       <motion.section {...motionT(0.15)} aria-label="Score breakdown and engine explanation" className="grid gap-4 lg:grid-cols-2">

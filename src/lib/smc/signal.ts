@@ -28,11 +28,13 @@
  */
 
 import { TF_MS } from './config'
+import { minimumScoreFor } from './cfg'
 import type { SmcCfg } from './cfg'
 import type {
   Direction,
   DisplacementEvent,
   FVG,
+  GateRow,
   LiquidityLevel,
   LiquiditySweep,
   OrderBlock,
@@ -78,6 +80,10 @@ export interface SignalEvaluation {
   quality: 'A+' | 'A' | 'B' | 'C' | '—'
   explanation: string[]
   watchNote?: string
+  /** live gate checklist for `gateSide` — every gate's pass/fail + why */
+  gates: GateRow[]
+  /** which side the gates describe (null = no directional setup at all) */
+  gateSide: 'LONG' | 'SHORT' | null
   /** close time of the LAST gate that passed — the entry trigger (5M BOS /
    *  displacement in STRICT, latest 15M confirm in BALANCED, OB's own BOS in
    *  AGGRESSIVE). null when nothing confirmed. Powers the UI "confirmed Xm ago". */
@@ -109,6 +115,108 @@ interface SideEval {
 function distanceToZone(price: number, ob: OrderBlock): number {
   if (price >= ob.low && price <= ob.high) return 0
   return price > ob.high ? price - ob.high : ob.low - price
+}
+
+/**
+ * Live gate checklist for the relevant side — the UI renders this verbatim so
+ * "why is it not confirming" is always answered on screen, per gate.
+ */
+function buildGates(side: SideEval | null, data: SignalInput, cfg: SmcCfg): GateRow[] {
+  const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+  const gate = minimumScoreFor(cfg.mode)
+  if (!side) {
+    // no directional setup at all (4H neutral or conflicting on both sides)
+    const dead4h = data.t4.trend === 'NEUTRAL'
+    return [
+      { key: 'bias4h', label: '4H bias', ok: false, na: false, note: dead4h ? '4H is NEUTRAL — no directional bias' : `4H is ${data.t4.trend.toLowerCase()} — opposite side evaluated` },
+      { key: 'h1', label: '1H structure', ok: false, na: false, note: '—' },
+      { key: 'ob', label: 'OB valid', ok: false, na: false, note: '—' },
+      { key: 'zone', label: 'Price in zone', ok: false, na: false, note: '—' },
+      { key: 'm15', label: '15M confirm', ok: false, na: cfg.mode === 'AGGRESSIVE', note: '—' },
+      { key: 'm5', label: '5M trigger', ok: false, na: cfg.mode !== 'STRICT', note: '—' },
+      { key: 'rr', label: 'RR ≥ 2R', ok: false, na: false, note: '—' },
+      { key: 'score', label: `Score ≥ ${gate}`, ok: false, na: false, note: '—' },
+    ]
+  }
+  const dir = side.dir
+  const ob = side.ob ?? side.watchOb
+  const atr = data.h1.atr
+  const distTxt =
+    side.inZone || !ob
+      ? null
+      : atr && side.watchDist !== Infinity
+        ? `${fmt(side.watchDist)} (${(side.watchDist / atr).toFixed(1)}× ATR) away — pullback pending`
+        : 'outside the zone'
+  return [
+    {
+      key: 'bias4h',
+      label: '4H bias',
+      ok: !side.dead,
+      na: false,
+      note: side.dead ? `4H is ${data.t4.trend.toLowerCase()} — ${side.side.toLowerCase()} side impossible` : `4H ${dir.toLowerCase()} — side valid`,
+    },
+    {
+      key: 'h1',
+      label: '1H structure',
+      ok: side.h1Ok && !side.hardConflict,
+      na: false,
+      note: side.hardConflict
+        ? '1H conflicts the 4H — hard NO_TRADE (§45)'
+        : side.h1Ok
+          ? `1H ${dir.toLowerCase()} — agrees with the 4H`
+          : '1H neutral — waiting for structure to turn',
+    },
+    {
+      key: 'ob',
+      label: 'OB valid',
+      ok: ob !== null,
+      na: false,
+      note: ob
+        ? `${dir.toLowerCase()} OB ${fmt(ob.low)}–${fmt(ob.high)} · strength ${ob.strengthScore}`
+        : 'no valid OB in range (within 1.5× ATR)',
+    },
+    {
+      key: 'zone',
+      label: 'Price in zone',
+      ok: side.inZone,
+      na: false,
+      note: side.inZone
+        ? `price ${fmt(data.price)} inside the OB — entry condition met`
+        : distTxt ?? 'no zone to enter',
+    },
+    {
+      key: 'm15',
+      label: '15M confirm',
+      ok: side.m15Ok,
+      na: cfg.mode === 'AGGRESSIVE',
+      note: cfg.mode === 'AGGRESSIVE' ? 'skipped in AGGRESSIVE mode' : side.m15Ok ? `${dir.toLowerCase()} BOS/CHoCH within ${cfg.confirm15Lookback} candles` : `no recent 15M ${dir.toLowerCase()} break`,
+    },
+    {
+      key: 'm5',
+      label: '5M trigger',
+      ok: side.m5Ok,
+      na: cfg.mode !== 'STRICT',
+      note: cfg.mode !== 'STRICT' ? 'skipped in this mode' : side.m5Ok ? `${dir.toLowerCase()} entry trigger confirmed` : `waiting for the 5M ${dir.toLowerCase()} ${cfg.entryModeA === 'CONSERVATIVE' ? 'BOS' : 'displacement'}`,
+    },
+    {
+      key: 'rr',
+      label: 'RR ≥ 2R',
+      ok: side.trade !== null,
+      na: ob === null,
+      note: side.trade
+        ? `TP2 = ${side.trade.rr2}R from this entry`
+        : ob === null
+          ? '—'
+          : `TP2 below ${cfg.minimumRr}R from this zone`,
+    },
+    {
+      key: 'score',
+      label: `Score ≥ ${gate}`,
+      ok: side.score >= gate,
+      na: false,
+      note: `${side.score}/100 (${side.quality}) — ${side.score >= gate ? 'gate passed' : `${gate - side.score} more confluence needed`}`,
+    },
+  ]
 }
 
 function evaluateSide(side: 'LONG' | 'SHORT', data: SignalInput, cfg: SmcCfg): SideEval {
@@ -243,7 +351,7 @@ function evaluateSide(side: 'LONG' | 'SHORT', data: SignalInput, cfg: SmcCfg): S
   base.reasons = scored.reasons
 
   base.passed =
-    base.h1Ok && base.ob !== null && base.inZone && base.m15Ok && base.m5Ok && base.trade !== null && base.score >= cfg.minimumScore
+    base.h1Ok && base.ob !== null && base.inZone && base.m15Ok && base.m5Ok && base.trade !== null && base.score >= minimumScoreFor(cfg.mode)
 
   // ── explanation lines for the satisfied checks (§23 style) ────────────────
   const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
@@ -288,21 +396,32 @@ export function evaluateSignal(data: SignalInput, cfg: SmcCfg): SignalEvaluation
       score: chosen.score,
       quality: chosen.quality,
       explanation: [...chosen.explanation],
+      gates: buildGates(chosen, data, cfg),
+      gateSide: chosen.side,
       confirmAt: chosen.confirmAt,
     }
   }
 
   // ── WATCHLIST: 4H bias matches + valid OB exists, confirmations missing ───
-  const watch = !long.dead && long.watchOb ? long : !short.dead && short.watchOb ? short : null
+  // NOTE: the candidate is EITHER an OB containing price (failing a later
+  // gate) OR the nearest OB within 1.5× ATR — both deserve the radar; a
+  // price-in-zone setup must never fall through to NO_TRADE.
+  const watch =
+    !long.dead && (long.ob ?? long.watchOb)
+      ? long
+      : !short.dead && (short.ob ?? short.watchOb)
+        ? short
+        : null
   if (watch) {
     const dirTxt = watch.dir === 'BULLISH' ? 'long' : 'short'
-    const ob = watch.watchOb!
+    const ob = watch.ob ?? watch.watchOb!
     let watchNote: string
     if (!watch.h1Ok) {
       watchNote = `waiting for 1H structure to turn ${dirTxt} — ${dirTxt} OB ${fmt(ob.low)}–${fmt(ob.high)} is staged`
     } else if (!watch.inZone) {
-      const atrTxt = data.h1.atr ? ` (${(watch.watchDist / data.h1.atr).toFixed(1)}× ATR)` : ''
-      watchNote = `price ${fmt(data.price)} is ${fmt(watch.watchDist)}${atrTxt} from the ${dirTxt} OB ${fmt(ob.low)}–${fmt(ob.high)} — waiting for the pullback into the zone`
+      const atrTxt = data.h1.atr && watch.watchDist !== Infinity ? ` (${(watch.watchDist / data.h1.atr).toFixed(1)}× ATR)` : ''
+      const dist = watch.watchDist !== Infinity ? fmt(watch.watchDist) : '0'
+      watchNote = `price ${fmt(data.price)} is ${dist}${atrTxt} from the ${dirTxt} OB ${fmt(ob.low)}–${fmt(ob.high)} — waiting for the pullback into the zone`
     } else if (!watch.m15Ok && data.mode !== 'AGGRESSIVE') {
       watchNote = `price is inside the ${dirTxt} OB zone — waiting for a 15M ${dirTxt} BOS/CHoCH within ${cfg.confirm15Lookback} candles`
     } else if (!watch.m5Ok && data.mode === 'STRICT') {
@@ -310,18 +429,20 @@ export function evaluateSignal(data: SignalInput, cfg: SmcCfg): SignalEvaluation
     } else if (!watch.trade) {
       watchNote = `zone is valid but risk-reward at TP2 is below ${cfg.minimumRr}R from this entry — waiting for a better-priced zone`
     } else {
-      watchNote = `score ${watch.score} is below the ${cfg.minimumScore} threshold — waiting for more confluence`
+      watchNote = `score ${watch.score} is below the ${minimumScoreFor(cfg.mode)} ${cfg.mode} threshold — waiting for more confluence`
     }
     if (watch.inZone) watch.explanation.push(`price ${fmt(data.price)} is inside the ${dirTxt} order block zone — watchlist until confirmations land`)
     watch.explanation.push(watchNote)
     return {
       signal: 'WATCHLIST',
-      ob: watch.watchOb,
+      ob: watch.ob ?? watch.watchOb,
       trade: watch.trade, // provisional plan (may be null when RR is the blocker)
       reasons: watch.reasons,
       score: watch.score,
       quality: watch.quality,
       explanation: [...watch.explanation],
+      gates: buildGates(watch, data, cfg),
+      gateSide: watch.side,
       watchNote,
       confirmAt: null,
     }
@@ -347,6 +468,8 @@ export function evaluateSignal(data: SignalInput, cfg: SmcCfg): SignalEvaluation
     score: 0,
     quality: '—',
     explanation: explanations,
+    gates: buildGates(!long.dead ? long : !short.dead ? short : null, data, cfg),
+    gateSide: !long.dead ? 'LONG' : !short.dead ? 'SHORT' : null,
     confirmAt: null,
   }
 }

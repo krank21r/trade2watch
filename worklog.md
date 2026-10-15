@@ -624,3 +624,18 @@ Work Log:
 
 Stage Summary:
 - Production now runs the full dual-tape engine from Tokyo: every SMC verdict on trade2watch.vercel.app is a reconciled Bybit × Binance result, and single-tape degradation is visible in the UI instead of silent.
+
+---
+Task ID: 30
+Agent: Z.ai Code (main)
+Task: "No signals ever fire" — diagnose why the board stays NO_TRADE/WATCHLIST and make confirmed setups reachable + visible
+
+Work Log:
+- Root causes found in signal.ts: (1) the score gate was a flat 80 for ALL modes, but every current staged setup scores 70 (B) — so even a perfect pullback could never fire; (2) the earlier +5 confluence bonus only applied AFTER a signal existed (both tapes fired), so it could never rescue borderline setups; (3) REAL BUG: the WATCHLIST branch required watchOb (price NOT in zone) — a price-in-zone setup failing a later gate (15M/5M/RR/score) fell through to NO_TRADE and was invisible on the radar.
+- Fixes: (a) minimumScoreFor(mode) in cfg.ts — STRICT 80, BALANCED 75, AGGRESSIVE 70; applied inside signal.ts gate + watchNote text (backtest inherits automatically). (b) tryPromote() in analysis.ts reconcile: both tapes stage the SAME side, every gate passes on BOTH tapes except score, OB zone ≥50% overlap on both tapes → +5 confluence applied BEFORE the score gate can flip WATCHLIST → live LONG/SHORT (RR/zone/confirmations never rescued). (c) watchlist candidate now ob ?? watchOb — in-zone setups always land on the radar. (d) SignalEvaluation/SmcAnalysis expose gates: GateRow[] (8 rows: bias4h, h1, ob, zone, m15, m5, rr, score with ok/na/note) + gate_side.
+- UI: new "Gate checklist" panel under the signal hero — 8 live cards (✓ green / ✗ amber / — skipped) each with a one-line live reason; mode hints updated with per-mode score gates (≥80/≥75/≥70).
+- Backtest proof (BTCUSDT 30d, folds=4): STRICT 4 trades −0.25R (gate unchanged); BALANCED 9 trades +2.67R (was 7 trades −3.25R before calibration); AGGRESSIVE 13 trades +0.67R. Mode calibration + bug fix surfaced better-priced entries.
+- Verified: lint clean, API gates output correct for WATCHLIST (BTC: zone/RR/score missing) and NO_TRADE (ETH: no OB in range), browser-verified checklist render + zero console errors.
+
+Stage Summary:
+- The engine now has a calibrated ladder instead of a single 80 wall: in-zone setups are always visible on the radar, and dual-tape confluence can legitimately push a 70–75 setup over the gate. The board answers "why no signal" per gate, live. Current tape still honestly shows BTC SHORT WATCHLIST (price 0.8× ATR below the OB) — when price pulls back into 81,472.5–81,716.5, BALANCED fires at ≥75 or via confluence promotion; STRICT still demands the 5M trigger on top.
