@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { fmtPrice, type SignalRunDetail } from './types'
 import { scopedGet, scopedSet } from '@/lib/user-scope'
@@ -10,8 +10,18 @@ function lsGet(k: string, d: string): string {
 }
 
 export function SignalCard({ run }: { run: SignalRunDetail }) {
-  const [acct, setAcct] = useState(() => lsGet('tw_acct', ''))
-  const [riskPct, setRiskPct] = useState(() => lsGet('tw_risk', '1'))
+  // SSR-safe: plain defaults during hydration, personal values load on the
+  // next tick after mount (same pattern as SetupBoard — avoids server/client
+  // value mismatch). Deferred because hydration render must match the server.
+  const [acct, setAcct] = useState('')
+  const [riskPct, setRiskPct] = useState('1')
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAcct(lsGet('tw_acct', ''))
+      setRiskPct(lsGet('tw_risk', '1'))
+    }, 0)
+    return () => clearTimeout(t)
+  }, [])
   const dir = run.direction
   const isLong = dir === 'LONG'
   const isShort = dir === 'SHORT'

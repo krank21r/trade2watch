@@ -1,22 +1,26 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { LogOut } from 'lucide-react'
+
+const noopSubscribe = () => () => {}
 
 const readName = (): string => {
   if (typeof document === 'undefined') return ''
   const m = document.cookie.match(/(?:^|;\s*)t2w_name=([^;]+)/)
   return m ? decodeURIComponent(decodeURIComponent(m[1])) : ''
 }
+const serverName = (): string => ''
 
 /**
  * Nav user chip — avatar initial + display name + sign-out.
  * Identity comes from the readable t2w_name cookie (set at login).
+ * useSyncExternalStore keeps hydration exact: the server snapshot ('')
+ * matches the SSR HTML, the client snapshot swaps in the real name right
+ * after hydration — no mismatch, no flash of wrong content.
  */
 export function UserMenu() {
-  // lazy init — the cookie is set by the login response; server render shows
-  // the placeholder and the client corrects it (suppressed below)
-  const [name, setName] = useState(readName)
+  const name = useSyncExternalStore(noopSubscribe, readName, serverName)
   const [busy, setBusy] = useState(false)
 
   const logout = async () => {
@@ -41,7 +45,7 @@ export function UserMenu() {
         >
           {initial}
         </span>
-        <span className="text-[12px] font-semibold text-tv-ink" suppressHydrationWarning>
+        <span className="text-[12px] font-semibold text-tv-ink">
           {name || 'user'}
         </span>
       </span>

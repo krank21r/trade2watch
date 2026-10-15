@@ -676,3 +676,18 @@ Work Log:
 
 Stage Summary:
 - The app is now account-gated: exactly 3 credentials (kranthi/Kranthi@2026, analyst1/Analyst1@2026, analyst2/Analyst2@2026 — owner should change via env vars), sessions last 30 days, and all personal state is private per user. Set AUTH_SECRET on prod to pin the signing key.
+
+---
+Task ID: 33
+Agent: Z.ai Code (main)
+Task: Fix hydration mismatch (recoverable error) on UserMenu for signed-in users
+
+Work Log:
+- Root cause: UserMenu read the t2w_name cookie inside a useState initializer — the client's first (hydration) render computed "Kranthi" while SSR rendered the "user" placeholder → text/attribute mismatch, tree regenerated. (Extension errors from the previous report were separate; this one reproduced for EVERY logged-in user.)
+- Fix: useSyncExternalStore(noopSubscribe, readName, serverSnapshot='') — server snapshot matches SSR exactly, client snapshot swaps the real name in right after hydration; removed the now-unneeded suppressHydrationWarning on the name span.
+- Same-pattern sweep: SignalCard's acct/riskPct also used lazy localStorage initializers (attribute mismatch on `value` for users with saved values) → plain defaults + deferred mount load (setTimeout 0, passes react-hooks/set-state-in-effect, hydrates identically to SSR). SetupBoard/ConfirmedBoard already used mount-effect loading.
+- Fixed a self-inflicted useState-import drop in user-menu.tsx (caught by browser verification — dev overlay "useState is not defined").
+- Verified: lint clean; browser flow login → dashboard renders "Kranthi" chip, console has ZERO hydration errors; AI Signals + SMC tabs render; page errors empty.
+
+Stage Summary:
+- All cookie/localStorage reads now happen either via useSyncExternalStore (UserMenu) or post-hydration deferred effects (boards) — first client render always matches the server HTML. Hydration pipeline is clean for all 3 users.
