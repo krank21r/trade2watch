@@ -90,7 +90,7 @@ export default function Home() {
               className="inline-block w-2 h-2 rounded-full animate-pulse"
               style={{ background: 'var(--bull)' }}
             />
-            {tab === 'setups' ? 'Live setups' : tab === 'confirmed' ? 'Entry confirmations' : tab === 'signals' ? 'AI desk ready' : 'SMC desk — Bybit'}
+            {tab === 'setups' ? 'Live setups' : tab === 'confirmed' ? 'Entry confirmations' : tab === 'signals' ? 'AI desk ready' : 'SMC desk — Bybit × Binance'}
           </span>
           <ThemeToggle />
         </div>

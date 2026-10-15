@@ -20,6 +20,7 @@ export type TF = '1D' | '4H' | '1H' | '15M' | '5M'
 export type Direction = 'BULLISH' | 'BEARISH'
 export type SignalType = 'LONG' | 'SHORT' | 'WATCHLIST' | 'NO_TRADE'
 export type StrategyMode = 'STRICT' | 'BALANCED' | 'AGGRESSIVE'
+export type ExchangeId = 'BYBIT' | 'BINANCE'
 
 // ─── market structure ────────────────────────────────────────────────────────
 
@@ -171,12 +172,46 @@ export interface SmcPerformance {
   avgR: number
 }
 
+// ─── cross-exchange confluence (Bybit × Binance dual-tape validation) ───────
+
+/** Reconciliation rules (see analysis.ts):
+ *  FULL          — both tapes agree on the same LONG/SHORT  → signal, +5 score
+ *  PARTIAL       — one tape confirms, the other sees the setup (WATCHLIST)
+ *                  → signal kept, flagged as single-tape confirmed
+ *  CONFLICT      — one says LONG, the other SHORT          → NO_TRADE
+ *  SINGLE_SOURCE — the other feed is down                  → signal stands alone
+ *  A one-tape LONG/SHORT where the other tape shows NO setup downgrades to
+ *  WATCHLIST — a real SMC zone exists on both tapes; signals require BOTH. */
+export type ConsensusAgreement = 'FULL' | 'PARTIAL' | 'CONFLICT' | 'SINGLE_SOURCE'
+
+export interface ExchangeConsensus {
+  bybit: SignalType | 'UNAVAILABLE'
+  binance: SignalType | 'UNAVAILABLE'
+  agreement: ConsensusAgreement
+  /** human line explaining the cross-exchange verdict */
+  note: string | null
+}
+
+/** Does the featured order-block zone exist on BOTH exchange tapes? */
+export interface ObCrossCheck {
+  direction: Direction | null
+  bybit: boolean
+  binance: boolean
+  /** intersection of the two zones / smaller zone, 0-100; null when uncheckable */
+  overlapPct: number | null
+}
+
 // ─── THE consolidated response — primary contract (§23/§25/§50) ─────────────
 
 export interface SmcAnalysis {
   ok: true
   symbol: string
-  dataSource: 'BYBIT' | 'BINANCE_FALLBACK'
+  /** BOTH = both tapes healthy and merged; BYBIT / BINANCE_FALLBACK = single tape */
+  dataSource: 'BYBIT' | 'BINANCE_FALLBACK' | 'BOTH'
+  /** which feeds answered with usable closed candles */
+  exchanges: { bybit: boolean; binance: boolean }
+  consensus: ExchangeConsensus
+  ob_cross_check: ObCrossCheck | null
   generatedAt: number
   current_price: number
   change24h: number
@@ -247,6 +282,9 @@ export interface SmcScanRow {
   bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
   price: number
   change24h: number
+  /** how many healthy tapes confirmed: 2 = Bybit + Binance agree, 1 = single tape */
+  confirmations?: 0 | 1 | 2
+  agreement?: ConsensusAgreement | null
   /** one-line status: watchlist missing-requirement note, or the top reason */
   note: string | null
   generatedAt: number

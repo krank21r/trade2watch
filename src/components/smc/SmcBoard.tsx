@@ -32,6 +32,7 @@ import {
   trendCls,
 } from '@/components/smc/ui'
 import type {
+  ConsensusAgreement,
   SmcAnalysis,
   SmcAnalysisError,
   SmcHistoryRow,
@@ -53,6 +54,15 @@ const SMC_LABEL: Record<string, string> = {
   BNBUSDT: 'BNB',
   XRPUSDT: 'XRP',
   DOGEUSDT: 'DOGE',
+}
+
+/** cross-exchange agreement chip — Bybit × Binance dual-tape verdict */
+function agreementChip(a: ConsensusAgreement, signal: SignalType): { cls: string; label: string } {
+  const live = signal === 'LONG' || signal === 'SHORT'
+  if (a === 'FULL') return { cls: 'border-bull/40 bg-bull/10 text-bull', label: live ? '2/2 tapes agree' : 'tapes agree' }
+  if (a === 'PARTIAL') return { cls: 'border-warn/40 bg-warn/10 text-warn', label: live ? '1/2 tapes confirmed' : '1/2 tapes' }
+  if (a === 'CONFLICT') return { cls: 'border-bear/40 bg-bear/10 text-bear', label: 'tapes conflict' }
+  return { cls: '', label: 'single tape' }
 }
 const MODE_OPTIONS: StrategyMode[] = ['STRICT', 'BALANCED', 'AGGRESSIVE']
 const MODE_HINT: Record<StrategyMode, string> = {
@@ -446,8 +456,31 @@ export function SmcBoard() {
               </Chip>
             )}
             <Chip cls="border-info/35 bg-info/10 text-info">{data.mode}</Chip>
-            <Chip>{data.dataSource === 'BINANCE_FALLBACK' ? 'Binance fallback' : 'Bybit'}</Chip>
+            <Chip
+              cls={
+                data.exchanges.bybit
+                  ? 'border-bull/40 bg-bull/10 text-bull'
+                  : 'border-bear/30 bg-bear/10 text-bear'
+              }
+            >
+              Bybit {data.exchanges.bybit ? '✓' : '✗'}
+            </Chip>
+            <Chip
+              cls={
+                data.exchanges.binance
+                  ? 'border-bull/40 bg-bull/10 text-bull'
+                  : 'border-bear/30 bg-bear/10 text-bear'
+              }
+            >
+              Binance {data.exchanges.binance ? '✓' : '✗'}
+            </Chip>
+            <Chip cls={agreementChip(data.consensus.agreement, data.signal).cls}>
+              {agreementChip(data.consensus.agreement, data.signal).label}
+            </Chip>
           </div>
+          {data.consensus.note && (
+            <div className="mt-1.5 text-[11px] leading-relaxed text-tv-muted">⇄ {data.consensus.note}</div>
+          )}
         </div>
         <div className="ml-auto text-right text-[11px] tabular-nums text-tv-muted">
           <span role="status" aria-live="polite">
@@ -548,6 +581,11 @@ export function SmcBoard() {
                   <span className={`relative inline-flex h-2 w-2 rounded-full ${r.signal === 'LONG' ? 'bg-bull' : 'bg-bear'}`} aria-hidden="true" />
                 </span>
                 ⚡ {r.signal} {SMC_LABEL[r.symbol] ?? r.symbol} · score {r.score} · {r.quality}
+                {r.confirmations != null && r.confirmations > 0 && (
+                  <span className={`text-[11px] font-semibold ${r.confirmations === 2 ? 'text-bull' : 'text-warn'}`}>
+                    · {r.confirmations === 2 ? 'Bybit+Binance ✓' : '1 tape only'}
+                  </span>
+                )}
                 <span className="text-tv-muted2">— tap to view</span>
               </button>
             ))}
@@ -820,6 +858,37 @@ export function SmcBoard() {
               ))}
             </ul>
           )}
+          {data.ob_cross_check && data.ob_cross_check.direction ? (
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-tv-line bg-tv-panel2/40 px-3 py-2">
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-tv-muted">Cross-tape OB check</span>
+              <span className={`text-[11.5px] font-bold ${dirTextCls(data.ob_cross_check.direction)}`}>
+                {data.ob_cross_check.direction}
+              </span>
+              <Chip
+                cls={
+                  data.ob_cross_check.bybit
+                    ? 'border-bull/40 bg-bull/10 text-bull'
+                    : 'border-bear/30 bg-bear/10 text-bear'
+                }
+              >
+                Bybit {data.ob_cross_check.bybit ? '✓' : '✗'}
+              </Chip>
+              <Chip
+                cls={
+                  data.ob_cross_check.binance
+                    ? 'border-bull/40 bg-bull/10 text-bull'
+                    : 'border-bear/30 bg-bear/10 text-bear'
+                }
+              >
+                Binance {data.ob_cross_check.binance ? '✓' : '✗'}
+              </Chip>
+              {data.ob_cross_check.overlapPct !== null && (
+                <span className="ml-auto text-[10.5px] tabular-nums text-tv-muted2">
+                  {data.ob_cross_check.overlapPct}% zone overlap
+                </span>
+              )}
+            </div>
+          ) : null}
         </SmcPanel>
 
         {/* fair value gaps */}
@@ -1132,7 +1201,13 @@ export function SmcBoard() {
       <footer className="mt-auto border-t border-tv-line pb-1 pt-3 text-[11px] leading-relaxed text-tv-muted">
         <b className="text-warn">Disclaimer:</b> {data.disclaimer}
         <br />
-        Data: {data.dataSource === 'BINANCE_FALLBACK' ? 'Bybit public API · Binance fallback active' : 'Bybit public API'} · analysis only — no auto-trading
+        Data:{' '}
+        {data.dataSource === 'BOTH'
+          ? 'Bybit public API + Binance public API (dual-tape cross-check)'
+          : data.dataSource === 'BINANCE_FALLBACK'
+            ? 'Binance public API (Bybit tape unavailable — single-source)'
+            : 'Bybit public API (Binance tape unavailable — single-source)'}{' '}
+        · analysis only — no auto-trading
       </footer>
     </div>
   )

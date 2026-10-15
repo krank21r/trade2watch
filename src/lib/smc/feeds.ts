@@ -1,21 +1,29 @@
 /**
- * Market data for the SMC engine (§4/§5) — Bybit v5 public REST, keyless.
+ * Dual-exchange market data for the SMC engine — Bybit v5 + Binance spot,
+ * both public REST, keyless, fetched CONCURRENTLY on every evaluation.
  *
  * READ-ONLY market data. No trading permissions, no keys, ever (§58).
  *
- *  - Klines:  GET /v5/market/kline?category=spot&symbol=BTCUSDT&interval=240&limit=500
- *  - Tickers: GET /v5/market/tickers?category=spot&symbol=BTCUSDT
+ * Why two tapes? An SMC order block is a price-level concept — if a zone is
+ * real it must appear on every major venue's tape. The engine therefore runs
+ * once per exchange and the orchestrator reconciles:
+ *   - OB zones confirmed on BOTH feeds  → signal, +5 confluence score
+ *   - zone on one tape only             → WATCHLIST (never a live signal)
+ *   - feeds disagree on direction       → NO_TRADE
  *
- * Bybit returns the FORMING candle as the newest row — it is dropped here so
- * every candle handed to the engine is CLOSED (no-look-ahead contract).
+ *  - Bybit:   GET /v5/market/kline?category=spot&symbol=BTCUSDT&interval=240&limit=500
+ *  - Binance: GET /api/v3/klines?symbol=BTCUSDT&interval=4h&limit=500 (official
+ *             api.binance.com; data-api.binance.vision mirror when blocked)
  *
- * If Bybit is unreachable, we fall back to Binance's official public mirror
- * (data-api.binance.vision — same klines the rest of the app uses). If both
- * fail the caller gets [] and the API reports DATA UNAVAILABLE (§62) — we
- * NEVER fabricate candles.
+ * Both venues return the FORMING candle as the newest row — it is dropped here
+ * so every candle handed to the engine is CLOSED (no-look-ahead contract).
  *
- * Candles are cached in memory (this environment's cache layer — stands in
- * for the spec's Redis, §27) with short TTLs so the 45s poll stays polite.
+ * If one venue is unreachable the other carries the analysis alone
+ * (SINGLE_SOURCE consensus). If BOTH fail the caller gets two null feeds and
+ * the API reports DATA UNAVAILABLE (§62) — we NEVER fabricate candles.
+ *
+ * Candles are cached in memory per (symbol, tf, exchange) with short TTLs so
+ * the 45s poll stays polite.
  */
 
 import type { Candle } from '@/lib/market/indicators'
@@ -23,7 +31,7 @@ import type { TF } from './types'
 import { TF_MS } from './config'
 
 const BYBIT = 'https://api.bybit.com'
-const BINANCE_MIRROR = 'https://data-api.binance.vision'
+const BINANCE_HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision']
 
 const BYBIT_INTERVAL: Record<TF, string> = {
   '1D': 'D',
@@ -131,12 +139,13 @@ async function bybitTicker(symbol: string): Promise<{ price: number; change24h: 
   }
 }
 
-// ─── Binance mirror fallback (closed candles only — mirror includes forming) ─
+// ─── Binance raw (primary api.binance.com → data-api.binance.vision mirror) ──
 
-async function binanceKlines(symbol: string, tf: TF): Promise<Candle[]> {
-  const url = `${BINANCE_MIRROR}/api/v3/klines?symbol=${symbol}&interval=${BINANCE_INTERVAL[tf]}&limit=${KLINE_LIMIT[tf]}`
-  type Row = [number, string, string, string, string, string, ...unknown[]]
-  const rows = await fetchJson<Row[]>(url)
+type BinanceRow = [number, string, string, string, string, string, ...unknown[]]
+
+async function binanceKlinesFrom(host: string, symbol: string, tf: TF): Promise<Candle[]> {
+  const url = `${host}/api/v3/klines?symbol=${symbol}&interval=${BINANCE_INTERVAL[tf]}&limit=${KLINE_LIMIT[tf]}`
+  const rows = await fetchJson<BinanceRow[]>(url)
   const out: Candle[] = []
   for (const r of rows) {
     const time = Number(r[0])
@@ -153,66 +162,92 @@ async function binanceKlines(symbol: string, tf: TF): Promise<Candle[]> {
   return out
 }
 
+/** api.binance.com first, official public mirror on failure/block. */
+async function binanceKlines(symbol: string, tf: TF): Promise<Candle[]> {
+  let lastErr: unknown
+  for (const host of BINANCE_HOSTS) {
+    try {
+      return await binanceKlinesFrom(host, symbol, tf)
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('binance klines failed')
+}
+
 async function binanceTicker(symbol: string): Promise<{ price: number; change24h: number }> {
-  const j = await fetchJson<{ lastPrice: string; priceChangePercent: string }>(
-    `${BINANCE_MIRROR}/api/v3/ticker/24hr?symbol=${symbol}`,
-  )
-  return { price: Number(j.lastPrice), change24h: Number(j.priceChangePercent) }
+  let lastErr: unknown
+  for (const host of BINANCE_HOSTS) {
+    try {
+      const j = await fetchJson<{ lastPrice: string; priceChangePercent: string }>(
+        `${host}/api/v3/ticker/24hr?symbol=${symbol}`,
+      )
+      return { price: Number(j.lastPrice), change24h: Number(j.priceChangePercent) }
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('binance ticker failed')
 }
 
 // ─── public API ──────────────────────────────────────────────────────────────
 
-export interface SmcMarketData {
-  source: 'BYBIT' | 'BINANCE_FALLBACK'
+export interface FeedData {
+  exchange: 'BYBIT' | 'BINANCE'
   candles: Record<TF, Candle[]>
   price: number
   change24h: number
 }
 
-/**
- * Load all strategy timeframes for one symbol. Bybit primary, Binance mirror
- * fallback per-timeframe — a single slow TF degrades to the mirror rather
- * than killing the whole analysis. If EVERY source fails for a TF, that TF is
- * an empty array and the orchestrator reports DATA UNAVAILABLE.
- */
-export async function loadSmcMarketData(symbol: string, tfs: TF[]): Promise<SmcMarketData> {
-  const [candleSets, ticker] = await Promise.all([
-    Promise.all(
-      tfs.map(async (tf) => {
-        try {
-          return await cached(`smc:${symbol}:${tf}:bybit`, ttlFor(tf), () => bybitKlines(symbol, tf))
-        } catch {
-          try {
-            return await cached(`smc:${symbol}:${tf}:binance`, ttlFor(tf), () => binanceKlines(symbol, tf))
-          } catch {
-            return [] as Candle[]
-          }
-        }
-      }),
-    ),
-    (async () => {
+export interface DualSmcMarketData {
+  bybit: FeedData | null // null = feed unusable (no candles / all TFs failed)
+  binance: FeedData | null
+}
+
+async function loadFeed(
+  exchange: 'BYBIT' | 'BINANCE',
+  symbol: string,
+  tfs: TF[],
+): Promise<FeedData | null> {
+  const tag = exchange.toLowerCase()
+  const candleSets = await Promise.all(
+    tfs.map(async (tf) => {
       try {
-        return await cached(`smc:${symbol}:ticker:bybit`, 20_000, () => bybitTicker(symbol))
+        return await cached(`smc:${symbol}:${tf}:${tag}`, ttlFor(tf), () =>
+          exchange === 'BYBIT' ? bybitKlines(symbol, tf) : binanceKlines(symbol, tf),
+        )
       } catch {
-        try {
-          return await cached(`smc:${symbol}:ticker:binance`, 20_000, () => binanceTicker(symbol))
-        } catch {
-          return { price: 0, change24h: 0 }
-        }
+        return [] as Candle[]
       }
-    })(),
-  ])
+    }),
+  )
+  const ticker = await (async () => {
+    try {
+      return await cached(`smc:${symbol}:ticker:${tag}`, 20_000, () =>
+        exchange === 'BYBIT' ? bybitTicker(symbol) : binanceTicker(symbol),
+      )
+    } catch {
+      return { price: 0, change24h: 0 }
+    }
+  })()
 
   const candles = {} as Record<TF, Candle[]>
-  let bybitCount = 0
-  let binanceCount = 0
+  let usable = 0
   tfs.forEach((tf, i) => {
     candles[tf] = candleSets[i]
-    const k = `smc:${symbol}:${tf}:`
-    if (cache.get(`${k}bybit`) && candleSets[i].length > 0) bybitCount++
-    else if (cache.get(`${k}binance`) && candleSets[i].length > 0) binanceCount++
+    if (candleSets[i].length >= 50) usable++
   })
-  const source: SmcMarketData['source'] = binanceCount > bybitCount ? 'BINANCE_FALLBACK' : 'BYBIT'
+  // a feed is only healthy when EVERY strategy TF returned usable closed candles
+  if (usable < tfs.length) return null
+  return { exchange, candles, price: ticker.price, change24h: ticker.change24h }
+}
 
-  return { source, candles, price: ticker.price, change24h: ticker.change24h }
+/**
+ * Load all strategy timeframes for one symbol from BOTH exchanges in
+ * parallel. Each feed stands alone: a venue that fails (or returns thin
+ * candles) yields null and the analysis continues on the surviving tape.
+ */
+export async function loadDualSmcMarketData(symbol: string, tfs: TF[]): Promise<DualSmcMarketData> {
+  const [bybit, binance] = await Promise.all([loadFeed('BYBIT', symbol, tfs), loadFeed('BINANCE', symbol, tfs)])
+  return { bybit, binance }
 }

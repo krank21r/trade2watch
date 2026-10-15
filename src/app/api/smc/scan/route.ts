@@ -7,11 +7,11 @@ export const dynamic = 'force-dynamic'
 /**
  * GET /api/smc/scan?mode=STRICT
  *
- * Multi-pair scanner — runs the FULL engine (same 30s response cache as the
- * analysis endpoint, so a 45s UI poll re-computes nothing) for every liquid
- * USDT pair and strips the result down to a scanner chip row. A LONG/SHORT on
- * ANY pair becomes visible at a glance instead of hiding behind the one symbol
- * the board happens to display.
+ * Multi-pair scanner — runs the FULL engine (dual-tape Bybit × Binance, same
+ * 30s response cache as the analysis endpoint, so a 45s UI poll re-computes
+ * nothing) for every liquid USDT pair and strips the result down to a scanner
+ * chip row. A LONG/SHORT on ANY pair becomes visible at a glance instead of
+ * hiding behind the one symbol the board happens to display.
  *
  * Equities (AAPL/TSLA/NVDA) are NOT scanned: the SMC engine's data layer is
  * Bybit/Binance spot — no equities source exists (honest scope, §62).
@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
         d.reasons[0] && d.reasons[0].factor
           ? `${d.reasons[0].factor} — ${d.reasons[0].result}`
           : null
+      const isTradeSig = d.signal === 'LONG' || d.signal === 'SHORT'
       return {
         symbol,
         ok: true,
@@ -52,6 +53,9 @@ export async function GET(req: NextRequest) {
         bias: d.market_bias,
         price: d.current_price,
         change24h: d.change24h,
+        // 2 = both tapes confirm the trade, 1 = single-tape confirmation, 0 = none
+        confirmations: isTradeSig ? (d.consensus.agreement === 'FULL' ? 2 : 1) : 0,
+        agreement: d.consensus.agreement,
         note: d.watch_note ?? d.explanation[0] ?? reasonNote,
         generatedAt: d.generatedAt,
       }

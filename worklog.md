@@ -593,3 +593,21 @@ Work Log:
 
 Stage Summary:
 - Signals infrastructure now complete end-to-end on prod: scanner works, journal works, staged radar accumulates from the first scan. Confirmed=0 is the honest truth (STRICT gates unmet in current market). Persistent prod DB still open — recommended next step (Vercel Postgres or Turso) if the user wants the journal to survive redeploys.
+
+---
+Task ID: 29
+Agent: Z.ai Code (main)
+Task: Dual-exchange SMC engine — pull Binance as a second tape, cross-check OBs, base signals on both (user request). Also settled the earlier "did a signal ever show" question.
+
+Work Log:
+- Queried DB first: SmcSignal = 0 rows ever → no LONG/SHORT was ever persisted locally; everything the user saw was WATCHLIST staged rows (12 in radar log) + backtest simulations. Confirmed signals require both-tapes agreement going forward.
+- Rewrote data layer: deleted src/lib/smc/bybit.ts → new src/lib/smc/feeds.ts. loadDualSmcMarketData now ALWAYS fetches Bybit AND Binance (api.binance.com → data-api.binance.vision mirror) concurrently, per-(symbol,tf,exchange) cache; a feed returning <50 closed candles on any TF = unusable (null), analysis continues on the surviving tape.
+- Refactored analysis.ts: extracted computeCore() (full pipeline per exchange tape), added reconcile() — FULL (same LONG/SHORT on both → signal +5 confluence score, quality recompute, bonus reason row), PARTIAL (one tape trades + other WATCHLIST → signal kept, flagged 1/2; one tape trades + other NO_TRADE → downgraded to WATCHLIST — real SMC zones exist on both venues' tapes), CONFLICT (LONG vs SHORT → NO_TRADE), SINGLE_SOURCE (other feed down → verdict stands alone, flagged). crossCheck() validates the featured OB zone against the other tape's active OBs (≥50% zone overlap = confirmed; overlapPct reported).
+- Persistence/alerts unchanged but now run on the reconciled verdict; SIGNAL_CREATED alert carries a confluence note. signal_confirmed_at now strictly null unless LONG/SHORT (documented contract).
+- Types: SmcAnalysis += exchanges{bybit,binance}, consensus{bybit,binance,agreement,note}, ob_cross_check{direction,bybit,binance,overlapPct}; dataSource union += BOTH; SmcScanRow += confirmations, agreement.
+- Scan route: rows now carry confirmations (2/1/0) + agreement.
+- SmcBoard UI: header chips Bybit ✓/✗ + Binance ✓/✗ + agreement chip (2/2 tapes agree · 1/2 tapes · tapes conflict · single tape) + ⇄ consensus note; Order blocks panel gained CROSS-TAPE OB CHECK row (direction, per-exchange ✓, % zone overlap); scanner live pills show "Bybit+Binance ✓" or "1 tape only"; footer describes dual-tape data; page tab label → "SMC desk — Bybit × Binance".
+- Verification: restarted dev server (Turbopack stale graph after file swap), lint clean; API STRICT/BALANCED/AGGRESSIVE all return dataSource BOTH, exchanges both true, consensus FULL with both tapes agreeing, ob_cross_check 100% overlap on BTCUSDT BEARISH OB 81,472.5–81,716.5; scan all 6 pairs ok; agent-browser verified desktop + iPhone 14 (chips, note, cross-tape row, scanner pills, sticky footer) and console clean.
+
+Stage Summary:
+- The SMC engine is now dual-exchange: every signal/label the user sees is a reconciled Bybit × Binance verdict. A live LONG/SHORT can only appear when BOTH tapes confirm (with +5 confluence score) — making signals slightly harder to fake but borderline scores easier to cross. Both tapes currently agree everywhere (BTC/SOL/XRP/DOGE WATCHLIST, ETH/BNB NO_TRADE), OB zone overlap 100% — cross-exchange validation is live and visible.
