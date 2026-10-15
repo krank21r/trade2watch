@@ -773,3 +773,17 @@ Work Log:
 
 Stage Summary:
 - The watchlist is now a true dropdown: nothing about a symbol's setup is shown until you click its chip, the full trade setup (gauge → plans → sizing → key levels) expands in place under the toolbar, and clicking again (or another symbol) collapses/swaps. Page default view = toolbar + Trade Confirmed only; the trade setup appears exactly when asked for.
+
+---
+Task ID: 38-push
+Agent: Z.ai Code (main)
+Task: Push Task 38 (watchlist dropdown) to web (production)
+
+Work Log:
+- git status: working tree clean (only vendored upstream/trade2watch submodule dirty flag, unrelated)
+- git push origin main → "Everything up-to-date": commit ac41322 was already on origin/main from the prior session; Vercel auto-deploy triggered on that push
+- Production verification (trade2watch.vercel.app): POST /api/auth/login → 200 {"ok":true,"user":"kranthi"}; GET / → 200; extracted 11 _next/static chunks and grepped them — Task-38 marker string "watchlist symbol above" FOUND in deployed chunk ff9ae14934871675.js → production is serving the dropdown build
+- Local re-verification (agent-browser): login → all 6 watchlist chips aria-expanded=false; BTC click → expanded=true + "Bitcoin setup detail" drops down under toolbar; ETH click → swaps to "Ethereum setup detail" (BTC collapses); ETH re-click → 0 detail regions (collapsed); screenshot /tmp/t38_dropdown.png confirms visual; console only benign HMR info, zero errors
+
+Stage Summary:
+- Task 38 is live on production: trade2watch.vercel.app serves commit ac41322; watchlist chips are dropdown toggles and the symbol's trade setup expands in place under the toolbar. Nothing further to ship.
