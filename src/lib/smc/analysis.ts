@@ -336,6 +336,50 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
 
   // ── persistence: dedupe new setups, never resurrect played ones (§17.10/§46) ─
   try {
+    // WATCHLIST radar log — snapshot every staged setup so a setup the user
+    // spotted earlier is always findable later. Upsert per
+    // (symbol, OB candle, direction, mode); refresh note/score on re-sighting.
+    if (signal === 'WATCHLIST' && evaluation.ob) {
+      const wob = evaluation.ob
+      const note = (evaluation.watchNote ?? explanation[0] ?? '').slice(0, 400)
+      const wKey = {
+        symbol,
+        obTime: wob.time,
+        direction: wob.direction,
+        mode: cfg.mode,
+      }
+      const plan = trade // provisional plan (may be null when RR is the blocker)
+      const wData = {
+        obLow: wob.low,
+        obHigh: wob.high,
+        score: Math.round(score),
+        quality,
+        note,
+        entryLow: plan?.entry_low ?? null,
+        entryHigh: plan?.entry_high ?? null,
+        entryMid: plan?.entry_mid ?? null,
+        stopLoss: plan?.stop_loss ?? null,
+        tp1: plan?.tp1 ?? null,
+        tp2: plan?.tp2 ?? null,
+        tp3: plan?.tp3 ?? null,
+        lastSeen: now,
+      }
+      await db.smcWatchLog.upsert({
+        where: {
+          symbol_obTime_direction_mode: {
+            symbol: wKey.symbol,
+            obTime: wKey.obTime,
+            direction: wKey.direction,
+            mode: wKey.mode,
+          },
+        },
+        create: { ...wKey, ...wData, firstSeen: now },
+        update: wData,
+      })
+      // housekeeping: staged setups unseen for 14 days drop off the radar
+      await db.smcWatchLog.deleteMany({ where: { lastSeen: { lt: now - 14 * 86_400_000 } } })
+    }
+
     if ((signal === 'LONG' || signal === 'SHORT') && evaluation.ob && trade) {
       const ob = evaluation.ob
       const existing = await db.smcSignal.findUnique({
@@ -547,6 +591,7 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
     sweeps: sweeps.slice(0, 5),
     signal,
     signal_confirmed_at: evaluation.confirmAt ?? null,
+    watch_note: 'watchNote' in evaluation ? (evaluation.watchNote ?? null) : null,
     quality,
     score,
     mode: cfg.mode,

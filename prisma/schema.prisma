@@ -98,3 +98,36 @@ model SmcSignal {
   @@index([symbol, status])
   @@index([symbol, createdAt])
 }
+
+// Watchlist radar log — every WATCHLIST (staged, not-yet-confirmed) setup the
+// engine sees is snapshotted here so a setup the user spotted earlier is always
+// findable later. One row per (symbol, OB candle, direction, mode); repeated
+// sightings update lastSeen/note instead of creating new rows.
+model SmcWatchLog {
+  id        String @id @default(cuid())
+  symbol    String
+  direction String // BULLISH | BEARISH — the staged side
+  mode      String
+  obTime    Float // ms epoch of the OB candle — dedupe key component
+  obLow     Float
+  obHigh    Float
+  score     Int
+  quality   String
+  note      String // what is missing before this becomes LONG/SHORT
+
+  // provisional plan (nullable — RR may be the missing gate)
+  entryLow  Float?
+  entryHigh Float?
+  entryMid  Float?
+  stopLoss  Float?
+  tp1       Float?
+  tp2       Float?
+  tp3       Float?
+
+  firstSeen Float
+  lastSeen  Float
+
+  @@unique([symbol, obTime, direction, mode])
+  @@index([lastSeen])
+  @@index([symbol, lastSeen])
+}

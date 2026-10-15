@@ -1,10 +1,12 @@
 'use client'
 
 // ─── SMC board — Smart Money Concepts setup desk ────────────────────────────
-// Consumes GET /api/smc/analysis?symbol=BTCUSDT (SmcAnalysis contract, §23/§25)
-// every 45s. Client-side polling with AbortController; hydration-safe time
-// strings via a mounted flag. If the engine is unavailable the board shows a
-// dedicated DATA UNAVAILABLE panel — never stale or faked data (§62).
+// Consumes GET /api/smc/analysis?symbol=…&mode=… (SmcAnalysis contract, §23/§25)
+// every 45s, plus GET /api/smc/scan (multi-pair scanner) and
+// GET /api/smc/signals (cross-symbol journal). Client-side polling with
+// AbortController; hydration-safe time strings via a mounted flag. If the
+// engine is unavailable the board shows a dedicated DATA UNAVAILABLE panel —
+// never stale or faked data (§62).
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { motion } from 'framer-motion'
@@ -29,11 +31,35 @@ import {
   qualityCls,
   trendCls,
 } from '@/components/smc/ui'
-import type { SmcAnalysis, SmcAnalysisError, SmcHistoryRow, SignalType } from '@/lib/smc/types'
+import type {
+  SmcAnalysis,
+  SmcAnalysisError,
+  SmcHistoryRow,
+  SmcJournalResponse,
+  SmcScanResponse,
+  StrategyMode,
+  SignalType,
+} from '@/lib/smc/types'
 import { BacktestCard } from '@/components/smc/BacktestCard'
 
 const POLL_MS = 45_000
-const API = '/api/smc/analysis?symbol=BTCUSDT'
+
+/** pairs the SMC engine can actually analyze — Bybit/Binance spot (crypto only) */
+const SMC_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'] as const
+const SMC_LABEL: Record<string, string> = {
+  BTCUSDT: 'BTC',
+  ETHUSDT: 'ETH',
+  SOLUSDT: 'SOL',
+  BNBUSDT: 'BNB',
+  XRPUSDT: 'XRP',
+  DOGEUSDT: 'DOGE',
+}
+const MODE_OPTIONS: StrategyMode[] = ['STRICT', 'BALANCED', 'AGGRESSIVE']
+const MODE_HINT: Record<StrategyMode, string> = {
+  STRICT: 'every gate — rarest, highest confidence',
+  BALANCED: 'skips the 5M trigger — more signals',
+  AGGRESSIVE: 'structure + zone only — most signals, lowest quality',
+}
 
 type HistFilter = 'ALL' | 'LONG' | 'SHORT' | 'WIN' | 'LOSS'
 const HIST_FILTERS: Array<{ key: HistFilter; label: string }> = [
@@ -202,6 +228,12 @@ export function SmcBoard() {
   const [errDisclaimer, setErrDisclaimer] = useState<string | null>(null)
   const [isMounted, setIsMounted] = useState(false)
   const [histFilter, setHistFilter] = useState<HistFilter>('ALL')
+  const [symbol, setSymbol] = useState<string>('BTCUSDT')
+  const [mode, setMode] = useState<StrategyMode>('STRICT')
+  const [scan, setScan] = useState<SmcScanResponse | null>(null)
+  const [scanErr, setScanErr] = useState<string | null>(null)
+  const [journal, setJournal] = useState<SmcJournalResponse | null>(null)
+  const [journalTab, setJournalTab] = useState<'CONFIRMED' | 'STAGED'>('CONFIRMED')
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -218,7 +250,10 @@ export function SmcBoard() {
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
-      const res = await fetch(API, { cache: 'no-store', signal: ctrl.signal })
+      const res = await fetch(`/api/smc/analysis?symbol=${symbol}&mode=${mode}`, {
+        cache: 'no-store',
+        signal: ctrl.signal,
+      })
       const body = (await res.json()) as SmcAnalysis | SmcAnalysisError
       if (!mountedRef.current) return
       if (body.ok === false) {
@@ -241,13 +276,48 @@ export function SmcBoard() {
     } finally {
       if (mountedRef.current && abortRef.current === ctrl) setLoading(false)
     }
+  }, [symbol, mode])
+
+  /** multi-pair scanner — one chip row per liquid pair, same 45s cadence */
+  const loadScan = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/smc/scan?mode=${mode}`, { cache: 'no-store' })
+      const body = (await res.json()) as SmcScanResponse | { ok: false; error: string }
+      if (!mountedRef.current) return
+      if (res.ok && body.ok) {
+        setScan(body)
+        setScanErr(null)
+      } else {
+        setScanErr(!body.ok ? body.error : `API ${res.status}`)
+      }
+    } catch (e) {
+      if (mountedRef.current) setScanErr(String(e instanceof Error ? e.message : e).slice(0, 140))
+    }
+  }, [mode])
+
+  /** cross-symbol journal — confirmed signals + staged watchlist radar */
+  const loadJournal = useCallback(async () => {
+    try {
+      const res = await fetch('/api/smc/signals', { cache: 'no-store' })
+      const body = (await res.json()) as SmcJournalResponse | { ok: false; error: string }
+      if (!mountedRef.current) return
+      if (res.ok && body.ok) setJournal(body)
+    } catch {
+      /* journal is supplementary — never blocks the board */
+    }
   }, [])
 
   useEffect(() => {
     void load()
-    const t = setInterval(() => void load(), POLL_MS)
+    void loadScan()
+    void loadJournal()
+    const t = setInterval(() => {
+      void load()
+      void loadScan()
+      void loadJournal()
+    }, POLL_MS)
     return () => clearInterval(t)
-  }, [load])
+  }, [load, loadScan, loadJournal])
 
   const retry = useCallback(() => {
     setLoading(true)
@@ -281,6 +351,7 @@ export function SmcBoard() {
   const orderedRows = isLong ? planRows : [...planRows].reverse()
 
   const watchNote =
+    data.watch_note ??
     data.explanation[0] ??
     (data.reasons[0] ? `${data.reasons[0].factor} — ${data.reasons[0].result}` : null) ??
     'No qualified setup — the engine is standing aside.'
@@ -293,7 +364,7 @@ export function SmcBoard() {
     return { mins, txt }
   })()
 
-  const histRows = data.history.filter((h) =>
+  const histRows = (journal?.confirmed ?? []).filter((h) =>
     histFilter === 'ALL'
       ? true
       : histFilter === 'LONG'
@@ -304,6 +375,10 @@ export function SmcBoard() {
             ? h.result === 'WIN'
             : h.result === 'LOSS',
   )
+
+  // scanner state helpers
+  const scanRows = scan?.rows ?? []
+  const liveSignals = scanRows.filter((r) => r.ok && (r.signal === 'LONG' || r.signal === 'SHORT'))
 
   const motionT = (delay: number) => ({
     initial: { opacity: 0, y: 10 },
@@ -380,6 +455,184 @@ export function SmcBoard() {
           </span>
         </div>
       </motion.header>
+
+      {/* ── pair + mode selector ── */}
+      <motion.section
+        {...motionT(0.03)}
+        aria-label="Pair and strategy mode selector"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-tv-line bg-tv-panel shadow-sm px-3.5 py-3"
+      >
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-tv-muted">Pair</span>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Select pair">
+          {SMC_SYMBOLS.map((s) => (
+            <button
+              key={s}
+              onClick={() => {
+                if (s !== symbol) {
+                  setSymbol(s)
+                  setLoading(true)
+                }
+              }}
+              aria-pressed={symbol === s}
+              suppressHydrationWarning
+              className={`inline-flex min-h-[44px] items-center rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
+                symbol === s
+                  ? 'border-info/50 bg-info/10 text-info'
+                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
+              }`}
+            >
+              {SMC_LABEL[s]}
+            </button>
+          ))}
+        </div>
+        <span className="ml-1 text-[10px] font-bold uppercase tracking-[0.14em] text-tv-muted">Mode</span>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Select strategy mode">
+          {MODE_OPTIONS.map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                if (m !== mode) {
+                  setMode(m)
+                  setLoading(true)
+                }
+              }}
+              aria-pressed={mode === m}
+              title={MODE_HINT[m]}
+              suppressHydrationWarning
+              className={`inline-flex min-h-[44px] items-center rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
+                mode === m
+                  ? 'border-warn/50 bg-warn/10 text-warn'
+                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto text-[10px] leading-tight text-tv-muted2">
+          engine data is crypto spot only — equities need a stock feed (not available yet)
+        </span>
+      </motion.section>
+
+      {/* ── multi-pair scanner — signals on ANY pair are visible at a glance ── */}
+      <motion.section
+        {...motionT(0.04)}
+        aria-label="Multi-pair live scanner"
+        className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5"
+      >
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+            📡 Live scanner <span className="normal-case tracking-normal text-tv-muted2">— all pairs · {mode} · auto every 45s</span>
+          </h3>
+          <div className="ml-auto flex items-center gap-2 text-[10.5px] text-tv-muted2">
+            {scanErr ? <span className="text-warn">scanner error: {scanErr}</span> : scan ? `${scan.rows.length} pairs` : 'scanning…'}
+          </div>
+        </div>
+
+        {liveSignals.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2" role="status">
+            {liveSignals.map((r) => (
+              <button
+                key={`live-${r.symbol}`}
+                onClick={() => {
+                  setSymbol(r.symbol)
+                  setLoading(true)
+                }}
+                suppressHydrationWarning
+                className={`inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-bold transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                  r.signal === 'LONG' ? 'border-bull/50 bg-bull/10 text-bull' : 'border-bear/50 bg-bear/10 text-bear'
+                }`}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${r.signal === 'LONG' ? 'bg-bull/60' : 'bg-bear/60'}`} aria-hidden="true" />
+                  <span className={`relative inline-flex h-2 w-2 rounded-full ${r.signal === 'LONG' ? 'bg-bull' : 'bg-bear'}`} aria-hidden="true" />
+                </span>
+                ⚡ {r.signal} {SMC_LABEL[r.symbol] ?? r.symbol} · score {r.score} · {r.quality}
+                <span className="text-tv-muted2">— tap to view</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          {scan
+            ? scanRows.map((r) => {
+                const selected = r.symbol === symbol
+                const stCls =
+                  r.signal === 'LONG'
+                    ? 'text-bull'
+                    : r.signal === 'SHORT'
+                      ? 'text-bear'
+                      : r.signal === 'WATCHLIST'
+                        ? 'text-warn'
+                        : 'text-tv-muted'
+                return (
+                  <button
+                    key={r.symbol}
+                    onClick={() => {
+                      if (r.ok) {
+                        setSymbol(r.symbol)
+                        setLoading(true)
+                      }
+                    }}
+                    disabled={!r.ok}
+                    aria-label={`${r.symbol}: ${r.ok ? r.signal.replace('_', ' ') : 'unavailable'}${r.ok ? `, score ${r.score}` : ''}`}
+                    aria-pressed={selected}
+                    suppressHydrationWarning
+                    className={`rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
+                      !r.ok
+                        ? 'cursor-not-allowed border-tv-line bg-tv-panel2/40 opacity-60'
+                        : selected
+                          ? 'border-info/60 bg-info/5'
+                          : 'border-tv-line bg-tv-panel2/60 hover:border-tv-line-strong'
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[12.5px] font-extrabold text-tv-ink">{SMC_LABEL[r.symbol] ?? r.symbol}</span>
+                      <span className={`text-[10.5px] font-bold tabular-nums ${r.ok ? stCls : 'text-tv-muted2'}`}>
+                        {r.ok ? (r.signal === 'NO_TRADE' ? 'NO TRADE' : r.signal) : '—'}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-baseline justify-between gap-2 text-[10.5px] tabular-nums text-tv-muted">
+                      <span>{r.ok ? fmtPrice(r.price) : 'n/a'}</span>
+                      {r.ok && (
+                        <span className={r.change24h >= 0 ? 'text-bull' : 'text-bear'}>
+                          {r.change24h >= 0 ? '+' : ''}
+                          {r.change24h.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                    {r.ok && (
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <span className="h-1 flex-1 overflow-hidden rounded-full bg-tv-panel2">
+                          <span
+                            className={`block h-full rounded-full ${
+                              r.signal === 'LONG'
+                                ? 'bg-bull/70'
+                                : r.signal === 'SHORT'
+                                  ? 'bg-bear/70'
+                                  : r.signal === 'WATCHLIST'
+                                    ? 'bg-warn/70'
+                                    : 'bg-tv-muted/40'
+                            }`}
+                            style={{ width: `${Math.min(100, Math.max(0, r.score))}%` }}
+                          />
+                        </span>
+                        <span className="text-[10px] font-bold tabular-nums text-tv-muted2">{r.score}</span>
+                      </div>
+                    )}
+                    {r.ok && r.signal === 'WATCHLIST' && r.note && (
+                      <div className="mt-1.5 line-clamp-2 text-[10px] leading-snug text-tv-muted" title={r.note}>
+                        {r.note}
+                      </div>
+                    )}
+                    {!r.ok && r.error && <div className="mt-1.5 line-clamp-2 text-[10px] text-tv-muted2" title={r.error}>{r.error}</div>}
+                  </button>
+                )
+              })
+            : [0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="h-[86px] animate-pulse rounded-xl border border-tv-line bg-tv-panel2/40" />)}
+        </div>
+      </motion.section>
 
       {/* ── multi-timeframe strip ── */}
       <motion.section {...motionT(0.05)} aria-label="Multi-timeframe structure" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
@@ -668,115 +921,210 @@ export function SmcBoard() {
       {/* ── backtest (on-demand, never polled) ── */}
       <BacktestCard />
 
-      {/* ── signal history ── */}
-      <motion.section {...motionT(0.25)} aria-label="Signal history" className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5">
+      {/* ── signal journal — confirmed + staged, across ALL pairs ── */}
+      <motion.section {...motionT(0.25)} aria-label="Signal journal" className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-            Signal history <span className="normal-case tracking-normal text-tv-muted2">— every generated signal is tracked</span>
+            Signal journal <span className="normal-case tracking-normal text-tv-muted2">— all pairs, nothing gets lost</span>
           </h3>
-          <div className="ml-auto flex flex-wrap gap-1.5" role="group" aria-label="Filter signal history">
-            {HIST_FILTERS.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => setHistFilter(f.key)}
-                aria-pressed={histFilter === f.key}
-                suppressHydrationWarning
-                className={`inline-flex min-h-[44px] items-center rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
-                  histFilter === f.key
-                    ? 'border-bull/40 bg-bull/10 text-bull'
-                    : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className="ml-auto flex flex-wrap gap-1.5" role="group" aria-label="Journal tab">
+            <button
+              onClick={() => setJournalTab('CONFIRMED')}
+              aria-pressed={journalTab === 'CONFIRMED'}
+              suppressHydrationWarning
+              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                journalTab === 'CONFIRMED'
+                  ? 'border-bull/40 bg-bull/10 text-bull'
+                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
+              }`}
+            >
+              ✅ Confirmed
+              <span className="rounded-full bg-tv-panel2 px-1.5 text-[10px] tabular-nums text-tv-muted">{journal?.confirmed.length ?? 0}</span>
+            </button>
+            <button
+              onClick={() => setJournalTab('STAGED')}
+              aria-pressed={journalTab === 'STAGED'}
+              title="Setups that were staged (watchlist) with exactly what was missing — find the setup you saw earlier"
+              suppressHydrationWarning
+              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
+                journalTab === 'STAGED'
+                  ? 'border-warn/40 bg-warn/10 text-warn'
+                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
+              }`}
+            >
+              ⏳ Staged
+              <span className="rounded-full bg-tv-panel2 px-1.5 text-[10px] tabular-nums text-tv-muted">{journal?.staged.length ?? 0}</span>
+            </button>
           </div>
         </div>
-        {data.performance && data.performance.total > 0 && (
-          <div className="mb-3 flex flex-wrap items-center gap-1.5" aria-label="Live signal performance">
-            <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-tv-muted2">Live log</span>
-            <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
-              {data.performance.total} signals ({data.performance.longs}L/{data.performance.shorts}S)
-            </span>
-            {data.performance.open > 0 && (
-              <span className="rounded-full border border-warn/35 bg-warn/10 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-warn">
-                {data.performance.open} open
-              </span>
-            )}
-            {data.performance.resolved > 0 && (
-              <>
-                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
-                  win {data.performance.winRatePct}%
-                </span>
-                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
-                  avg {data.performance.avgR > 0 ? '+' : ''}{data.performance.avgR}R
-                </span>
-                <span
-                  className={`rounded-full border px-2.5 py-1 text-[10.5px] font-bold tabular-nums ${
-                    data.performance.totalR > 0 ? 'border-bull/35 bg-bull/10 text-bull' : data.performance.totalR < 0 ? 'border-bear/35 bg-bear/10 text-bear' : 'border-tv-line bg-tv-panel2 text-tv-ink'
+
+        {journalTab === 'CONFIRMED' ? (
+          <>
+            <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Filter confirmed signals">
+              {HIST_FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setHistFilter(f.key)}
+                  aria-pressed={histFilter === f.key}
+                  suppressHydrationWarning
+                  className={`inline-flex min-h-[44px] items-center rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                    histFilter === f.key
+                      ? 'border-bull/40 bg-bull/10 text-bull'
+                      : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
                   }`}
                 >
-                  {data.performance.totalR > 0 ? '+' : ''}{data.performance.totalR}R total
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {data.performance && data.performance.total > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-1.5" aria-label={`Signal performance for ${data.symbol}`}>
+                <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-tv-muted2">{SMC_LABEL[data.symbol] ?? data.symbol} log</span>
+                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
+                  {data.performance.total} signals ({data.performance.longs}L/{data.performance.shorts}S)
                 </span>
-                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-muted">
-                  {data.performance.wins}W/{data.performance.losses}L/{data.performance.breakevens}BE/{data.performance.expired}exp
-                </span>
-              </>
+                {data.performance.open > 0 && (
+                  <span className="rounded-full border border-warn/35 bg-warn/10 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-warn">
+                    {data.performance.open} open
+                  </span>
+                )}
+                {data.performance.resolved > 0 && (
+                  <>
+                    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
+                      win {data.performance.winRatePct}%
+                    </span>
+                    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
+                      avg {data.performance.avgR > 0 ? '+' : ''}{data.performance.avgR}R
+                    </span>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[10.5px] font-bold tabular-nums ${
+                        data.performance.totalR > 0 ? 'border-bull/35 bg-bull/10 text-bull' : data.performance.totalR < 0 ? 'border-bear/35 bg-bear/10 text-bear' : 'border-tv-line bg-tv-panel2 text-tv-ink'
+                      }`}
+                    >
+                      {data.performance.totalR > 0 ? '+' : ''}{data.performance.totalR}R total
+                    </span>
+                    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-muted">
+                      {data.performance.wins}W/{data.performance.losses}L/{data.performance.breakevens}BE/{data.performance.expired}exp
+                    </span>
+                  </>
+                )}
+              </div>
             )}
-          </div>
-        )}
-        {histRows.length === 0 ? (
-          <EmptyLine>no signals yet — the engine is conservative by design</EmptyLine>
+            {histRows.length === 0 ? (
+              <EmptyLine>
+                no confirmed signals yet — STRICT is conservative by design (score ≥ 80 + all gates); switch mode to BALANCED/AGGRESSIVE for more, or check Staged for setups still building
+              </EmptyLine>
+            ) : (
+              <div className={`max-h-96 rounded-xl border border-tv-line ${SCROLL_CLS}`}>
+                <table className="w-full min-w-[780px] border-collapse text-left text-[12px]">
+                  <caption className="sr-only">Confirmed SMC signals across all pairs</caption>
+                  <thead className="sticky top-0 z-10 bg-tv-panel2">
+                    <tr className="text-[10px] uppercase tracking-wider text-tv-muted">
+                      <th scope="col" className="px-3 py-2 font-bold">Date</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Pair</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Side</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Mode</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">Entry</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">SL</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">TP1</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">Score</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Q</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Status</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {histRows.map((h) => (
+                      <tr key={h.id} className="border-t border-tv-line/60">
+                        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-tv-muted">{isMounted ? fmtDay(h.createdAt) : '—'}</td>
+                        <td className="px-3 py-2 font-bold text-tv-ink">{SMC_LABEL[h.symbol] ?? h.symbol}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                              h.direction === 'LONG' ? 'border-bull/35 bg-bull/10 text-bull' : 'border-bear/35 bg-bear/10 text-bear'
+                            }`}
+                          >
+                            {h.direction}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-[10.5px] text-tv-muted">{h.mode}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-tv-ink">{fmtPrice(h.entryMid)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-bear">{fmtPrice(h.stopLoss)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-info">{fmtPrice(h.tp1)}</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-tv-ink">{h.score}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold ${qualityCls(h.quality)}`}>
+                            {h.quality}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <StatusChip status={h.status} />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <ResultChip row={h} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         ) : (
-          <div className={`max-h-96 rounded-xl border border-tv-line ${SCROLL_CLS}`}>
-            <table className="w-full min-w-[720px] border-collapse text-left text-[12px]">
-              <caption className="sr-only">SMC signal history</caption>
-              <thead className="sticky top-0 z-10 bg-tv-panel2">
-                <tr className="text-[10px] uppercase tracking-wider text-tv-muted">
-                  <th scope="col" className="px-3 py-2 font-bold">Date</th>
-                  <th scope="col" className="px-3 py-2 font-bold">Side</th>
-                  <th scope="col" className="px-3 py-2 text-right font-bold">Entry</th>
-                  <th scope="col" className="px-3 py-2 text-right font-bold">SL</th>
-                  <th scope="col" className="px-3 py-2 text-right font-bold">TP1</th>
-                  <th scope="col" className="px-3 py-2 text-right font-bold">Score</th>
-                  <th scope="col" className="px-3 py-2 font-bold">Q</th>
-                  <th scope="col" className="px-3 py-2 font-bold">Status</th>
-                  <th scope="col" className="px-3 py-2 text-right font-bold">Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {histRows.map((h) => (
-                  <tr key={h.id} className="border-t border-tv-line/60">
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-tv-muted">{isMounted ? fmtDay(h.createdAt) : '—'}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-                          h.direction === 'LONG' ? 'border-bull/35 bg-bull/10 text-bull' : 'border-bear/35 bg-bear/10 text-bear'
-                        }`}
-                      >
-                        {h.direction}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-tv-ink">{fmtPrice(h.entryMid)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-bear">{fmtPrice(h.stopLoss)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-info">{fmtPrice(h.tp1)}</td>
-                    <td className="px-3 py-2 text-right font-bold tabular-nums text-tv-ink">{h.score}</td>
-                    <td className="px-3 py-2">
-                      <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold ${qualityCls(h.quality)}`}>
-                        {h.quality}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <StatusChip status={h.status} />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <ResultChip row={h} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <p className="mb-3 text-[11.5px] leading-relaxed text-tv-muted">
+              Staged = the engine saw a valid order-block setup but a confirmation was still missing (this is what WATCHLIST shows). Every sighting is logged, so a setup you noticed earlier is always findable here.
+            </p>
+            {(journal?.staged.length ?? 0) === 0 ? (
+              <EmptyLine>no staged setups on the radar right now</EmptyLine>
+            ) : (
+              <div className={`max-h-96 rounded-xl border border-tv-line ${SCROLL_CLS}`}>
+                <table className="w-full min-w-[760px] border-collapse text-left text-[12px]">
+                  <caption className="sr-only">Staged watchlist setups across all pairs</caption>
+                  <thead className="sticky top-0 z-10 bg-tv-panel2">
+                    <tr className="text-[10px] uppercase tracking-wider text-tv-muted">
+                      <th scope="col" className="px-3 py-2 font-bold">Pair</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Side</th>
+                      <th scope="col" className="px-3 py-2 font-bold">Mode</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">Zone</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">SL</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">Score</th>
+                      <th scope="col" className="px-3 py-2">What was missing</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">First seen</th>
+                      <th scope="col" className="px-3 py-2 text-right font-bold">Last seen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(journal?.staged ?? []).map((s) => (
+                      <tr key={s.id} className="border-t border-tv-line/60">
+                        <td className="px-3 py-2 font-bold text-tv-ink">{SMC_LABEL[s.symbol] ?? s.symbol}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                              s.direction === 'BULLISH' ? 'border-bull/35 bg-bull/10 text-bull' : 'border-bear/35 bg-bear/10 text-bear'
+                            }`}
+                          >
+                            {s.direction === 'BULLISH' ? 'LONG?' : 'SHORT?'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-[10.5px] text-tv-muted">{s.mode}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-warn">
+                          {fmtPrice(s.obLow)} – {fmtPrice(s.obHigh)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-bear">{s.stopLoss !== null ? fmtPrice(s.stopLoss) : '—'}</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-tv-ink">{s.score}</td>
+                        <td className="max-w-[260px] px-3 py-2 text-[11px] leading-snug text-tv-muted" title={s.note}>
+                          <span className="line-clamp-2">{s.note}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-tv-muted">{isMounted ? fmtDay(s.firstSeen) : '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-tv-muted">{isMounted ? fmtDay(s.lastSeen) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </motion.section>
 

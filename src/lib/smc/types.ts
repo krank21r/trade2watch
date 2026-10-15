@@ -204,6 +204,9 @@ export interface SmcAnalysis {
    *  (5M BOS/displacement in STRICT, 15M confirm in BALANCED, OB's 1H BOS
    *  fallback) — null when the current state is WATCHLIST / NO_TRADE */
   signal_confirmed_at: number | null
+  /** WATCHLIST only: exactly which confirmation is still missing before this
+   *  becomes LONG/SHORT. null for every other state. */
+  watch_note: string | null
   quality: 'A+' | 'A' | 'B' | 'C' | '—'
   score: number
   mode: StrategyMode
@@ -230,4 +233,59 @@ export interface SmcAnalysisError {
   dataSource: 'UNAVAILABLE'
   error: string
   disclaimer: string
+}
+
+// ─── multi-pair scanner (GET /api/smc/scan) ─────────────────────────────────
+
+export interface SmcScanRow {
+  symbol: string
+  ok: boolean
+  error?: string
+  signal: SignalType
+  score: number
+  quality: 'A+' | 'A' | 'B' | 'C' | '—'
+  bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
+  price: number
+  change24h: number
+  /** one-line status: watchlist missing-requirement note, or the top reason */
+  note: string | null
+  generatedAt: number
+}
+
+export interface SmcScanResponse {
+  ok: true
+  mode: StrategyMode
+  generatedAt: number
+  rows: SmcScanRow[]
+}
+
+// ─── cross-symbol signal journal (GET /api/smc/signals) ─────────────────────
+
+export interface SmcJournalConfirmedRow extends SmcHistoryRow {
+  symbol: string
+  mode: string
+}
+
+export interface SmcJournalStagedRow {
+  id: string
+  symbol: string
+  direction: 'BULLISH' | 'BEARISH'
+  mode: string
+  obLow: number
+  obHigh: number
+  score: number
+  quality: string
+  note: string
+  entryLow: number | null
+  entryHigh: number | null
+  stopLoss: number | null
+  firstSeen: number
+  lastSeen: number
+}
+
+export interface SmcJournalResponse {
+  ok: true
+  confirmed: SmcJournalConfirmedRow[]
+  staged: SmcJournalStagedRow[]
+  generatedAt: number
 }
