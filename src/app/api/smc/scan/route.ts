@@ -57,6 +57,10 @@ export async function GET(req: NextRequest) {
         confirmations: isTradeSig ? (d.consensus.agreement === 'FULL' ? 2 : 1) : 0,
         agreement: d.consensus.agreement,
         note: d.watch_note ?? d.explanation[0] ?? reasonNote,
+        // full provisional plan — the compact signal cards render levels directly
+        trade: d.trade,
+        rr: isTradeSig || d.trade ? d.risk_reward : null,
+        confirmedAt: d.signal_confirmed_at,
         generatedAt: d.generatedAt,
       }
     }
@@ -71,6 +75,9 @@ export async function GET(req: NextRequest) {
       price: 0,
       change24h: 0,
       note: null,
+      trade: null,
+      rr: null,
+      confirmedAt: null,
       generatedAt: Date.now(),
     }
   })

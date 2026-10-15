@@ -1,69 +1,23 @@
 'use client'
 
-// ─── SMC board — Smart Money Concepts setup desk ────────────────────────────
-// Consumes GET /api/smc/analysis?symbol=…&mode=… (SmcAnalysis contract, §23/§25)
-// every 45s, plus GET /api/smc/scan (multi-pair scanner) and
-// GET /api/smc/signals (cross-symbol journal). Client-side polling with
-// AbortController; hydration-safe time strings via a mounted flag. If the
-// engine is unavailable the board shows a dedicated DATA UNAVAILABLE panel —
-// never stale or faked data (§62).
+// ─── SMC board — compact signal-card grid ───────────────────────────────────
+// The board IS the cards: one compact card per pair from
+// GET /api/smc/scan?mode=… (full engine per pair, dual-tape Bybit × Binance,
+// 30s server cache) polled every 45s. Live signals sort to the top; watchlist
+// next; no-trade cards stay quiet. All secondary panels (gates, score
+// breakdown, building blocks, backtest, journal) were deliberately removed —
+// the user asked for signals on compact cards only. If the engine is
+// unavailable the board shows a dedicated DATA UNAVAILABLE panel — never
+// stale or faked data (§62).
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { fmtPrice } from '@/components/signals/types'
-import {
-  Chip,
-  EmptyLine,
-  LadderRow,
-  LIQ_LABEL,
-  SCROLL_CLS,
-  SmcPanel,
-  biasCls,
-  dirDotCls,
-  dirSoftBg,
-  dirTextCls,
-  fmtClock,
-  fmtDay,
-  fmtWhen,
-  fvgStatusCls,
-  fvgStatusLabel,
-  obStatusCls,
-  qualityCls,
-  trendCls,
-} from '@/components/smc/ui'
-import type {
-  ConsensusAgreement,
-  SmcAnalysis,
-  SmcAnalysisError,
-  SmcHistoryRow,
-  SmcJournalResponse,
-  SmcScanResponse,
-  StrategyMode,
-  SignalType,
-} from '@/lib/smc/types'
-import { BacktestCard } from '@/components/smc/BacktestCard'
+import { SmcSignalCard } from './SmcSignalCard'
+import { fmtClock } from './ui'
+import type { SmcScanResponse, StrategyMode } from '@/lib/smc/types'
 
 const POLL_MS = 45_000
 
-/** pairs the SMC engine can actually analyze — Bybit/Binance spot (crypto only) */
-const SMC_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'] as const
-const SMC_LABEL: Record<string, string> = {
-  BTCUSDT: 'BTC',
-  ETHUSDT: 'ETH',
-  SOLUSDT: 'SOL',
-  BNBUSDT: 'BNB',
-  XRPUSDT: 'XRP',
-  DOGEUSDT: 'DOGE',
-}
-
-/** cross-exchange agreement chip — Bybit × Binance dual-tape verdict */
-function agreementChip(a: ConsensusAgreement, signal: SignalType): { cls: string; label: string } {
-  const live = signal === 'LONG' || signal === 'SHORT'
-  if (a === 'FULL') return { cls: 'border-bull/40 bg-bull/10 text-bull', label: live ? '2/2 tapes agree' : 'tapes agree' }
-  if (a === 'PARTIAL') return { cls: 'border-warn/40 bg-warn/10 text-warn', label: live ? '1/2 tapes confirmed' : '1/2 tapes' }
-  if (a === 'CONFLICT') return { cls: 'border-bear/40 bg-bear/10 text-bear', label: 'tapes conflict' }
-  return { cls: '', label: 'single tape' }
-}
 const MODE_OPTIONS: StrategyMode[] = ['STRICT', 'BALANCED', 'AGGRESSIVE']
 const MODE_HINT: Record<StrategyMode, string> = {
   STRICT: 'every gate — score ≥ 80 · rarest, highest confidence',
@@ -71,139 +25,25 @@ const MODE_HINT: Record<StrategyMode, string> = {
   AGGRESSIVE: 'zone + structure only — score ≥ 70 · most signals',
 }
 
-type HistFilter = 'ALL' | 'LONG' | 'SHORT' | 'WIN' | 'LOSS'
-const HIST_FILTERS: Array<{ key: HistFilter; label: string }> = [
-  { key: 'ALL', label: 'All' },
-  { key: 'LONG', label: 'Long' },
-  { key: 'SHORT', label: 'Short' },
-  { key: 'WIN', label: 'Win' },
-  { key: 'LOSS', label: 'Loss' },
-]
-
-const SIGNAL_THEME: Record<
-  SignalType,
-  {
-    icon: string
-    word: string
-    sub: string
-    wordCls: string
-    cardCls: string
-    cardStyle: CSSProperties
-    hairline: string
-    barCls: string
-    noteCls: string
-  }
-> = {
-  LONG: {
-    icon: '▲',
-    word: 'LONG',
-    sub: 'bullish SMC confluence — entry plan below',
-    wordCls: 'text-bull',
-    cardCls: 'border-bull/25',
-    cardStyle: {
-      background: 'linear-gradient(180deg, var(--tv-panel) 55%, var(--bull-soft))',
-      boxShadow: 'var(--card-glow)',
-    },
-    hairline: 'linear-gradient(90deg, transparent, var(--bull), var(--info), var(--bull), transparent)',
-    barCls: 'bg-bull/70',
-    noteCls: 'border-warn/30 bg-warn/5',
-  },
-  SHORT: {
-    icon: '▼',
-    word: 'SHORT',
-    sub: 'bearish SMC confluence — entry plan below',
-    wordCls: 'text-bear',
-    cardCls: 'border-bear/25',
-    cardStyle: {
-      background: 'linear-gradient(180deg, var(--tv-panel) 55%, var(--bear-soft))',
-      boxShadow: 'var(--card-glow-bear)',
-    },
-    hairline: 'linear-gradient(90deg, transparent, var(--bear), var(--bear-soft), var(--bear), transparent)',
-    barCls: 'bg-bear/70',
-    noteCls: 'border-warn/30 bg-warn/5',
-  },
-  WATCHLIST: {
-    icon: '⏳',
-    word: 'WATCHLIST',
-    sub: 'conditions building — awaiting confirmation',
-    wordCls: 'text-warn',
-    cardCls: 'border-warn/40 bg-tv-panel',
-    cardStyle: { boxShadow: '0 0 28px var(--warn-soft)' },
-    hairline: 'linear-gradient(90deg, transparent, var(--warn), transparent)',
-    barCls: 'bg-warn/70',
-    noteCls: 'border-warn/30 bg-warn/5',
-  },
-  NO_TRADE: {
-    icon: '⛔',
-    word: 'NO TRADE',
-    sub: 'no qualified setup right now',
-    wordCls: 'text-tv-muted',
-    cardCls: 'border-tv-line bg-tv-panel2/40',
-    cardStyle: {},
-    hairline: '',
-    barCls: 'bg-tv-muted/40',
-    noteCls: 'border-tv-line bg-tv-panel2/50',
-  },
-}
-
-/** status chip for a history row — ACTIVE pulses, TPs bull, SL bear, rest muted */
-function StatusChip({ status }: { status: string }) {
-  if (status === 'ACTIVE') {
-    return (
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-bull/40 bg-bull/10 px-2 py-0.5 text-[10px] font-bold text-bull">
-        <span className="relative flex h-1.5 w-1.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-bull/60" aria-hidden="true" />
-          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-bull" aria-hidden="true" />
-        </span>
-        ACTIVE
-      </span>
-    )
-  }
-  const cls =
-    status === 'TP1_HIT' || status === 'TP2_HIT' || status === 'TP3_HIT'
-      ? 'border-bull/40 bg-bull/10 text-bull'
-      : status === 'SL_HIT'
-        ? 'border-bear/40 bg-bear/10 text-bear'
-        : 'border-tv-line bg-tv-panel2 text-tv-muted'
-  return (
-    <Chip cls={cls}>{status.replace('_', ' ')}</Chip>
-  )
-}
-
-/** result + R-multiple chip — bull when r >= 0, bear otherwise */
-function ResultChip({ row }: { row: SmcHistoryRow }) {
-  const parts: string[] = []
-  if (row.result) parts.push(row.result)
-  if (row.rMultiple !== null) parts.push(`${row.rMultiple >= 0 ? '+' : ''}${row.rMultiple.toFixed(2)}R`)
-  if (parts.length === 0) return <span className="text-tv-muted2">—</span>
-  const cls =
-    row.rMultiple === null
-      ? 'border-tv-line bg-tv-panel2 text-tv-muted'
-      : row.rMultiple >= 0
-        ? 'border-bull/40 bg-bull/10 text-bull'
-        : 'border-bear/40 bg-bear/10 text-bear'
-  return (
-    <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold tabular-nums ${cls}`}>
-      {parts.join(' ')}
-    </span>
-  )
+/** deterministic sort: live signals first (score desc), then WATCHLIST, then NO_TRADE */
+function signalRank(s: string): number {
+  return s === 'LONG' || s === 'SHORT' ? 0 : s === 'WATCHLIST' ? 1 : 2
 }
 
 function Skeleton() {
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-[1400px] flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6" aria-busy="true">
-      <div className="h-28 animate-pulse rounded-3xl border border-tv-line bg-tv-panel" />
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-24 animate-pulse rounded-2xl border border-tv-line bg-tv-panel" />
+    <div className="mx-auto flex min-h-full w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6 sm:py-6" aria-busy="true">
+      <div className="h-16 animate-pulse rounded-2xl border border-tv-line bg-tv-panel" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-56 animate-pulse rounded-2xl border border-tv-line bg-tv-panel" />
         ))}
       </div>
-      <div className="h-64 animate-pulse rounded-3xl border border-tv-line bg-tv-panel" />
     </div>
   )
 }
 
-function UnavailablePanel({ message, disclaimer, onRetry }: { message: string; disclaimer: string | null; onRetry: () => void }) {
+function UnavailablePanel({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-[1400px] flex-col justify-center px-4 py-8 sm:px-6">
       <section
@@ -217,7 +57,7 @@ function UnavailablePanel({ message, disclaimer, onRetry }: { message: string; d
         <h2 className="mt-2 text-lg font-extrabold tracking-tight text-bear">DATA UNAVAILABLE</h2>
         <p className="mx-auto mt-2 max-w-md break-words text-[12.5px] leading-relaxed text-tv-ink/90">{message}</p>
         <p className="mx-auto mt-2 max-w-md text-[11px] leading-relaxed text-tv-muted">
-          {disclaimer ?? 'The SMC engine shows nothing rather than stale or fake data — retry in a moment.'}
+          The SMC engine shows nothing rather than stale or fake data — retry in a moment.
         </p>
         <button
           onClick={onRetry}
@@ -232,18 +72,11 @@ function UnavailablePanel({ message, disclaimer, onRetry }: { message: string; d
 }
 
 export function SmcBoard() {
-  const [data, setData] = useState<SmcAnalysis | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [errDisclaimer, setErrDisclaimer] = useState<string | null>(null)
-  const [isMounted, setIsMounted] = useState(false)
-  const [histFilter, setHistFilter] = useState<HistFilter>('ALL')
-  const [symbol, setSymbol] = useState<string>('BTCUSDT')
-  const [mode, setMode] = useState<StrategyMode>('STRICT')
   const [scan, setScan] = useState<SmcScanResponse | null>(null)
   const [scanErr, setScanErr] = useState<string | null>(null)
-  const [journal, setJournal] = useState<SmcJournalResponse | null>(null)
-  const [journalTab, setJournalTab] = useState<'CONFIRMED' | 'STAGED'>('CONFIRMED')
+  const [mode, setMode] = useState<StrategyMode>('STRICT')
+  const [loading, setLoading] = useState(true)
+  const [isMounted, setIsMounted] = useState(false)
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -255,43 +88,12 @@ export function SmcBoard() {
     }
   }, [])
 
-  const load = useCallback(async () => {
+  const loadScan = useCallback(async () => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
-      const res = await fetch(`/api/smc/analysis?symbol=${symbol}&mode=${mode}`, {
-        cache: 'no-store',
-        signal: ctrl.signal,
-      })
-      const body = (await res.json()) as SmcAnalysis | SmcAnalysisError
-      if (!mountedRef.current) return
-      if (body.ok === false) {
-        // engine's explicit failure payload (§62) — show nothing fake
-        setError(body.error)
-        setErrDisclaimer(body.disclaimer)
-        setData(null)
-      } else if (!res.ok) {
-        setError(`API ${res.status}`)
-        setData(null)
-      } else {
-        setData(body)
-        setError(null)
-        setErrDisclaimer(null)
-      }
-    } catch (e) {
-      if (!mountedRef.current) return
-      if (e instanceof DOMException && e.name === 'AbortError') return
-      setError(String(e instanceof Error ? e.message : e).slice(0, 160))
-    } finally {
-      if (mountedRef.current && abortRef.current === ctrl) setLoading(false)
-    }
-  }, [symbol, mode])
-
-  /** multi-pair scanner — one chip row per liquid pair, same 45s cadence */
-  const loadScan = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/smc/scan?mode=${mode}`, { cache: 'no-store' })
+      const res = await fetch(`/api/smc/scan?mode=${mode}`, { cache: 'no-store', signal: ctrl.signal })
       const body = (await res.json()) as SmcScanResponse | { ok: false; error: string }
       if (!mountedRef.current) return
       if (res.ok && body.ok) {
@@ -301,225 +103,74 @@ export function SmcBoard() {
         setScanErr(!body.ok ? body.error : `API ${res.status}`)
       }
     } catch (e) {
-      if (mountedRef.current) setScanErr(String(e instanceof Error ? e.message : e).slice(0, 140))
+      if (!mountedRef.current) return
+      if (e instanceof DOMException && e.name === 'AbortError') return
+      setScanErr(String(e instanceof Error ? e.message : e).slice(0, 160))
+    } finally {
+      if (mountedRef.current && abortRef.current === ctrl) setLoading(false)
     }
   }, [mode])
 
-  /** cross-symbol journal — confirmed signals + staged watchlist radar */
-  const loadJournal = useCallback(async () => {
-    try {
-      const res = await fetch('/api/smc/signals', { cache: 'no-store' })
-      const body = (await res.json()) as SmcJournalResponse | { ok: false; error: string }
-      if (!mountedRef.current) return
-      if (res.ok && body.ok) setJournal(body)
-    } catch {
-      /* journal is supplementary — never blocks the board */
-    }
-  }, [])
-
   useEffect(() => {
-    void load()
     void loadScan()
-    void loadJournal()
-    const t = setInterval(() => {
-      void load()
-      void loadScan()
-      void loadJournal()
-    }, POLL_MS)
+    const t = setInterval(() => void loadScan(), POLL_MS)
     return () => clearInterval(t)
-  }, [load, loadScan, loadJournal])
+  }, [loadScan])
 
   const retry = useCallback(() => {
     setLoading(true)
-    void load()
-  }, [load])
+    void loadScan()
+  }, [loadScan])
 
-  if (!data) {
+  if (!scan) {
     if (loading) return <Skeleton />
-    return <UnavailablePanel message={error ?? 'SMC engine unreachable'} disclaimer={errDisclaimer} onRetry={retry} />
+    return <UnavailablePanel message={scanErr ?? 'SMC engine unreachable'} onRetry={retry} />
   }
 
-  // ── derived (data narrowed non-null) ──
-  const theme = SIGNAL_THEME[data.signal]
-  const trade = data.trade
-  const rr = data.risk_reward
-  // ladder direction: the signal, falling back to market bias for odd states
-  const isLong =
-    data.signal === 'SHORT' ? false : data.signal === 'LONG' ? true : data.market_bias !== 'BEARISH'
-  const mid = trade?.entry_mid ?? 0
-  const stopPct = trade ? Math.abs((mid - trade.stop_loss) / mid) * 100 : 0
-  const planRows = trade
-    ? [
-        { key: 'tp3', icon: '🎯', label: 'TP3 · Runner', sub: `+${rr.tp3.toFixed(1)}R`, value: fmtPrice(trade.tp3), cls: 'text-info', accent: false, big: false },
-        { key: 'tp2', icon: '🎯', label: 'TP2 · Final target', sub: `+${rr.tp2.toFixed(1)}R`, value: fmtPrice(trade.tp2), cls: 'text-info', accent: false, big: false },
-        { key: 'tp1', icon: '🎯', label: 'TP1 · Bank half', sub: `+${rr.tp1.toFixed(1)}R`, value: fmtPrice(trade.tp1), cls: 'text-info', accent: false, big: false },
-        { key: 'entry', icon: '▶', label: 'ENTRY — limit zone', sub: `assumed fill ≈ mid ${fmtPrice(trade.entry_mid)}`, value: `${fmtPrice(trade.entry_low)} – ${fmtPrice(trade.entry_high)}`, cls: 'text-warn', accent: true, big: true },
-        { key: 'stop', icon: '🛑', label: 'STOP LOSS', sub: `${stopPct.toFixed(2)}% ${trade.stop_loss < mid ? 'below' : 'above'} mid · risk 1R`, value: fmtPrice(trade.stop_loss), cls: 'text-bear', accent: false, big: false },
-      ]
-    : []
-  // read top-down like a chart: longs highest-first, shorts stop-first
-  const orderedRows = isLong ? planRows : [...planRows].reverse()
-
-  const watchNote =
-    data.watch_note ??
-    data.explanation[0] ??
-    (data.reasons[0] ? `${data.reasons[0].factor} — ${data.reasons[0].result}` : null) ??
-    'No qualified setup — the engine is standing aside.'
-
-  // signal freshness — deterministic (both stamps come from the payload, hydration-safe)
-  const confirmAge = (() => {
-    if ((data.signal !== 'LONG' && data.signal !== 'SHORT') || !data.signal_confirmed_at) return null
-    const mins = Math.floor(Math.max(0, data.generatedAt - data.signal_confirmed_at) / 60_000)
-    const txt = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : `${Math.floor(mins / 60)}h ${mins % 60}m ago`
-    return { mins, txt }
-  })()
-
-  const histRows = (journal?.confirmed ?? []).filter((h) =>
-    histFilter === 'ALL'
-      ? true
-      : histFilter === 'LONG'
-        ? h.direction === 'LONG'
-        : histFilter === 'SHORT'
-          ? h.direction === 'SHORT'
-          : histFilter === 'WIN'
-            ? h.result === 'WIN'
-            : h.result === 'LOSS',
+  // ── derived (scan narrowed non-null) ──
+  const rows = [...scan.rows].sort(
+    (a, b) => signalRank(a.signal) - signalRank(b.signal) || b.score - a.score || a.symbol.localeCompare(b.symbol),
   )
-
-  // scanner state helpers
-  const scanRows = scan?.rows ?? []
-  const liveSignals = scanRows.filter((r) => r.ok && (r.signal === 'LONG' || r.signal === 'SHORT'))
-
-  const motionT = (delay: number) => ({
-    initial: { opacity: 0, y: 10 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.25, ease: 'easeOut' as const, delay },
-  })
+  const liveCount = rows.filter((r) => r.signal === 'LONG' || r.signal === 'SHORT').length
+  const watchCount = rows.filter((r) => r.signal === 'WATCHLIST').length
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-[1400px] flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6">
+    <div className="mx-auto flex min-h-full w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6 sm:py-6">
       <span className="sr-only">
-        {data.symbol} SMC analysis: {data.signal.replace('_', ' ')} signal, quality {data.quality}, score {data.score} of 100, market bias {data.market_bias}.
+        SMC signal cards for {rows.length} pairs — live signals first. Each card: direction, price, entry zone, stop,
+        targets and setup quality.
       </span>
 
-      {/* a later poll failed but we still hold the last good analysis */}
-      {error && (
-        <div
-          role="status"
-          className="flex flex-wrap items-center gap-2 rounded-xl border border-bear/30 px-3 py-2.5 text-[12.5px]"
-          style={{ background: 'var(--bear-soft)' }}
-        >
-          <span className="text-bear">
-            Feed error: {error} — showing the last good analysis ({isMounted ? fmtClock(data.generatedAt) : '--:--:--'}),
-            retrying automatically.
-          </span>
-          <button
-            onClick={retry}
-            suppressHydrationWarning
-            className="min-h-[44px] underline transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bear/50"
-          >
-            Retry now
-          </button>
+      {/* ── header bar: title + counts + mode pills + refresh clock ── */}
+      <motion.header
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-tv-line bg-tv-panel shadow-sm px-4 py-3"
+      >
+        <div className="min-w-0">
+          <h1 className="text-[15px] font-extrabold tracking-tight text-tv-ink">SMC Signals</h1>
+          <p className="text-[10.5px] leading-tight text-tv-muted">Bybit × Binance dual-tape · 6 pairs</p>
         </div>
-      )}
 
-      {/* ── header ── */}
-      <motion.header {...motionT(0)} className="flex flex-wrap items-start gap-4 rounded-3xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-6">
-        <span
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[20px]"
-          style={{ background: 'var(--bull-soft)' }}
-          aria-hidden="true"
-        >
-          🧠
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">SMC setup</div>
-          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1 className="text-xl font-extrabold tracking-tight text-tv-ink sm:text-2xl">{data.symbol}</h1>
-            <span className="text-2xl font-bold tabular-nums tracking-tight text-tv-ink sm:text-3xl">
-              {fmtPrice(data.current_price)}
+        <div className="flex items-center gap-1.5" role="status" aria-live="polite">
+          {liveCount > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-bull/40 bg-bull/10 px-2.5 py-1 text-[10.5px] font-bold text-bull">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-bull/60" aria-hidden="true" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-bull" aria-hidden="true" />
+              </span>
+              {liveCount} live signal{liveCount > 1 ? 's' : ''}
             </span>
-            <span
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold tabular-nums ${
-                data.change24h >= 0 ? 'border-bull/30 bg-bull/10 text-bull' : 'border-bear/30 bg-bear/10 text-bear'
-              }`}
-            >
-              {data.change24h >= 0 ? '+' : ''}
-              {data.change24h.toFixed(2)}% 24h
+          )}
+          {watchCount > 0 && (
+            <span className="inline-flex items-center rounded-full border border-warn/35 bg-warn/10 px-2.5 py-1 text-[10.5px] font-bold text-warn">
+              ⏳ {watchCount} watch
             </span>
-          </div>
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            <Chip cls={biasCls(data.market_bias)}>{data.market_bias}</Chip>
-            {data.quality !== '—' && (
-              <Chip cls={qualityCls(data.quality)}>
-                {data.quality} · {data.score}
-              </Chip>
-            )}
-            <Chip cls="border-info/35 bg-info/10 text-info">{data.mode}</Chip>
-            <Chip
-              cls={
-                data.exchanges.bybit
-                  ? 'border-bull/40 bg-bull/10 text-bull'
-                  : 'border-bear/30 bg-bear/10 text-bear'
-              }
-            >
-              Bybit {data.exchanges.bybit ? '✓' : '✗'}
-            </Chip>
-            <Chip
-              cls={
-                data.exchanges.binance
-                  ? 'border-bull/40 bg-bull/10 text-bull'
-                  : 'border-bear/30 bg-bear/10 text-bear'
-              }
-            >
-              Binance {data.exchanges.binance ? '✓' : '✗'}
-            </Chip>
-            <Chip cls={agreementChip(data.consensus.agreement, data.signal).cls}>
-              {agreementChip(data.consensus.agreement, data.signal).label}
-            </Chip>
-          </div>
-          {data.consensus.note && (
-            <div className="mt-1.5 text-[11px] leading-relaxed text-tv-muted">⇄ {data.consensus.note}</div>
           )}
         </div>
-        <div className="ml-auto text-right text-[11px] tabular-nums text-tv-muted">
-          <span role="status" aria-live="polite">
-            {loading ? 'refreshing…' : `refreshed ${isMounted ? fmtClock(data.generatedAt) : '--:--:--'}`} · auto every 45s
-          </span>
-        </div>
-      </motion.header>
 
-      {/* ── pair + mode selector ── */}
-      <motion.section
-        {...motionT(0.03)}
-        aria-label="Pair and strategy mode selector"
-        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-tv-line bg-tv-panel shadow-sm px-3.5 py-3"
-      >
-        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-tv-muted">Pair</span>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Select pair">
-          {SMC_SYMBOLS.map((s) => (
-            <button
-              key={s}
-              onClick={() => {
-                if (s !== symbol) {
-                  setSymbol(s)
-                  setLoading(true)
-                }
-              }}
-              aria-pressed={symbol === s}
-              suppressHydrationWarning
-              className={`inline-flex min-h-[44px] items-center rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
-                symbol === s
-                  ? 'border-info/50 bg-info/10 text-info'
-                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
-              }`}
-            >
-              {SMC_LABEL[s]}
-            </button>
-          ))}
-        </div>
-        <span className="ml-1 text-[10px] font-bold uppercase tracking-[0.14em] text-tv-muted">Mode</span>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Select strategy mode">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5" role="group" aria-label="Select strategy mode">
           {MODE_OPTIONS.map((m) => (
             <button
               key={m}
@@ -542,723 +193,60 @@ export function SmcBoard() {
             </button>
           ))}
         </div>
-        <span className="ml-auto text-[10px] leading-tight text-tv-muted2">
-          engine data is crypto spot only — equities need a stock feed (not available yet)
+
+        <span className="w-full text-right text-[10.5px] tabular-nums text-tv-muted2 sm:w-auto" role="status">
+          {loading ? 'refreshing…' : `auto 45s · ${isMounted ? fmtClock(scan.generatedAt) : '--:--:--'}`}
         </span>
-      </motion.section>
+      </motion.header>
 
-      {/* ── multi-pair scanner — signals on ANY pair are visible at a glance ── */}
-      <motion.section
-        {...motionT(0.04)}
-        aria-label="Multi-pair live scanner"
-        className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5"
-      >
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-            📡 Live scanner <span className="normal-case tracking-normal text-tv-muted2">— all pairs · {mode} · auto every 45s</span>
-          </h3>
-          <div className="ml-auto flex items-center gap-2 text-[10.5px] text-tv-muted2">
-            {scanErr ? <span className="text-warn">scanner error: {scanErr}</span> : scan ? `${scan.rows.length} pairs` : 'scanning…'}
-          </div>
-        </div>
-
-        {liveSignals.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2" role="status">
-            {liveSignals.map((r) => (
-              <button
-                key={`live-${r.symbol}`}
-                onClick={() => {
-                  setSymbol(r.symbol)
-                  setLoading(true)
-                }}
-                suppressHydrationWarning
-                className={`inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-bold transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
-                  r.signal === 'LONG' ? 'border-bull/50 bg-bull/10 text-bull' : 'border-bear/50 bg-bear/10 text-bear'
-                }`}
-              >
-                <span className="relative flex h-2 w-2">
-                  <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${r.signal === 'LONG' ? 'bg-bull/60' : 'bg-bear/60'}`} aria-hidden="true" />
-                  <span className={`relative inline-flex h-2 w-2 rounded-full ${r.signal === 'LONG' ? 'bg-bull' : 'bg-bear'}`} aria-hidden="true" />
-                </span>
-                ⚡ {r.signal} {SMC_LABEL[r.symbol] ?? r.symbol} · score {r.score} · {r.quality}
-                {r.confirmations != null && r.confirmations > 0 && (
-                  <span className={`text-[11px] font-semibold ${r.confirmations === 2 ? 'text-bull' : 'text-warn'}`}>
-                    · {r.confirmations === 2 ? 'Bybit+Binance ✓' : '1 tape only'}
-                  </span>
-                )}
-                <span className="text-tv-muted2">— tap to view</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-          {scan
-            ? scanRows.map((r) => {
-                const selected = r.symbol === symbol
-                const stCls =
-                  r.signal === 'LONG'
-                    ? 'text-bull'
-                    : r.signal === 'SHORT'
-                      ? 'text-bear'
-                      : r.signal === 'WATCHLIST'
-                        ? 'text-warn'
-                        : 'text-tv-muted'
-                return (
-                  <button
-                    key={r.symbol}
-                    onClick={() => {
-                      if (r.ok) {
-                        setSymbol(r.symbol)
-                        setLoading(true)
-                      }
-                    }}
-                    disabled={!r.ok}
-                    aria-label={`${r.symbol}: ${r.ok ? r.signal.replace('_', ' ') : 'unavailable'}${r.ok ? `, score ${r.score}` : ''}`}
-                    aria-pressed={selected}
-                    suppressHydrationWarning
-                    className={`rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
-                      !r.ok
-                        ? 'cursor-not-allowed border-tv-line bg-tv-panel2/40 opacity-60'
-                        : selected
-                          ? 'border-info/60 bg-info/5'
-                          : 'border-tv-line bg-tv-panel2/60 hover:border-tv-line-strong'
-                    }`}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-[12.5px] font-extrabold text-tv-ink">{SMC_LABEL[r.symbol] ?? r.symbol}</span>
-                      <span className={`text-[10.5px] font-bold tabular-nums ${r.ok ? stCls : 'text-tv-muted2'}`}>
-                        {r.ok ? (r.signal === 'NO_TRADE' ? 'NO TRADE' : r.signal) : '—'}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-baseline justify-between gap-2 text-[10.5px] tabular-nums text-tv-muted">
-                      <span>{r.ok ? fmtPrice(r.price) : 'n/a'}</span>
-                      {r.ok && (
-                        <span className={r.change24h >= 0 ? 'text-bull' : 'text-bear'}>
-                          {r.change24h >= 0 ? '+' : ''}
-                          {r.change24h.toFixed(1)}%
-                        </span>
-                      )}
-                    </div>
-                    {r.ok && (
-                      <div className="mt-1.5 flex items-center gap-1.5">
-                        <span className="h-1 flex-1 overflow-hidden rounded-full bg-tv-panel2">
-                          <span
-                            className={`block h-full rounded-full ${
-                              r.signal === 'LONG'
-                                ? 'bg-bull/70'
-                                : r.signal === 'SHORT'
-                                  ? 'bg-bear/70'
-                                  : r.signal === 'WATCHLIST'
-                                    ? 'bg-warn/70'
-                                    : 'bg-tv-muted/40'
-                            }`}
-                            style={{ width: `${Math.min(100, Math.max(0, r.score))}%` }}
-                          />
-                        </span>
-                        <span className="text-[10px] font-bold tabular-nums text-tv-muted2">{r.score}</span>
-                      </div>
-                    )}
-                    {r.ok && r.signal === 'WATCHLIST' && r.note && (
-                      <div className="mt-1.5 line-clamp-2 text-[10px] leading-snug text-tv-muted" title={r.note}>
-                        {r.note}
-                      </div>
-                    )}
-                    {!r.ok && r.error && <div className="mt-1.5 line-clamp-2 text-[10px] text-tv-muted2" title={r.error}>{r.error}</div>}
-                  </button>
-                )
-              })
-            : [0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="h-[86px] animate-pulse rounded-xl border border-tv-line bg-tv-panel2/40" />)}
-        </div>
-      </motion.section>
-
-      {/* ── multi-timeframe strip ── */}
-      <motion.section {...motionT(0.05)} aria-label="Multi-timeframe structure" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {(['4H', '1H', '15M', '5M'] as const).map((tf) => {
-          const s = data.per_tf[tf]
-          const role =
-            data.timeframes.trend === tf
-              ? 'Trend'
-              : data.timeframes.structure === tf
-                ? 'Structure'
-                : data.timeframes.setup === tf
-                  ? 'Setup'
-                  : data.timeframes.entry === tf
-                    ? 'Entry'
-                    : ''
-          return (
-            <div key={tf} className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-3.5 sm:p-4">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[13.5px] font-bold text-tv-ink">{tf}</span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-tv-muted2">{role}</span>
-              </div>
-              <div className={`mt-1 text-[13.5px] font-bold ${trendCls(s.trend)}`}>{s.trend}</div>
-              <div className="mt-1 truncate text-[11px] text-tv-muted" title={s.note}>
-                {s.note}
-              </div>
-              {(s.bos || s.choch) && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {s.bos && <Chip cls="border-info/40 bg-info/10 text-info">BOS</Chip>}
-                  {s.choch && <Chip cls="border-warn/40 bg-warn/10 text-warn">CHoCH</Chip>}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </motion.section>
-
-      {/* ── signal hero ── */}
-      <motion.section
-        {...motionT(0.1)}
-        aria-label="SMC signal"
-        className={`relative overflow-hidden rounded-3xl border p-4 sm:p-6 ${theme.cardCls}`}
-        style={theme.cardStyle}
-      >
-        {theme.hairline && (
-          <span aria-hidden className="absolute inset-x-0 top-0 h-px" style={{ background: theme.hairline }} />
-        )}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Signal — {data.mode} mode</div>
-            <div className={`mt-1 flex items-center gap-2.5 text-3xl font-extrabold tracking-tight sm:text-4xl ${theme.wordCls}`}>
-              <span aria-hidden="true">{theme.icon}</span>
-              <span>{theme.word}</span>
-            </div>
-            <div className="mt-1.5 text-[12.5px] text-tv-muted">{theme.sub}</div>
-            {confirmAge && (
-              <div
-                className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold tabular-nums ${
-                  confirmAge.mins > 60
-                    ? 'border-warn/40 bg-warn/10 text-warn'
-                    : data.signal === 'LONG'
-                      ? 'border-bull/30 bg-bull/10 text-bull'
-                      : 'border-bear/30 bg-bear/10 text-bear'
-                }`}
-                title="Close time of the entry-trigger event (the last confirmation gate)"
-              >
-                ⚡ confirmed {confirmAge.txt}
-              </div>
-            )}
-          </div>
-          <div className="shrink-0 text-right">
-            <span className={`inline-block rounded-full border px-2.5 py-1 text-[12.5px] font-extrabold ${qualityCls(data.quality)}`}>
-              {data.quality}
-            </span>
-            <div className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight text-tv-ink sm:text-4xl">
-              {data.score}
-              <span className="text-lg font-bold text-tv-muted2">/100</span>
-            </div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-tv-muted">Setup Quality Score</div>
-            <div className="text-[10px] text-tv-muted2">quality score — not a win probability</div>
-            <div className="mt-2 ml-auto h-1.5 w-28 overflow-hidden rounded-full border border-tv-line bg-tv-panel2">
-              <div className={`h-full rounded-full ${theme.barCls}`} style={{ width: `${Math.min(100, Math.max(0, data.score))}%` }} />
-            </div>
-          </div>
-        </div>
-
-        {trade ? (
-          <>
-            <div className="mt-4 flex flex-col gap-2 border-t border-dashed border-tv-line pt-4" role="list" aria-label={`${theme.word} plan levels`}>
-              {orderedRows.map((r) => (
-                <LadderRow key={r.key} icon={r.icon} label={r.label} sub={r.sub} value={r.value} cls={r.cls} accent={r.accent} big={r.big} />
-              ))}
-            </div>
-            <div className="flex items-center justify-between gap-3 pt-1 text-[12.5px]">
-              <span className="text-tv-muted">Risk : Reward</span>
-              <Chip cls="border-bull/40 bg-bull/10 text-bull">1 : {rr.tp2.toFixed(1)} at TP2</Chip>
-            </div>
-          </>
-        ) : (
-          <div className={`mt-4 flex items-start gap-2.5 rounded-xl border px-3.5 py-3 ${theme.noteCls}`}>
-            <span className="shrink-0" aria-hidden="true">
-              {theme.icon}
-            </span>
-            <p className="text-[12.5px] leading-relaxed text-tv-ink/90">{watchNote}</p>
-          </div>
-        )}
-      </motion.section>
-
-      {/* ── gate checklist — the live answer to "what is still missing" ── */}
-      {data.gates && data.gates.length > 0 && (
-        <motion.section
-          {...motionT(0.13)}
-          aria-label="Gate checklist"
-          className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5"
+      {/* a later poll failed but we still hold the last good scan */}
+      {scanErr && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-bear/30 px-3 py-2.5 text-[12.5px]"
+          style={{ background: 'var(--bear-soft)' }}
         >
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-              Gate checklist{' '}
-              {data.gate_side ? (
-                <span className="normal-case tracking-normal text-tv-muted2">
-                  — {data.gate_side} setup · what stands between here and a live signal
-                </span>
-              ) : (
-                <span className="normal-case tracking-normal text-tv-muted2">— no directional setup right now</span>
-              )}
-            </h3>
-            <span className="ml-auto text-[10.5px] text-tv-muted2">{data.mode} mode · live every 45s</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {data.gates.map((g) => (
-              <div
-                key={g.key}
-                className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${
-                  g.na
-                    ? 'border-tv-line bg-tv-panel2/30 opacity-70'
-                    : g.ok
-                      ? 'border-bull/30 bg-bull/5'
-                      : 'border-warn/40 bg-warn/10'
-                }`}
-              >
-                <span
-                  className={`mt-0.5 text-[13px] font-bold ${g.na ? 'text-tv-muted2' : g.ok ? 'text-bull' : 'text-warn'}`}
-                  aria-hidden="true"
-                >
-                  {g.na ? '—' : g.ok ? '✓' : '✗'}
-                </span>
-                <div className="min-w-0">
-                  <div className="text-[12px] font-bold text-tv-ink">{g.label}</div>
-                  {g.note && <div className="mt-0.5 text-[10.5px] leading-snug text-tv-muted">{g.note}</div>}
-                </div>
-                <span className="sr-only">
-                  {g.label} {g.na ? 'not applicable' : g.ok ? 'passed' : 'failed'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </motion.section>
+          <span className="text-bear">
+            Feed error: {scanErr} — showing the last good scan ({isMounted ? fmtClock(scan.generatedAt) : '--:--:--'}),
+            retrying automatically.
+          </span>
+          <button
+            onClick={retry}
+            suppressHydrationWarning
+            className="min-h-[44px] underline transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bear/50"
+          >
+            Retry now
+          </button>
+        </div>
       )}
 
-      {/* ── score breakdown + engine explanation ── */}
-      <motion.section {...motionT(0.15)} aria-label="Score breakdown and engine explanation" className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5">
-          <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-            Score breakdown <span className="normal-case tracking-normal text-tv-muted2">— why this rating</span>
-          </h3>
-          {data.reasons.length === 0 ? (
-            <EmptyLine>no scored factors</EmptyLine>
-          ) : (
-            <ul role="list" className={`flex max-h-80 flex-col gap-1.5 pr-1 ${SCROLL_CLS}`}>
-              {data.reasons.map((r, i) => (
-                <li key={i} className="flex items-start justify-between gap-3 rounded-xl border border-tv-line bg-tv-panel2/50 px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="text-[12.5px] font-semibold text-tv-ink">{r.factor}</div>
-                    <div className="mt-0.5 text-[11px] leading-snug text-tv-muted">{r.result}</div>
-                  </div>
-                  <span
-                    className={`shrink-0 pt-0.5 text-[13px] font-bold tabular-nums ${
-                      r.points > 0 ? 'text-bull' : r.points < 0 ? 'text-bear' : 'text-tv-muted2'
-                    }`}
-                  >
-                    {r.points > 0 ? `+${r.points}` : r.points}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5">
-          <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Engine explanation</h3>
-          {data.explanation.length === 0 ? (
-            <EmptyLine>nothing to explain right now</EmptyLine>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {data.explanation.map((line, i) => (
-                <li key={i} className="flex gap-2 text-[12.5px] leading-relaxed text-tv-ink/90">
-                  <span className="mt-[3px] shrink-0 text-[10px] text-bull" aria-hidden="true">
-                    ◆
-                  </span>
-                  <span className="min-w-0">{line}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </motion.section>
+      {/* ── the cards — live first, watch next, quiet no-trade last ── */}
+      <section aria-label="Signal cards" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {rows.map((r, i) => (
+          <motion.div
+            key={r.symbol}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut', delay: Math.min(i, 8) * 0.04 }}
+            className="h-full"
+          >
+            <SmcSignalCard row={r} mounted={isMounted} />
+          </motion.div>
+        ))}
+      </section>
 
-      {/* ── building-block panels ── */}
-      <motion.section {...motionT(0.2)} aria-label="SMC building blocks" className="grid gap-4 lg:grid-cols-2">
-        {/* order blocks */}
-        <SmcPanel title="Order blocks" hint="1H" count={data.order_blocks.length}>
-          {data.order_blocks.length === 0 ? (
-            <EmptyLine>none right now</EmptyLine>
-          ) : (
-            <ul role="list" className={`flex max-h-72 flex-col gap-1.5 pr-1 ${SCROLL_CLS}`}>
-              {data.order_blocks.map((ob) => (
-                <li
-                  key={`${ob.time}:${ob.direction}`}
-                  className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-tv-line bg-tv-panel2/50 px-3 py-2"
-                >
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${dirDotCls(ob.direction)}`} aria-hidden="true" />
-                  <span className={`text-[12px] font-bold ${dirTextCls(ob.direction)}`}>{ob.direction} OB</span>
-                  <span className="text-[11.5px] tabular-nums chip-mono text-tv-muted">
-                    {fmtPrice(ob.low)} – {fmtPrice(ob.high)}
-                  </span>
-                  <span className="ml-auto flex flex-wrap items-center gap-1">
-                    {ob.fresh ? (
-                      <Chip cls="border-bull/40 bg-bull/10 text-bull">FRESH</Chip>
-                    ) : ob.testedCount > 0 ? (
-                      <Chip>{ob.testedCount} tests</Chip>
-                    ) : null}
-                    <Chip cls={obStatusCls[ob.status]}>{ob.status}</Chip>
-                    <span className="text-[11px] font-bold tabular-nums text-warn" title={`strength ${ob.strengthScore}/100`}>
-                      ⭐ {ob.strengthScore}
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {data.ob_cross_check && data.ob_cross_check.direction ? (
-            <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-tv-line bg-tv-panel2/40 px-3 py-2">
-              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-tv-muted">Cross-tape OB check</span>
-              <span className={`text-[11.5px] font-bold ${dirTextCls(data.ob_cross_check.direction)}`}>
-                {data.ob_cross_check.direction}
-              </span>
-              <Chip
-                cls={
-                  data.ob_cross_check.bybit
-                    ? 'border-bull/40 bg-bull/10 text-bull'
-                    : 'border-bear/30 bg-bear/10 text-bear'
-                }
-              >
-                Bybit {data.ob_cross_check.bybit ? '✓' : '✗'}
-              </Chip>
-              <Chip
-                cls={
-                  data.ob_cross_check.binance
-                    ? 'border-bull/40 bg-bull/10 text-bull'
-                    : 'border-bear/30 bg-bear/10 text-bear'
-                }
-              >
-                Binance {data.ob_cross_check.binance ? '✓' : '✗'}
-              </Chip>
-              {data.ob_cross_check.overlapPct !== null && (
-                <span className="ml-auto text-[10.5px] tabular-nums text-tv-muted2">
-                  {data.ob_cross_check.overlapPct}% zone overlap
-                </span>
-              )}
-            </div>
-          ) : null}
-        </SmcPanel>
-
-        {/* fair value gaps */}
-        <SmcPanel title="Fair value gaps" hint="imbalance zones" count={data.fvgs.length}>
-          {data.fvgs.length === 0 ? (
-            <EmptyLine>none right now</EmptyLine>
-          ) : (
-            <ul role="list" className={`flex max-h-72 flex-col gap-1.5 pr-1 ${SCROLL_CLS}`}>
-              {data.fvgs.map((f, i) => (
-                <li key={`${f.time}:${f.direction}:${i}`} className="rounded-xl border border-tv-line bg-tv-panel2/50 px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className={`text-[12px] font-bold ${dirTextCls(f.direction)}`}>
-                      {f.direction === 'BULLISH' ? '▲' : '▼'} {f.direction} FVG
-                    </span>
-                    <span className="text-[11.5px] tabular-nums chip-mono text-tv-muted">
-                      {fmtPrice(f.low)} – {fmtPrice(f.high)}
-                    </span>
-                    <Chip cls={fvgStatusCls(f.status)}>{fvgStatusLabel(f.status)}</Chip>
-                    <span className="ml-auto text-[10.5px] tabular-nums text-tv-muted2">{Math.round(f.fillPct)}% filled</span>
-                  </div>
-                  <div
-                    className="mt-2 h-1.5 overflow-hidden rounded-full bg-tv-line/50"
-                    role="img"
-                    aria-label={`${f.direction} FVG ${Math.round(f.fillPct)}% filled`}
-                  >
-                    <div
-                      className={`h-full rounded-full ${f.direction === 'BULLISH' ? 'bg-bull/60' : 'bg-bear/60'}`}
-                      style={{ width: `${Math.min(100, Math.max(0, f.fillPct))}%` }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SmcPanel>
-
-        {/* liquidity levels */}
-        <SmcPanel title="Liquidity levels" hint="resting pools" count={data.liquidity_levels.length}>
-          {data.liquidity_levels.length === 0 ? (
-            <EmptyLine>none right now</EmptyLine>
-          ) : (
-            <ul role="list" className={`flex max-h-72 flex-col gap-1.5 pr-1 ${SCROLL_CLS}`}>
-              {data.liquidity_levels.map((l, i) => (
-                <li
-                  key={`${l.type}:${l.price}:${i}`}
-                  className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-tv-line bg-tv-panel2/50 px-3 py-2"
-                >
-                  <span className="text-[12px] font-semibold text-tv-ink">{LIQ_LABEL[l.type]}</span>
-                  <span className="text-[11.5px] tabular-nums chip-mono text-tv-muted">{fmtPrice(l.price)}</span>
-                  <span className="text-[11px] font-bold tabular-nums text-warn" title={`strength ${l.strength}/100`}>
-                    ⭐ {l.strength}
-                  </span>
-                  <span className="ml-auto">
-                    {l.swept ? (
-                      <Chip cls="border-tv-line-strong bg-tv-panel2 text-tv-muted">
-                        SWEPT{l.sweptAt !== null && isMounted ? ` · ${fmtWhen(l.sweptAt)}` : ''}
-                      </Chip>
-                    ) : (
-                      <Chip cls="border-info/40 bg-info/10 text-info">ARMED</Chip>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SmcPanel>
-
-        {/* liquidity sweeps */}
-        <SmcPanel title="Liquidity sweeps" hint="recent" count={data.sweeps.length}>
-          {data.sweeps.length === 0 ? (
-            <EmptyLine>none right now</EmptyLine>
-          ) : (
-            <ul role="list" className={`flex max-h-72 flex-col gap-1.5 pr-1 ${SCROLL_CLS}`}>
-              {data.sweeps.map((s, i) => (
-                <li key={`${s.confirmedAt}:${s.levelType}:${i}`} className="flex items-center gap-2.5 rounded-xl border border-tv-line bg-tv-panel2/50 px-3 py-2">
-                  <span
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] ${dirTextCls(s.direction)}`}
-                    style={{ background: dirSoftBg(s.direction) }}
-                    aria-hidden="true"
-                  >
-                    {s.direction === 'BULLISH' ? '▲' : '▼'}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className={`text-[12px] font-bold ${dirTextCls(s.direction)}`}>
-                      {s.direction === 'BULLISH' ? 'Sell-side sweep' : 'Buy-side sweep'}
-                    </div>
-                    <div className="mt-0.5 truncate text-[10.5px] text-tv-muted2">
-                      {LIQ_LABEL[s.levelType]} {fmtPrice(s.level)} · wick {fmtPrice(s.extreme)}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-[10.5px] tabular-nums text-tv-muted">{isMounted ? fmtWhen(s.confirmedAt) : '—'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SmcPanel>
-      </motion.section>
-
-      {/* ── backtest (on-demand, never polled) ── */}
-      <BacktestCard />
-
-      {/* ── signal journal — confirmed + staged, across ALL pairs ── */}
-      <motion.section {...motionT(0.25)} aria-label="Signal journal" className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-            Signal journal <span className="normal-case tracking-normal text-tv-muted2">— all pairs, nothing gets lost</span>
-          </h3>
-          <div className="ml-auto flex flex-wrap gap-1.5" role="group" aria-label="Journal tab">
-            <button
-              onClick={() => setJournalTab('CONFIRMED')}
-              aria-pressed={journalTab === 'CONFIRMED'}
-              suppressHydrationWarning
-              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
-                journalTab === 'CONFIRMED'
-                  ? 'border-bull/40 bg-bull/10 text-bull'
-                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
-              }`}
-            >
-              ✅ Confirmed
-              <span className="rounded-full bg-tv-panel2 px-1.5 text-[10px] tabular-nums text-tv-muted">{journal?.confirmed.length ?? 0}</span>
-            </button>
-            <button
-              onClick={() => setJournalTab('STAGED')}
-              aria-pressed={journalTab === 'STAGED'}
-              title="Setups that were staged (watchlist) with exactly what was missing — find the setup you saw earlier"
-              suppressHydrationWarning
-              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/50 ${
-                journalTab === 'STAGED'
-                  ? 'border-warn/40 bg-warn/10 text-warn'
-                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
-              }`}
-            >
-              ⏳ Staged
-              <span className="rounded-full bg-tv-panel2 px-1.5 text-[10px] tabular-nums text-tv-muted">{journal?.staged.length ?? 0}</span>
-            </button>
-          </div>
-        </div>
-
-        {journalTab === 'CONFIRMED' ? (
-          <>
-            <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Filter confirmed signals">
-              {HIST_FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  onClick={() => setHistFilter(f.key)}
-                  aria-pressed={histFilter === f.key}
-                  suppressHydrationWarning
-                  className={`inline-flex min-h-[44px] items-center rounded-full border px-3.5 py-2 text-[11.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
-                    histFilter === f.key
-                      ? 'border-bull/40 bg-bull/10 text-bull'
-                      : 'border-tv-line bg-tv-panel2 text-tv-muted hover:border-tv-line-strong hover:text-tv-ink'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            {data.performance && data.performance.total > 0 && (
-              <div className="mb-3 flex flex-wrap items-center gap-1.5" aria-label={`Signal performance for ${data.symbol}`}>
-                <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-tv-muted2">{SMC_LABEL[data.symbol] ?? data.symbol} log</span>
-                <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
-                  {data.performance.total} signals ({data.performance.longs}L/{data.performance.shorts}S)
-                </span>
-                {data.performance.open > 0 && (
-                  <span className="rounded-full border border-warn/35 bg-warn/10 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-warn">
-                    {data.performance.open} open
-                  </span>
-                )}
-                {data.performance.resolved > 0 && (
-                  <>
-                    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
-                      win {data.performance.winRatePct}%
-                    </span>
-                    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-ink">
-                      avg {data.performance.avgR > 0 ? '+' : ''}{data.performance.avgR}R
-                    </span>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-[10.5px] font-bold tabular-nums ${
-                        data.performance.totalR > 0 ? 'border-bull/35 bg-bull/10 text-bull' : data.performance.totalR < 0 ? 'border-bear/35 bg-bear/10 text-bear' : 'border-tv-line bg-tv-panel2 text-tv-ink'
-                      }`}
-                    >
-                      {data.performance.totalR > 0 ? '+' : ''}{data.performance.totalR}R total
-                    </span>
-                    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-1 text-[10.5px] font-bold tabular-nums text-tv-muted">
-                      {data.performance.wins}W/{data.performance.losses}L/{data.performance.breakevens}BE/{data.performance.expired}exp
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-            {histRows.length === 0 ? (
-              <EmptyLine>
-                no confirmed signals yet — STRICT is conservative by design (score ≥ 80 + all gates); switch mode to BALANCED/AGGRESSIVE for more, or check Staged for setups still building
-              </EmptyLine>
-            ) : (
-              <div className={`max-h-96 rounded-xl border border-tv-line ${SCROLL_CLS}`}>
-                <table className="w-full min-w-[780px] border-collapse text-left text-[12px]">
-                  <caption className="sr-only">Confirmed SMC signals across all pairs</caption>
-                  <thead className="sticky top-0 z-10 bg-tv-panel2">
-                    <tr className="text-[10px] uppercase tracking-wider text-tv-muted">
-                      <th scope="col" className="px-3 py-2 font-bold">Date</th>
-                      <th scope="col" className="px-3 py-2 font-bold">Pair</th>
-                      <th scope="col" className="px-3 py-2 font-bold">Side</th>
-                      <th scope="col" className="px-3 py-2 font-bold">Mode</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">Entry</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">SL</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">TP1</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">Score</th>
-                      <th scope="col" className="px-3 py-2 font-bold">Q</th>
-                      <th scope="col" className="px-3 py-2 font-bold">Status</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">Result</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {histRows.map((h) => (
-                      <tr key={h.id} className="border-t border-tv-line/60">
-                        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-tv-muted">{isMounted ? fmtDay(h.createdAt) : '—'}</td>
-                        <td className="px-3 py-2 font-bold text-tv-ink">{SMC_LABEL[h.symbol] ?? h.symbol}</td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-                              h.direction === 'LONG' ? 'border-bull/35 bg-bull/10 text-bull' : 'border-bear/35 bg-bear/10 text-bear'
-                            }`}
-                          >
-                            {h.direction}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-[10.5px] text-tv-muted">{h.mode}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-tv-ink">{fmtPrice(h.entryMid)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-bear">{fmtPrice(h.stopLoss)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-info">{fmtPrice(h.tp1)}</td>
-                        <td className="px-3 py-2 text-right font-bold tabular-nums text-tv-ink">{h.score}</td>
-                        <td className="px-3 py-2">
-                          <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold ${qualityCls(h.quality)}`}>
-                            {h.quality}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <StatusChip status={h.status} />
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <ResultChip row={h} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <p className="mb-3 text-[11.5px] leading-relaxed text-tv-muted">
-              Staged = the engine saw a valid order-block setup but a confirmation was still missing (this is what WATCHLIST shows). Every sighting is logged, so a setup you noticed earlier is always findable here.
-            </p>
-            {(journal?.staged.length ?? 0) === 0 ? (
-              <EmptyLine>no staged setups on the radar right now</EmptyLine>
-            ) : (
-              <div className={`max-h-96 rounded-xl border border-tv-line ${SCROLL_CLS}`}>
-                <table className="w-full min-w-[760px] border-collapse text-left text-[12px]">
-                  <caption className="sr-only">Staged watchlist setups across all pairs</caption>
-                  <thead className="sticky top-0 z-10 bg-tv-panel2">
-                    <tr className="text-[10px] uppercase tracking-wider text-tv-muted">
-                      <th scope="col" className="px-3 py-2 font-bold">Pair</th>
-                      <th scope="col" className="px-3 py-2 font-bold">Side</th>
-                      <th scope="col" className="px-3 py-2 font-bold">Mode</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">Zone</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">SL</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">Score</th>
-                      <th scope="col" className="px-3 py-2">What was missing</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">First seen</th>
-                      <th scope="col" className="px-3 py-2 text-right font-bold">Last seen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(journal?.staged ?? []).map((s) => (
-                      <tr key={s.id} className="border-t border-tv-line/60">
-                        <td className="px-3 py-2 font-bold text-tv-ink">{SMC_LABEL[s.symbol] ?? s.symbol}</td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-                              s.direction === 'BULLISH' ? 'border-bull/35 bg-bull/10 text-bull' : 'border-bear/35 bg-bear/10 text-bear'
-                            }`}
-                          >
-                            {s.direction === 'BULLISH' ? 'LONG?' : 'SHORT?'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-[10.5px] text-tv-muted">{s.mode}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-warn">
-                          {fmtPrice(s.obLow)} – {fmtPrice(s.obHigh)}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-bear">{s.stopLoss !== null ? fmtPrice(s.stopLoss) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-bold tabular-nums text-tv-ink">{s.score}</td>
-                        <td className="max-w-[260px] px-3 py-2 text-[11px] leading-snug text-tv-muted" title={s.note}>
-                          <span className="line-clamp-2">{s.note}</span>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-tv-muted">{isMounted ? fmtDay(s.firstSeen) : '—'}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-tv-muted">{isMounted ? fmtDay(s.lastSeen) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-      </motion.section>
+      {/* one-line legend */}
+      <p className="text-[11px] leading-relaxed text-tv-muted2">
+        One card per pair — live signals on top. Levels: entry zone · stop · targets (R = risk units, 1R = stop
+        distance). Score is setup quality, not a win probability. {scan.mode} mode.
+      </p>
 
       {/* ── footer / disclaimer ── */}
       <footer className="mt-auto border-t border-tv-line pb-1 pt-3 text-[11px] leading-relaxed text-tv-muted">
-        <b className="text-warn">Disclaimer:</b> {data.disclaimer}
+        <b className="text-warn">Disclaimer:</b> research tool — not financial advice. Crypto is volatile; never trade
+        money you can&apos;t afford to lose. Always re-validate levels before acting.
         <br />
-        Data:{' '}
-        {data.dataSource === 'BOTH'
-          ? 'Bybit public API + Binance public API (dual-tape cross-check)'
-          : data.dataSource === 'BINANCE_FALLBACK'
-            ? 'Binance public API (Bybit tape unavailable — single-source)'
-            : 'Bybit public API (Binance tape unavailable — single-source)'}{' '}
-        · analysis only — no auto-trading
+        Data: Bybit public API + Binance public API (dual-tape cross-check) · analysis only — no auto-trading.
       </footer>
     </div>
   )

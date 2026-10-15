@@ -708,3 +708,18 @@ Work Log:
 
 Stage Summary:
 - The personal trade journal is now account-level: take a trade on any device, sign in anywhere (laptop/mobile/another browser) with the same credentials and the identical frozen plans + live TP/SL tracking appear. Watchlist/sizing stay device-local by design (separate concern, can be synced on request).
+
+---
+Task ID: 35
+Agent: Z.ai Code (main)
+Task: SMC tab UI/UX redesign — trade signals on compact cards only
+
+Work Log:
+- User request: "show the trade signals on the cards only, make the card compact" — the old SMC tab was an 11-section vertical dashboard (hero card, gates, score breakdown, explanations, order blocks, FVGs, liquidity, sweeps, backtest, journal tables).
+- Scan API now carries the full plan: SmcScanRow extended with trade (entry_low/high/mid, stop_loss, tp1-3), rr (R multiples), confirmedAt — /api/smc/scan just passes through fields the engine already computed (no extra cost, same 30s server cache).
+- New src/components/smc/SmcSignalCard.tsx: compact card = pair + signal badge (▲LONG/▼SHORT/⏳WATCH/⛔NO TRADE) + copy-plan button, price + 24h% + ⚡confirmed-age (stale >60min turns amber), a 5-row aligned mini-table (Entry zone accent, Stop with % distance, TP1-3 with +R notes) or a 2-line watch note when no levels, footer chips (score·quality, 1:R at TP2, Bybit × Binance consensus). Deterministic badges/hairlines per signal type.
+- SmcBoard.tsx rewritten (1265 → ~230 lines): one slim header (title, live/watch count chips, STRICT/BALANCED/AGGRESSIVE pills, auto-45s clock), then a responsive grid (1/2/3 cols) of 6 cards sorted live-first → watch → no-trade → error, one-line legend + disclaimer footer. Board now polls ONLY /api/smc/scan (the per-symbol /api/smc/analysis call is gone from the UI). Deliberately removed from the tab: gate checklist, MTF strip, score breakdown, engine explanation, building blocks, backtest, journal tables (APIs still serve them; BacktestCard component kept but unused).
+- Verified: lint clean; curl login → /api/smc/scan returns levels for all modes; browser (agent-browser) — real data (all 6 pairs legitimately NO_TRADE right now: 1H bullish vs 4H bearish bias), then network-route mock with live LONG/SHORT/WATCHLIST + error rows to exercise every card state: levels render, copy button writes clipboard and flips to ✓, header shows "2 live signals / 1 watch", mobile 390px wraps cleanly, console has zero errors after unroute+reload; other tabs unaffected.
+
+Stage Summary:
+- The SMC tab is now a card-first signal board: every pair's trade signal (direction, price, entry zone, stop, targets, R:R, score, cross-tape verdict) fits in one compact card and live signals float to the top. Diagnostics panels are gone from the tab per the user's "cards only" ask; scan API is the single data source (payload is a superset, so old consumers unaffected).

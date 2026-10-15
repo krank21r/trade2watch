@@ -303,6 +303,20 @@ export interface SmcScanRow {
   agreement?: ConsensusAgreement | null
   /** one-line status: watchlist missing-requirement note, or the top reason */
   note: string | null
+  /** the engine's provisional trade plan for this signal — null when no levels exist yet */
+  trade: {
+    entry_low: number
+    entry_high: number
+    entry_mid: number
+    stop_loss: number
+    tp1: number
+    tp2: number
+    tp3: number
+  } | null
+  /** R multiples for tp1/tp2/tp3 — null alongside a null trade */
+  rr: { tp1: number; tp2: number; tp3: number } | null
+  /** close time of the entry-trigger event that confirmed a LIVE signal — null otherwise */
+  confirmedAt: number | null
   generatedAt: number
 }
 
