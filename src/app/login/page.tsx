@@ -73,6 +73,7 @@ function LoginForm() {
             autoCapitalize="none"
             spellCheck={false}
             required
+            suppressHydrationWarning
             className="min-h-[44px] rounded-[0.625rem] border border-tv-line bg-tv-panel2/60 px-3.5 text-[14px] font-medium text-tv-ink outline-none transition-all duration-150 ease-[cubic-bezier(.4,0,.2,1)] placeholder:text-tv-muted2 focus:border-bull-line focus:bg-tv-panel"
             placeholder="e.g. kranthi"
           />
@@ -85,6 +86,7 @@ function LoginForm() {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             required
+            suppressHydrationWarning
             className="min-h-[44px] rounded-[0.625rem] border border-tv-line bg-tv-panel2/60 px-3.5 text-[14px] font-medium text-tv-ink outline-none transition-all duration-150 ease-[cubic-bezier(.4,0,.2,1)] placeholder:text-tv-muted2 focus:border-bull-line focus:bg-tv-panel"
             placeholder="••••••••••"
           />
@@ -99,6 +101,7 @@ function LoginForm() {
         <button
           type="submit"
           disabled={busy || !username || !password}
+          suppressHydrationWarning
           className="btn min-h-[44px] w-full bg-bull text-[14px] text-white shadow-sm hover:bg-bull-deep active:bg-bull-ink disabled:cursor-not-allowed disabled:opacity-50"
         >
           <LogIn className="h-4 w-4" aria-hidden />

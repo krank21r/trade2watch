@@ -286,6 +286,7 @@ function Hero({ query, onQueryChange, inputRef, onPopular }: HeroProps) {
               onKeyDown={(e) => {
                 if (e.key === 'Escape') onQueryChange('')
               }}
+              suppressHydrationWarning
               aria-label="Search the help center"
               placeholder="Search guides, prompts, billing — anything"
               className="h-14 w-full bg-transparent text-[15px] text-slate-900 outline-none placeholder:text-slate-400"
