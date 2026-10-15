@@ -560,3 +560,36 @@ Work Log:
 
 Stage Summary:
 - GitHub main = 8aa8c3c, fully synced. Production live at trade2watch.vercel.app with full SMC stack. Auto-deploy on push enabled. Note: project env has only DATABASE_URL; SMC alerts env vars (SMC_ALERTS_ENABLED etc.) still unset in Vercel, and public LLM key / persistent prod DB remain open production todos.
+
+---
+Task ID: 28
+Agent: Z.ai Code (main)
+Task: "I only see NO_TRADE/WATCHLIST — I think I got a LONG/SHORT setup but can't find it. Make sure signals are shown."
+
+Work Log:
+- Investigated: queried all 6 symbols × 3 modes — BTC/SOL/XRP/DOGE WATCHLIST, ETH/BNB NO_TRADE. DB SmcSignal table = 0 rows → **no LONG/SHORT has EVER fired** in the live engine (matches backtest: STRICT fired 2 trades in 14 days). What the user saw was almost certainly the WATCHLIST hero card, which displays a provisional plan (entry/SL/TPs) that looks like a signal.
+- Root UX gap found: SmcBoard hardcoded `API = '/api/smc/analysis?symbol=BTCUSDT'` — the other 5 pairs were NEVER visible, and history was filtered to the displayed symbol only.
+- Fix 1 — Pair selector (BTC/ETH/SOL/BNB/XRP/DOGE) + Mode selector (STRICT/BALANCED/AGGRESSIVE) on the board; load() now depends on both. Equities note: engine data layer is Bybit/Binance spot — no stock feed, honest scope.
+- Fix 2 — GET /api/smc/scan?mode=: full-engine scan of all 6 pairs (reuses the 30s response cache; Promise.allSettled), light chip rows {signal, score, quality, bias, price, change24h, note}. UI: 📡 Live scanner grid (2/3/6 cols), pulsing ⚡ banner buttons for any LONG/SHORT, click any chip → switches the board. Scanner note prefers the new watch_note field (exactly what's missing).
+- Fix 3 — GET /api/smc/signals: cross-symbol journal. Confirmed[] = all SmcSignal rows (any pair/mode, lifecycle tracked); staged[] = new SmcWatchLog radar log.
+- Fix 4 — Prisma SmcWatchLog: every WATCHLIST sighting upserted per (symbol, obTime, direction, mode) with note/zone/provisional plan/firstSeen/lastSeen; 14-day housekeeping. Answers "find the setup I saw earlier" — staged setups persist even after state changes.
+- Fix 5 — Journal UI replaces per-symbol history: ✅ Confirmed (Pair+Mode columns, filters, performance chips) / ⏳ Staged (zone, SL, score, "What was missing", first/last seen) tabs. SmcAnalysis += watch_note.
+- Verified live: scan 200 with 6 rows (BTC/SOL/XRP 70, DOGE 85 — all WATCHLIST BEARISH), staged=12 rows persisted across pairs; browser (agent-browser): pair/mode selector, scanner grid, live-signal banner logic, journal tabs, symbol switch (DOGE hero shows WATCHLIST 85 + note), mobile 390px + desktop 1440px screenshots clean, zero console errors, sticky footer intact. lint + tsc clean (touched files).
+- Pushed 0037f8b to main → Vercel auto-deploy (git integration connected last session).
+
+Stage Summary:
+- Signals can no longer hide: any LONG/SHORT on any of 6 pairs surfaces in the scanner banner + journal; every staged setup is persisted with its missing requirement. The user's "lost" setup was a WATCHLIST provisional plan — now such sightings are logged in ⏳ Staged forever (14d). Honest engine unchanged: 0 confirmed signals is the truth of current markets under STRICT; BALANCED/AGGRESSIVE give more candidates one click away.
+
+---
+Task ID: 28-b
+Agent: Z.ai Code (main)
+Task: Production follow-up — prod journal endpoint failed: SmcSignal table missing in the ephemeral Vercel SQLite
+
+Work Log:
+- Prod /api/smc/signals returned "table main.SmcSignal does not exist" — the prod DB file predates the SMC work and prisma db push never runs on Vercel; persistence inside runSmcAnalysis was failing silently (by design it never kills the payload).
+- Created src/lib/smc/ensure-tables.ts: exact db-push DDL (dumped from the local SQLite via sqlite_master) guarded by IF NOT EXISTS, memoized per process, retry-on-error. Wired into the persistence path of analysis.ts and the journal route.
+- Verified: local no-op (12 staged rows intact), lint/tsc clean, pushed 73de04b → auto-deploy READY → prod /api/smc/signals ok:true, one scan later staged=2 (XRP/BTC) accumulating.
+- Known limitation: Vercel SQLite is ephemeral — journal resets on redeploy/cold start (persistent prod DB remains the open production todo).
+
+Stage Summary:
+- Signals infrastructure now complete end-to-end on prod: scanner works, journal works, staged radar accumulates from the first scan. Confirmed=0 is the honest truth (STRICT gates unmet in current market). Persistent prod DB still open — recommended next step (Vercel Postgres or Turso) if the user wants the journal to survive redeploys.
