@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { fmtPrice } from '@/components/signals/types'
 import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
-import { loadMyTrades, saveMyTrades, trackTrade, zoneMid, rNow, netR, netRTxt, outcomeTxt, type MyTrade } from '@/lib/mytrades'
+import { loadMyTrades, saveMyTrades, fetchMyTrades, trackTrade, zoneMid, rNow, netR, netRTxt, outcomeTxt, type MyTrade } from '@/lib/mytrades'
 import type { Candle } from '@/lib/market/indicators'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { APP_LAUNCH_MS } from '@/lib/setups/generate'
@@ -478,9 +478,16 @@ export function ConfirmedBoard() {
     const l = loadLog()
     logRef.current = l
     setLog(l)
+    // instant paint from the local cache, then the server truth (journal is
+    // account-synced — the same open trades show on every device)
     const mt = loadMyTrades()
     myTradesRef.current = mt
     setMyTrades(mt)
+    void fetchMyTrades().then((server) => {
+      if (!mounted.current) return
+      myTradesRef.current = server
+      setMyTrades(server)
+    })
     return () => {
       mounted.current = false
     }

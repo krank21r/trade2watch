@@ -691,3 +691,20 @@ Work Log:
 
 Stage Summary:
 - All cookie/localStorage reads now happen either via useSyncExternalStore (UserMenu) or post-hydration deferred effects (boards) — first client render always matches the server HTML. Hydration pipeline is clean for all 3 users.
+
+---
+Task ID: 34
+Agent: Z.ai Code (main)
+Task: "I took this trade" journal must follow the account across devices (laptop → mobile)
+
+Work Log:
+- Root cause: the journal lived in localStorage (per-browser) — device-bound by definition. Server-side per-user storage is the fix.
+- Prisma: new UserTradeStore model (userId @id, trades JSON blob ≤40, updatedAt) — the client journal is already an atomic trimmed snapshot, so a per-user blob mirrors its semantics 1:1; db:push locally.
+- ensure-tables.ts: UserTradeStore DDL added for ephemeral prod SQLite self-healing.
+- New /api/trades route: GET {exists, trades} / PUT full-list replace, both session-verified (middleware + in-route). exists:false enables the one-time device migration.
+- mytrades.ts: saveMyTrades now writes the local cache AND fire-and-forget PUTs to the server; new fetchMyTrades() pulls server truth (cache fallback offline); migration path — account with no server row adopts the current browser's pre-sync journal on first fetch (only claims the slot when there is something to migrate, so deliberately-empty accounts aren't overwritten).
+- Consumers: ConfirmedBoard paints the local cache instantly then swaps in server truth on mount; SetupBoard's 45s poll now refreshes from the server. Tracking (trackTrade) still runs locally per device and saves through — TP1/TP2/SL state converges via last-writer-wins.
+- Verified end-to-end: curl (PUT → GET same user; analyst1 GET isolated exists:false; stale Prisma client caught via dev.log after model add — restart fixed); browser: UI login → Trade Confirmed → MY OPEN TRADES panel rendered a trade fetched purely from the server (localStorage empty); then localStorage.clear() + reload → panel still shows the same open trade (exact user scenario). A synthetic old-dated trade was correctly auto-resolved by the live candle tracker (TP1 → breakeven) — validates tracking write-back. Test rows cleared afterwards; lint clean.
+
+Stage Summary:
+- The personal trade journal is now account-level: take a trade on any device, sign in anywhere (laptop/mobile/another browser) with the same credentials and the identical frozen plans + live TP/SL tracking appear. Watchlist/sizing stay device-local by design (separate concern, can be synced on request).

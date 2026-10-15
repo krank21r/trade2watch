@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { fmtPrice } from '@/components/signals/types'
 import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
-import { loadMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
+import { fetchMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { scopedGet, scopedSet } from '@/lib/user-scope'
 
@@ -338,8 +338,9 @@ export function SetupBoard() {
       if (!mounted.current) return
       setData(d)
       setError(null)
-      // refresh my open trades (taken via "I took this trade" on Trade Confirmed)
-      setMyTrades(loadMyTrades())
+      // refresh my open trades — server truth (account-synced across devices)
+      const mt = await fetchMyTrades()
+      if (mounted.current) setMyTrades(mt)
     } catch (e) {
       if (mounted.current) setError(String(e).slice(0, 120))
     } finally {

@@ -131,3 +131,16 @@ model SmcWatchLog {
   @@index([lastSeen])
   @@index([symbol, lastSeen])
 }
+
+// ─── Per-user personal trade journal (server-synced across devices) ─────────
+// "I took this trade" entries live here keyed by the signed-in user id, so the
+// same account sees identical open/closed trades on every device. The whole
+// (trimmed ≤40) list is stored as JSON — the client already treats the journal
+// as an atomic full-list snapshot, so a blob row mirrors its semantics 1:1.
+model UserTradeStore {
+  userId    String @id // auth user id (kranthi / analyst1 / analyst2)
+  trades    String // JSON array of MyTrade
+  updatedAt Float // ms epoch — last writer wins across devices
+
+  @@index([updatedAt])
+}

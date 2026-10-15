@@ -75,6 +75,13 @@ const DDL: string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "SmcWatchLog_symbol_obTime_direction_mode_key" ON "SmcWatchLog"("symbol", "obTime", "direction", "mode")`,
   `CREATE INDEX IF NOT EXISTS "SmcWatchLog_lastSeen_idx" ON "SmcWatchLog"("lastSeen")`,
   `CREATE INDEX IF NOT EXISTS "SmcWatchLog_symbol_lastSeen_idx" ON "SmcWatchLog"("symbol", "lastSeen")`,
+  // per-user personal trade journal (server-synced "I took this trade" plans)
+  `CREATE TABLE IF NOT EXISTS "UserTradeStore" (
+    "userId" TEXT NOT NULL PRIMARY KEY,
+    "trades" TEXT NOT NULL,
+    "updatedAt" REAL NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS "UserTradeStore_updatedAt_idx" ON "UserTradeStore"("updatedAt")`,
 ]
 
 let done: Promise<void> | null = null

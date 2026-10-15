@@ -52,15 +52,69 @@ const MAX_TRADES = 40
 
 export const zoneMid = (low: number, high: number): number => (low + high) / 2
 
+function trim(list: MyTrade[]): MyTrade[] {
+  const open = list.filter((t) => t.status === 'OPEN')
+  const closed = list.filter((t) => t.status === 'CLOSED').slice(0, MAX_TRADES - open.length)
+  return [...open, ...closed]
+}
+
+/** Instant local cache (per user + per browser) — painted before the server sync. */
 export function loadMyTrades(): MyTrade[] {
   const raw = scopedGetJson<MyTrade[]>(TRADES_KEY, [])
   return Array.isArray(raw) ? raw.filter((t) => t && typeof t.id === 'string') : []
 }
 
+function cacheMyTrades(list: MyTrade[]) {
+  scopedSetJson(TRADES_KEY, trim(list))
+}
+
+async function putMyTrades(list: MyTrade[]): Promise<void> {
+  const res = await fetch('/api/trades', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trades: trim(list) }),
+  })
+  if (!res.ok) throw new Error(`trades sync ${res.status}`)
+}
+
+/**
+ * Server truth for the journal — identical across every device signed in to
+ * the same account. Falls back to the local cache when the API is unreachable.
+ * One-time migration: an account that never saved to the server adopts this
+ * browser's pre-sync journal (first device to go live wins the upload).
+ */
+export async function fetchMyTrades(): Promise<MyTrade[]> {
+  try {
+    const res = await fetch('/api/trades', { cache: 'no-store' })
+    if (res.ok) {
+      const body = (await res.json()) as { ok: boolean; exists: boolean; trades?: MyTrade[] }
+      if (body.ok && body.exists) {
+        const list = Array.isArray(body.trades) ? body.trades.filter((t) => t && typeof t.id === 'string') : []
+        cacheMyTrades(list)
+        return list
+      }
+      if (body.ok && !body.exists) {
+        const local = loadMyTrades()
+        if (local.length > 0) {
+          await putMyTrades(local)
+          return local
+        }
+        return []
+      }
+    }
+  } catch {
+    /* offline or API down — keep serving the local cache */
+  }
+  return loadMyTrades()
+}
+
+/** Persist the journal: local cache for instant paint + server sync (fire-and-forget). */
 export function saveMyTrades(list: MyTrade[]) {
-  const open = list.filter((t) => t.status === 'OPEN')
-  const closed = list.filter((t) => t.status === 'CLOSED').slice(0, MAX_TRADES - open.length)
-  scopedSetJson(TRADES_KEY, [...open, ...closed])
+  const trimmed = trim(list)
+  cacheMyTrades(trimmed)
+  void putMyTrades(trimmed).catch(() => {
+    /* offline — the next save re-syncs */
+  })
 }
 
 export function riskOf(t: MyTrade): number {
