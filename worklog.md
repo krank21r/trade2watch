@@ -611,3 +611,16 @@ Work Log:
 
 Stage Summary:
 - The SMC engine is now dual-exchange: every signal/label the user sees is a reconciled Bybit × Binance verdict. A live LONG/SHORT can only appear when BOTH tapes confirm (with +5 confluence score) — making signals slightly harder to fake but borderline scores easier to cross. Both tapes currently agree everywhere (BTC/SOL/XRP/DOGE WATCHLIST, ETH/BNB NO_TRADE), OB zone overlap 100% — cross-exchange validation is live and visible.
+
+---
+Task ID: 29-b
+Agent: Z.ai Code (main)
+Task: Prod fix — Bybit tape dead on Vercel (geo-block)
+
+Work Log:
+- First prod verification of the dual-tape engine returned dataSource BINANCE_FALLBACK / consensus SINGLE_SOURCE: api.bybit.com answered nothing usable from Vercel's default US region (iad1) — Bybit geo-blocks US cloud IPs; Binance only survived via its data-api.binance.vision mirror.
+- Fix: vercel.json "regions": ["hnd1"] (Tokyo). Pushed c8bd955 → auto-deploy READY.
+- Re-verified prod: dataSource BOTH, exchanges {bybit:true,binance:true}, consensus FULL, ob_cross_check BEARISH Bybit ✓ Binance ✓ 100% overlap; scan 6/6 pairs ok; homepage 200.
+
+Stage Summary:
+- Production now runs the full dual-tape engine from Tokyo: every SMC verdict on trade2watch.vercel.app is a reconciled Bybit × Binance result, and single-tape degradation is visible in the UI instead of silent.
