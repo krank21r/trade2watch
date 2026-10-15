@@ -187,11 +187,11 @@ function Nav() {
     <header className="sticky top-0 z-50 border-b border-slate-900/[0.06] bg-slate-50/85 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <a href="#" className="group flex shrink-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-700 shadow-[0_6px_16px_-6px_rgba(15,118,110,0.6)] transition-colors duration-200 group-hover:bg-teal-800">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-700 shadow-[0_6px_16px_-6px_rgba(15,118,110,0.6)] transition-colors duration-200 group-hover:bg-emerald-800">
             <Ph name="sparkle-fill" className="h-[18px] w-[18px] text-white" />
           </span>
           <span className="text-[17px] font-extrabold tracking-tight text-slate-900">
-            Mosaic<span className="text-teal-700">.</span>
+            Mosaic<span className="text-emerald-700">.</span>
           </span>
         </a>
 
@@ -203,7 +203,7 @@ function Nav() {
               aria-current={label === 'Help' ? 'page' : undefined}
               className={
                 label === 'Help'
-                  ? 'text-sm font-semibold text-teal-700'
+                  ? 'text-sm font-semibold text-emerald-700'
                   : 'text-sm font-medium text-slate-600 transition-colors duration-200 hover:text-slate-900'
               }
             >
@@ -221,7 +221,7 @@ function Nav() {
           </a>
           <a
             href="#"
-            className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_-10px_rgba(15,118,110,0.55)] transition-all duration-200 hover:bg-teal-800 hover:shadow-[0_12px_28px_-10px_rgba(15,118,110,0.65)]"
+            className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_-10px_rgba(15,118,110,0.55)] transition-all duration-200 hover:bg-emerald-800 hover:shadow-[0_12px_28px_-10px_rgba(15,118,110,0.65)]"
           >
             Start free
           </a>
@@ -246,19 +246,19 @@ function Hero({ query, onQueryChange, inputRef, onPopular }: HeroProps) {
       {/* gradient wash + blurred teal blobs */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-gradient-to-b from-teal-50/70 to-slate-50"
+        className="absolute inset-0 bg-gradient-to-b from-emerald-50/70 to-slate-50"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-28 left-1/2 h-80 w-[36rem] -translate-x-[85%] rounded-full bg-teal-200/40 blur-3xl"
+        className="pointer-events-none absolute -top-28 left-1/2 h-80 w-[36rem] -translate-x-[85%] rounded-full bg-emerald-200/40 blur-3xl"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-12 left-1/2 h-72 w-[32rem] -translate-y-1/4 translate-x-[15%] rounded-full bg-teal-300/30 blur-3xl"
+        className="pointer-events-none absolute -top-12 left-1/2 h-72 w-[32rem] -translate-y-1/4 translate-x-[15%] rounded-full bg-emerald-300/30 blur-3xl"
       />
 
       <div className="relative mx-auto max-w-3xl px-4 pb-14 pt-16 text-center sm:px-6 md:pb-16 md:pt-20">
-        <span className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-white/70 px-3.5 py-1.5 text-[12.5px] font-semibold text-teal-700">
+        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/70 px-3.5 py-1.5 text-[12.5px] font-semibold text-emerald-700">
           <Ph name="globe-simple" className="h-3.5 w-3.5" />
           Help Center
         </span>
@@ -273,7 +273,7 @@ function Hero({ query, onQueryChange, inputRef, onPopular }: HeroProps) {
         </p>
 
         <div className="mx-auto mt-8 max-w-2xl">
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-900/10 bg-white px-5 shadow-[0_16px_44px_-16px_rgba(15,118,110,0.22)] transition-all duration-200 focus-within:border-teal-500 focus-within:ring-4 focus-within:ring-teal-500/15">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-900/10 bg-white px-5 shadow-[0_16px_44px_-16px_rgba(15,118,110,0.22)] transition-all duration-200 focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/15">
             <Ph
               name="magnifying-glass"
               className="h-[18px] w-[18px] shrink-0 text-slate-400"
@@ -302,7 +302,7 @@ function Hero({ query, onQueryChange, inputRef, onPopular }: HeroProps) {
                 <button
                   type="button"
                   onClick={() => onPopular(p.q)}
-                  className="text-slate-600 underline-offset-2 transition-colors duration-150 hover:text-teal-700 hover:underline"
+                  className="text-slate-600 underline-offset-2 transition-colors duration-150 hover:text-emerald-700 hover:underline"
                 >
                   {p.label}
                 </button>
@@ -338,13 +338,13 @@ function TopicPills({
               aria-pressed={active}
               className={
                 active
-                  ? 'inline-flex items-center gap-2 rounded-full bg-teal-700 px-4 py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_-8px_rgba(15,118,110,0.55)]'
-                  : 'inline-flex items-center gap-2 rounded-full border border-slate-900/10 bg-white px-4 py-2.5 text-[13.5px] font-medium text-slate-600 transition-all duration-200 hover:border-teal-300 hover:text-teal-700'
+                  ? 'inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_-8px_rgba(15,118,110,0.55)]'
+                  : 'inline-flex items-center gap-2 rounded-full border border-slate-900/10 bg-white px-4 py-2.5 text-[13.5px] font-medium text-slate-600 transition-all duration-200 hover:border-emerald-300 hover:text-emerald-700'
               }
             >
               <Ph
                 name={t.icon}
-                className={`h-4 w-4 ${active ? 'text-white' : 'text-teal-600'}`}
+                className={`h-4 w-4 ${active ? 'text-white' : 'text-emerald-600'}`}
               />
               {t.label}
             </button>
@@ -391,7 +391,7 @@ function FaqSection({
           <button
             type="button"
             onClick={onBackToAll}
-            className="mt-4 text-sm font-semibold text-teal-700 underline-offset-2 hover:underline"
+            className="mt-4 text-sm font-semibold text-emerald-700 underline-offset-2 hover:underline"
           >
             Back to all topics
           </button>
@@ -411,7 +411,7 @@ function FaqSection({
           <button
             type="button"
             onClick={onClear}
-            className="mt-4 text-sm font-semibold text-teal-700 underline-offset-2 hover:underline"
+            className="mt-4 text-sm font-semibold text-emerald-700 underline-offset-2 hover:underline"
           >
             Clear search
           </button>
@@ -421,7 +421,7 @@ function FaqSection({
       {groups.map((g, gi) => (
         <div key={g.key} className={gi > 0 ? 'mt-12' : ''}>
           <div className="mb-5 flex items-center gap-3.5">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-700 shadow-[0_8px_20px_-8px_rgba(15,118,110,0.5)]">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-700 shadow-[0_8px_20px_-8px_rgba(15,118,110,0.5)]">
               <Ph name={g.icon} className="h-5 w-5 text-white" />
             </span>
             <div className="text-left">
@@ -439,7 +439,7 @@ function FaqSection({
                 <details
                   key={f.q}
                   open={defaultOpen || undefined}
-                  className="group rounded-xl border border-slate-900/10 bg-white transition-all duration-200 open:border-teal-200 open:shadow-[0_18px_40px_-18px_rgba(15,118,110,0.28)]"
+                  className="group rounded-xl border border-slate-900/10 bg-white transition-all duration-200 open:border-emerald-200 open:shadow-[0_18px_40px_-18px_rgba(15,118,110,0.28)]"
                 >
                   <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-4 p-5 [&::-webkit-details-marker]:hidden">
                     <span className="text-[15px] font-semibold text-slate-800">
@@ -447,7 +447,7 @@ function FaqSection({
                     </span>
                     <Ph
                       name="caret-down"
-                      className="h-4 w-4 shrink-0 text-teal-700 transition-transform duration-200 group-open:rotate-180"
+                      className="h-4 w-4 shrink-0 text-emerald-700 transition-transform duration-200 group-open:rotate-180"
                     />
                   </summary>
                   <div className="faq-answer px-5 pb-5">
@@ -472,7 +472,7 @@ function TrustBand() {
     <section className="border-t border-slate-900/5">
       <div className="mx-auto max-w-5xl px-4 py-14 sm:px-6 md:py-16">
         <div className="flex justify-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-teal-700/20 bg-teal-100/50 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-teal-800">
+          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-700/20 bg-emerald-100/50 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-800">
             <Ph name="shield-check-fill" className="h-3.5 w-3.5" />
             Trusted in production
           </span>
@@ -483,12 +483,12 @@ function TrustBand() {
             <div key={m.label} className="group relative pt-4">
               <div
                 aria-hidden="true"
-                className="absolute inset-x-0 top-0 h-[3px] rounded-full bg-gradient-to-r from-teal-700 to-teal-500 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                className="absolute inset-x-0 top-0 h-[3px] rounded-full bg-gradient-to-r from-emerald-700 to-emerald-500 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
               />
-              <div className="text-3xl font-extrabold tracking-tight text-teal-700 tabular-nums">
-                {m.pre && <span className="text-teal-500">{m.pre}</span>}
+              <div className="text-3xl font-extrabold tracking-tight text-emerald-700 tabular-nums">
+                {m.pre && <span className="text-emerald-500">{m.pre}</span>}
                 {m.value}
-                <span className="text-teal-500">{m.suf}</span>
+                <span className="text-emerald-500">{m.suf}</span>
               </div>
               <p className="mt-1 text-[13px] font-medium text-slate-500">
                 {m.label}
@@ -498,21 +498,21 @@ function TrustBand() {
         </div>
 
         {/* featured quote card */}
-        <figure className="relative mt-12 overflow-hidden rounded-3xl border border-teal-700/15 bg-gradient-to-b from-white to-slate-50 shadow-[0_24px_70px_-30px_rgba(15,118,110,0.35)]">
+        <figure className="relative mt-12 overflow-hidden rounded-3xl border border-emerald-700/15 bg-gradient-to-b from-white to-slate-50 shadow-[0_24px_70px_-30px_rgba(15,118,110,0.35)]">
           <div
             aria-hidden="true"
-            className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-teal-700 via-teal-500 to-teal-700"
+            className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-emerald-700 via-emerald-500 to-emerald-700"
           />
-          <div aria-hidden="true" className="teal-grid pointer-events-none absolute inset-0 opacity-60" />
+          <div aria-hidden="true" className="emerald-grid pointer-events-none absolute inset-0 opacity-60" />
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -left-8 top-1/2 h-[72px] w-[72px] -translate-y-1/2 rounded-full bg-teal-100/60 blur-3xl"
+            className="pointer-events-none absolute -left-8 top-1/2 h-[72px] w-[72px] -translate-y-1/2 rounded-full bg-emerald-100/60 blur-3xl"
           />
 
           <div className="relative px-7 py-9 md:px-10 md:py-10">
             <span
               aria-hidden="true"
-              className="block h-[68px] select-none font-serif text-[120px] leading-[0.6] text-teal-700/[0.12]"
+              className="block h-[68px] select-none font-serif text-[120px] leading-[0.6] text-emerald-700/[0.12]"
               style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
             >
               &ldquo;
@@ -526,7 +526,7 @@ function TrustBand() {
             <figcaption className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3">
               <span
                 aria-hidden="true"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-teal-700 to-teal-500 text-[13px] font-bold text-white shadow-[0_8px_18px_-8px_rgba(15,118,110,0.55)]"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-700 to-emerald-500 text-[13px] font-bold text-white shadow-[0_8px_18px_-8px_rgba(15,118,110,0.55)]"
               >
                 AK
               </span>
@@ -538,8 +538,8 @@ function TrustBand() {
                   Design Lead, Fieldnote
                 </span>
               </span>
-              <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-teal-700">
-                <Ph name="seal-check-fill" className="h-[15px] w-[15px] text-teal-600" />
+              <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-emerald-700">
+                <Ph name="seal-check-fill" className="h-[15px] w-[15px] text-emerald-600" />
                 Verified Mosaic customer
               </span>
               <span
@@ -548,7 +548,7 @@ function TrustBand() {
                 className="flex items-center gap-0.5"
               >
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <Ph key={i} name="star-fill" className="h-4 w-4 text-teal-500" />
+                  <Ph key={i} name="star-fill" className="h-4 w-4 text-emerald-500" />
                 ))}
               </span>
             </figcaption>
@@ -565,21 +565,21 @@ function Cta() {
   return (
     <section className="border-t border-slate-900/5">
       <div className="mx-auto max-w-5xl px-4 py-14 sm:px-6 md:py-16">
-        <div className="relative overflow-hidden rounded-3xl bg-teal-800 px-6 py-12 text-center shadow-[0_28px_70px_-24px_rgba(15,118,110,0.5)] md:py-14">
+        <div className="relative overflow-hidden rounded-3xl bg-emerald-800 px-6 py-12 text-center shadow-[0_28px_70px_-24px_rgba(15,118,110,0.5)] md:py-14">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-teal-600/40 blur-3xl"
+            className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-emerald-600/40 blur-3xl"
           />
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-teal-900/40 blur-3xl"
+            className="pointer-events-none absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-emerald-900/40 blur-3xl"
           />
 
           <div className="relative">
             <h2 className="text-2xl font-extrabold leading-7 tracking-tight text-white">
               Still stuck? We&rsquo;re real people.
             </h2>
-            <p className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-teal-100">
+            <p className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-emerald-100">
               Tell us what you&rsquo;re building — a real designer or engineer
               replies, usually within four minutes, seven days a week.
             </p>
@@ -587,7 +587,7 @@ function Cta() {
             <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <a
                 href="#"
-                className="group inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-teal-800 transition-colors duration-200 hover:bg-teal-50"
+                className="group inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 transition-colors duration-200 hover:bg-emerald-50"
               >
                 <Ph name="chat-circle-text-fill" className="h-4 w-4" />
                 Message support
@@ -618,7 +618,7 @@ function Footer() {
     <footer className="mt-auto border-t border-slate-900/5 bg-slate-50">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-teal-700">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-700">
             <Ph name="sparkle-fill" className="h-3.5 w-3.5 text-white" />
           </span>
           <span className="text-sm font-semibold text-slate-600">

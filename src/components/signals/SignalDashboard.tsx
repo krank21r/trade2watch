@@ -244,7 +244,7 @@ export function SignalDashboard() {
               onClick={() => startRun(symbol, market)}
               disabled={busy || starting}
               suppressHydrationWarning
-              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-gradient-to-b from-bull to-bull-deep text-white hover:brightness-110 active:scale-[0.99] transition shadow-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 dark:text-teal-950"
+              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-gradient-to-b from-bull to-bull-deep text-white hover:brightness-110 active:scale-[0.99] transition shadow-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 dark:text-emerald-950"
             >
               {busy || starting ? 'Analysis running…' : 'Run multi-agent analysis'}
             </button>

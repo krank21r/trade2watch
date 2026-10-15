@@ -891,7 +891,7 @@ export function SmcBoard() {
                 >
                   <span className={`h-2 w-2 shrink-0 rounded-full ${dirDotCls(ob.direction)}`} aria-hidden="true" />
                   <span className={`text-[12px] font-bold ${dirTextCls(ob.direction)}`}>{ob.direction} OB</span>
-                  <span className="text-[11.5px] tabular-nums text-tv-muted">
+                  <span className="text-[11.5px] tabular-nums chip-mono text-tv-muted">
                     {fmtPrice(ob.low)} – {fmtPrice(ob.high)}
                   </span>
                   <span className="ml-auto flex flex-wrap items-center gap-1">
@@ -954,7 +954,7 @@ export function SmcBoard() {
                     <span className={`text-[12px] font-bold ${dirTextCls(f.direction)}`}>
                       {f.direction === 'BULLISH' ? '▲' : '▼'} {f.direction} FVG
                     </span>
-                    <span className="text-[11.5px] tabular-nums text-tv-muted">
+                    <span className="text-[11.5px] tabular-nums chip-mono text-tv-muted">
                       {fmtPrice(f.low)} – {fmtPrice(f.high)}
                     </span>
                     <Chip cls={fvgStatusCls(f.status)}>{fvgStatusLabel(f.status)}</Chip>
@@ -988,7 +988,7 @@ export function SmcBoard() {
                   className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-tv-line bg-tv-panel2/50 px-3 py-2"
                 >
                   <span className="text-[12px] font-semibold text-tv-ink">{LIQ_LABEL[l.type]}</span>
-                  <span className="text-[11.5px] tabular-nums text-tv-muted">{fmtPrice(l.price)}</span>
+                  <span className="text-[11.5px] tabular-nums chip-mono text-tv-muted">{fmtPrice(l.price)}</span>
                   <span className="text-[11px] font-bold tabular-nums text-warn" title={`strength ${l.strength}/100`}>
                     ⭐ {l.strength}
                   </span>

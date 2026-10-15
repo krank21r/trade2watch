@@ -23,26 +23,14 @@ export default function Home() {
 
   return (
     <div className="relative h-[100dvh] flex flex-col bg-tv-bg text-tv-ink overflow-hidden">
-      {/* editorial backdrop — faint teal grid + top glow + soft teal glob off the left edge */}
-      <div aria-hidden className="t2w-grid-bg pointer-events-none absolute inset-0 opacity-60" />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-56"
-        style={{ background: 'var(--glow-top)' }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -left-24 top-24 h-72 w-72 rounded-full blur-3xl"
-        style={{ background: 'var(--glob)' }}
-      />
+      {/* design-canvas backdrop — faint 28px slate grid on white */}
+      <div aria-hidden className="t2w-grid-bg pointer-events-none absolute inset-0" />
 
       {/* top bar */}
-      <nav className="relative z-10 shrink-0 flex items-center gap-2 sm:gap-3 flex-wrap px-3 sm:px-5 py-2.5 border-b border-tv-line bg-tv-panel/85 backdrop-blur-xl">
-        {/* brand — solid teal logo tile */}
+      <nav className="relative z-10 shrink-0 flex items-center gap-2 sm:gap-3 flex-wrap px-3 sm:px-5 py-2.5 border-b border-tv-line bg-tv-panel/90 backdrop-blur-xl">
+        {/* brand — emerald logo tile, extrabold wordmark */}
         <div className="flex items-center gap-2.5 mr-1 sm:mr-3">
-          <span
-            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-bull text-white shadow-sm transition-colors hover:bg-[var(--bull-deep)] dark:text-teal-950"
-          >
+          <span className="btn inline-flex h-8 w-8 items-center justify-center rounded-xl bg-bull text-white shadow-sm hover:bg-bull-deep active:bg-bull-ink">
             <TrendingUp className="h-4.5 w-4.5" aria-hidden />
           </span>
           <div className="text-base sm:text-lg font-extrabold tracking-tight leading-none">
@@ -50,11 +38,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* segmented tabs — horizontally scrollable when 4 tabs exceed narrow screens */}
+        {/* segmented tabs — .btn primitive, horizontally scrollable on narrow screens */}
         <div
           role="tablist"
           aria-label="Sections"
-          className="flex max-w-full items-center overflow-x-auto rounded-full border border-tv-line bg-tv-panel2 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex max-w-full items-center overflow-x-auto rounded-xl border border-tv-line bg-tv-panel2/70 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {TABS.map((t) => {
             const active = tab === t.key
@@ -66,18 +54,18 @@ export default function Home() {
                 aria-current={active ? 'page' : undefined}
                 onClick={() => setTab(t.key)}
                 suppressHydrationWarning
-                className={`relative shrink-0 rounded-full px-3.5 sm:px-4 py-1.5 text-[12.5px] sm:text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
-                  active ? 'text-bull' : 'text-tv-muted hover:text-tv-ink'
-                }`}
+                className="btn relative shrink-0 rounded-[0.5rem] px-3.5 sm:px-4 py-1.5 text-[12.5px] sm:text-[13px] font-semibold"
               >
                 {active && (
                   <motion.span
                     layoutId="tab-pill"
                     transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                    className="absolute inset-0 rounded-full border border-tv-line-strong/60 bg-tv-panel shadow-sm"
+                    className="absolute inset-0 rounded-[0.5rem] border border-bull-line bg-bull-soft"
                   />
                 )}
-                <span className="relative z-10 whitespace-nowrap">{t.label}</span>
+                <span className={`relative z-10 whitespace-nowrap transition-colors ${active ? 'text-bull-ink' : 'text-tv-muted hover:text-tv-ink'}`}>
+                  {t.label}
+                </span>
               </button>
             )
           })}
@@ -113,9 +101,9 @@ export default function Home() {
       </main>
 
       {/* status footer — always pinned to the bottom of the shell */}
-      <footer className="relative z-10 shrink-0 flex items-center justify-between gap-3 px-3 sm:px-5 py-2 border-t border-tv-line bg-tv-panel/85 backdrop-blur-xl text-[11px] text-tv-muted">
+      <footer className="relative z-10 shrink-0 flex items-center justify-between gap-3 px-3 sm:px-5 py-2 border-t border-tv-line bg-tv-panel/90 backdrop-blur-xl text-[11px] text-tv-muted">
         <span className="hidden sm:block truncate">
-          Live data · Binance · Yahoo Finance · setups refresh every 45s
+          Live data · Bybit · Binance · Yahoo Finance · setups refresh every 45s
         </span>
         <span className="sm:hidden truncate">Trade2watch</span>
         <span className="shrink-0">Research tool — not financial advice</span>

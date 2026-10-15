@@ -639,3 +639,23 @@ Work Log:
 
 Stage Summary:
 - The engine now has a calibrated ladder instead of a single 80 wall: in-zone setups are always visible on the radar, and dual-tape confluence can legitimately push a 70–75 setup over the gate. The board answers "why no signal" per gate, live. Current tape still honestly shows BTC SHORT WATCHLIST (price 0.8× ATR below the OB) — when price pulls back into 81,472.5–81,716.5, BALANCED fires at ≥75 or via confluence promotion; STRICT still demands the 5M trigger on top.
+
+---
+Task ID: 31
+Agent: Z.ai Code (main)
+Task: Adopt the calm emerald-on-white modern-SaaS design system across the whole app (user-provided style spec)
+
+Work Log:
+- Re-specced the token layer in globals.css (the whole app is token-driven via tv-*/bull/bear/warn/info semantic vars, so every board re-skins at once):
+  · LIGHT: white canvas #ffffff, hairlines #e2e8f0/#cbd5e1, ink #0f172a / body #64748b / labels #94a3b8, emerald accent #10b981 (deep #059669, ink #047857 — new --bull-ink token), rose #e11d48 for bear/destructive, amber warn kept for WATCHLIST semantics only.
+  · DARK: same language at night — slate-950 #020617 canvas, slate-900 panels, slate-800 hairlines, emerald-400 #34d399 accent, rose-400 bear.
+  · shadcn tokens: primary/ring emerald, destructive #e11d48, accent emerald-100; selection emerald.
+  · Layered hairline shadows per spec (0 1px 2px + 0 12px 24px -12px @8%); --focus-ring: 3px rgba(16,185,129,.35).
+- New primitives: .btn (inline-flex, 600 weight, 10px radius, 160ms cubic-bezier(.4,0,.2,1), emerald :focus-visible ring), .cell-label (11px/600/0.04em uppercase #94a3b8), .chip-mono (ui-monospace token chips + tabular-nums). Applied chip-mono to price spans in SmcBoard (OBs, FVGs, liquidity levels) and LadderRow values.
+- Canvas: 28px slate grid at rgba(15,23,42,0.035) (was 44px teal, mask removed) — calm documentation-grade backdrop; removed the teal glow blobs.
+- Shell (page.tsx): white nav/footer with hairlines, tab strip rounded-xl with .btn tabs, active pill = emerald soft tint + bull-ink text, brand tile emerald with hover deep/active ink; footer now credits Bybit · Binance · Yahoo Finance.
+- Swept hardcoded teal → emerald (HelpCenter.tsx 38 classes, SignalDashboard 1); remaining "teal" mentions are comments only.
+- Verified: lint clean; browser screenshots light+dark, all 4 tabs, iPhone 14 width; zero console errors.
+
+Stage Summary:
+- The app now reads as one calm emerald-on-white design system (light) with a matching slate-950 night variant (dark) — single accent, rose reserved for short/destructive, monospace token chips, uppercase tracked cell labels, layered hairline shadows on every card. All boards inherit via the semantic token layer, so future style tweaks are one-file changes in globals.css.

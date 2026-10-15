@@ -137,7 +137,7 @@ export function LadderRow({
         <div className="text-[10.5px] font-bold uppercase tracking-wider text-tv-muted">{label}</div>
         {sub && <div className="mt-0.5 truncate text-[10px] text-tv-muted2">{sub}</div>}
       </div>
-      <div className={`shrink-0 font-bold tabular-nums ${cls} ${big ? 'text-[15.5px]' : 'text-[14.5px]'}`}>{value}</div>
+      <div className={`shrink-0 font-bold tabular-nums chip-mono ${cls} ${big ? 'text-[15.5px]' : 'text-[14.5px]'}`}>{value}</div>
     </div>
   )
 }
