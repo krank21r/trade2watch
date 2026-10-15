@@ -6,6 +6,7 @@ import { fmtPrice } from '@/components/signals/types'
 import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
 import { loadMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
+import { scopedGet, scopedSet } from '@/lib/user-scope'
 
 // Trade2watch design tokens (mirrors public/app.html)
 const C = {
@@ -30,11 +31,7 @@ const QUICK = ['BTC', 'ETH', 'SOL', 'AAPL', 'TSLA', 'NVDA']
 const POLL_MS = 45_000
 
 function lsGet(k: string, d: string): string {
-  try {
-    return localStorage.getItem(k) ?? d
-  } catch {
-    return d
-  }
+  return scopedGet(k.replace(/^tw_/, '')) ?? d
 }
 
 const chipCls: Record<string, string> = {
@@ -369,9 +366,7 @@ export function SetupBoard() {
 
   const persist = (k: string, v: string, setter: (x: string) => void) => {
     setter(v)
-    try {
-      localStorage.setItem(k, v)
-    } catch { /* private mode */ }
+    scopedSet(k.replace(/^tw_/, ''), v)
   }
 
   const addSymbol = () => {

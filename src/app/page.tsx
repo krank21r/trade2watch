@@ -8,6 +8,7 @@ import { SignalDashboard } from '@/components/signals/SignalDashboard'
 import { SetupBoard } from '@/components/setups/SetupBoard'
 import { SmcBoard } from '@/components/smc/SmcBoard'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { UserMenu } from '@/components/user-menu'
 
 type Tab = 'setups' | 'confirmed' | 'signals' | 'smc'
 
@@ -80,6 +81,7 @@ export default function Home() {
             />
             {tab === 'setups' ? 'Live setups' : tab === 'confirmed' ? 'Entry confirmations' : tab === 'signals' ? 'AI desk ready' : 'SMC desk — Bybit × Binance'}
           </span>
+          <UserMenu />
           <ThemeToggle />
         </div>
       </nav>

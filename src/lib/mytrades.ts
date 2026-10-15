@@ -1,4 +1,5 @@
 import type { Candle } from '@/lib/market/indicators'
+import { scopedGetJson, scopedSetJson } from '@/lib/user-scope'
 
 // ─── "I took this trade" — personal trade tracker ────────────────────────────
 // When the user takes a confirmed setup, the plan is FROZEN here: entry fill
@@ -46,28 +47,20 @@ export interface MyTrade {
   closePrice: number | null
 }
 
-const TRADES_KEY = 'tw_my_trades'
+const TRADES_KEY = 'my_trades'
 const MAX_TRADES = 40
 
 export const zoneMid = (low: number, high: number): number => (low + high) / 2
 
 export function loadMyTrades(): MyTrade[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(TRADES_KEY) ?? '[]') as MyTrade[]
-    return Array.isArray(raw) ? raw.filter((t) => t && typeof t.id === 'string') : []
-  } catch {
-    return []
-  }
+  const raw = scopedGetJson<MyTrade[]>(TRADES_KEY, [])
+  return Array.isArray(raw) ? raw.filter((t) => t && typeof t.id === 'string') : []
 }
 
 export function saveMyTrades(list: MyTrade[]) {
-  try {
-    const open = list.filter((t) => t.status === 'OPEN')
-    const closed = list.filter((t) => t.status === 'CLOSED').slice(0, MAX_TRADES - open.length)
-    localStorage.setItem(TRADES_KEY, JSON.stringify([...open, ...closed]))
-  } catch {
-    /* private mode */
-  }
+  const open = list.filter((t) => t.status === 'OPEN')
+  const closed = list.filter((t) => t.status === 'CLOSED').slice(0, MAX_TRADES - open.length)
+  scopedSetJson(TRADES_KEY, [...open, ...closed])
 }
 
 export function riskOf(t: MyTrade): number {

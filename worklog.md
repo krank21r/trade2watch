@@ -659,3 +659,20 @@ Work Log:
 
 Stage Summary:
 - The app now reads as one calm emerald-on-white design system (light) with a matching slate-950 night variant (dark) — single accent, rose reserved for short/destructive, monospace token chips, uppercase tracked cell labels, layered hairline shadows on every card. All boards inherit via the semantic token layer, so future style tweaks are one-file changes in globals.css.
+
+---
+Task ID: 32
+Agent: Z.ai Code (main)
+Task: User-specific access — login gate with 3 credentials (owner + 2 analysts), per-user private state
+
+Work Log:
+- Auth core src/lib/auth.ts: 3 fixed users (kranthi/owner, analyst1, analyst2 — passwords env-overridable via T2W_PASS_*), stateless signed sessions `base64url(payload).HMAC-SHA256` via Web Crypto (verifiable in BOTH edge middleware and node routes, no DB round-trip), 30-day expiry, AUTH_SECRET env (safe dev default).
+- src/middleware.ts: gate everything except /login, /api/auth/*, static assets — pages redirect to /login (preserving ?next=), APIs get 401 JSON, valid sessions on /login bounce to /.
+- Routes: POST /api/auth/login (sets httpOnly t2w_session + readable t2w_uid/t2w_name), POST /api/auth/logout (clears), GET /api/auth/me. Fixed verify bug (payload.id vs uid) caught by curl flow test.
+- /login page: design-system card (grid canvas, emerald brand tile, cell-label fields, 44px targets, error alert, ?next= redirect, remembers last username).
+- Per-user state scoping: src/lib/user-scope.ts (scopeKey → t2w:<uid>:<base> + automatic legacy tw_* migration on first read). Scoped: watchlist, account size, risk %, my-trades journal, confirmed-entry log — each of the 3 users gets a private copy on a shared browser. Market data (SMC engine, AI runs) stays shared by design.
+- Nav: UserMenu chip (avatar initial + name + sign-out button with rose hover).
+- Verified: curl flow (redirect 307, 401 on APIs, login ok/401 bad-pw for all 3 users, session grants 200, me returns user); browser flow (login page render, wrong-pw alert, successful sign-in → dashboard with K|Kranthi chip, localStorage shows t2w:kranthi:watchlist, sign-out → /login); lint clean.
+
+Stage Summary:
+- The app is now account-gated: exactly 3 credentials (kranthi/Kranthi@2026, analyst1/Analyst1@2026, analyst2/Analyst2@2026 — owner should change via env vars), sessions last 30 days, and all personal state is private per user. Set AUTH_SECRET on prod to pin the signing key.

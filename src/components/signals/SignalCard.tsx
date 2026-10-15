@@ -3,13 +3,10 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { fmtPrice, type SignalRunDetail } from './types'
+import { scopedGet, scopedSet } from '@/lib/user-scope'
 
 function lsGet(k: string, d: string): string {
-  try {
-    return localStorage.getItem(k) ?? d
-  } catch {
-    return d
-  }
+  return scopedGet(k.replace(/^tw_/, '')) ?? d
 }
 
 export function SignalCard({ run }: { run: SignalRunDetail }) {
@@ -135,7 +132,7 @@ export function SignalCard({ run }: { run: SignalRunDetail }) {
                   onChange={(e) => {
                     setAcct(e.target.value)
                     try {
-                      localStorage.setItem('tw_acct', e.target.value)
+                      scopedSet('acct', e.target.value)
                     } catch {}
                   }}
                   suppressHydrationWarning
@@ -153,7 +150,7 @@ export function SignalCard({ run }: { run: SignalRunDetail }) {
                   onChange={(e) => {
                     setRiskPct(e.target.value)
                     try {
-                      localStorage.setItem('tw_risk', e.target.value)
+                      scopedSet('risk', e.target.value)
                     } catch {}
                   }}
                   suppressHydrationWarning

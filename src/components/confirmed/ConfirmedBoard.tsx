@@ -9,6 +9,7 @@ import { loadMyTrades, saveMyTrades, trackTrade, zoneMid, rNow, netR, netRTxt, o
 import type { Candle } from '@/lib/market/indicators'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { APP_LAUNCH_MS } from '@/lib/setups/generate'
+import { scopedGet, scopedGetJson, scopedSetJson } from '@/lib/user-scope'
 
 // ─── Trade Confirmed board ───────────────────────────────────────────────────
 // A dedicated page that only shows trades whose entry is confirmed. Two ways
@@ -21,7 +22,7 @@ import { APP_LAUNCH_MS } from '@/lib/setups/generate'
 // stay visible after price moves on.
 
 const POLL_MS = 45_000
-const LOG_KEY = 'tw_confirmed_log'
+const LOG_KEY = 'confirmed_log'
 const MAX_LOG = 24
 
 interface ConfirmEvent {
@@ -51,33 +52,21 @@ interface ConfirmEvent {
 }
 
 function lsGet(k: string, d: string): string {
-  try {
-    return localStorage.getItem(k) ?? d
-  } catch {
-    return d
-  }
+  return scopedGet(k.replace(/^tw_/, '')) ?? d
 }
 
 function loadLog(): ConfirmEvent[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(LOG_KEY) ?? '[]') as ConfirmEvent[]
-    if (!Array.isArray(raw)) return []
-    // drop malformed rows AND anything confirmed before the app existed —
-    // those hits predate the app's suggestions and must not be shown
-    return raw.filter(
-      (e) => e && typeof e.key === 'string' && typeof e.confirmedAt === 'number' && e.confirmedAt >= APP_LAUNCH_MS,
-    )
-  } catch {
-    return []
-  }
+  const raw = scopedGetJson<ConfirmEvent[]>(LOG_KEY, [])
+  if (!Array.isArray(raw)) return []
+  // drop malformed rows AND anything confirmed before the app existed —
+  // those hits predate the app's suggestions and must not be shown
+  return raw.filter(
+    (e) => e && typeof e.key === 'string' && typeof e.confirmedAt === 'number' && e.confirmedAt >= APP_LAUNCH_MS,
+  )
 }
 
 function saveLog(events: ConfirmEvent[]) {
-  try {
-    localStorage.setItem(LOG_KEY, JSON.stringify(events))
-  } catch {
-    /* private mode */
-  }
+  scopedSetJson(LOG_KEY, events)
 }
 
 const fmtTime = (t: number) =>
