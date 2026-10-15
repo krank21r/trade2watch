@@ -1,7 +1,9 @@
 'use client'
 
-// ─── Trade Confirmed — inline section of the Trade Setups page ──────────────
-// Compact by design: shows trades whose entry is confirmed (price inside the
+// ─── Trade Confirmed — TOP section of the Trade Setups page ────────────
+// Sits where the old ZoneWatch watchlist cards were (user request): the
+// confirmed entries are the first thing you see. Compact by design: shows
+// trades whose entry is confirmed (price inside the
 // entry zone right now, or the zone was HIT by a candle wick), the user's
 // open trades with frozen-plan TP/SL tracking, and history rows. Receives the
 // shared /api/setups payload from SetupBoard as a prop — one fetch feeds the
@@ -929,7 +931,7 @@ export function ConfirmedSection({ data, loading }: { data: SetupsPayload | null
       {/* sizing hint */}
       {confirmedCount > 0 && !(aNum > 0 && rNum > 0) && (
         <div className="text-[11px] text-tv-muted">
-          Tip: set your account size and risk % in the sizing panel above to see suggested position sizes here.
+          Tip: set your account size and risk % in the sizing panel below to see suggested position sizes here.
         </div>
       )}
     </section>

@@ -741,3 +741,19 @@ Work Log:
 
 Stage Summary:
 - Trade Setups is now the single trading page: zones → plan detail → confirmed entries → my trades, all compact, one 45s shared feed. The Confirmed tab is gone; nothing was lost — confirmation log, trade taking, tracking and history all live in the inline section.
+
+---
+Task ID: 37
+Agent: Z.ai Code (main)
+Task: Trade Setups page — remove the top Watchlist (ZoneWatch) cards, show Trade Confirmed in their place
+
+Work Log:
+- User request: "in Trade setups page: we have Watchlist card displayed on the top. so i want you to display the Trade confirmed also. Remove the watchlist and replace with Trade confirmed."
+- SetupBoard.tsx: deleted the ZoneWatch strip entirely (per-symbol zone-status card grid + its skeleton + its summarize() helper — the summary now lives on the confirmed cards themselves). The feed-health messaging (failed symbols / fetch error + Retry now) that lived inside that strip was preserved as a compact conditional block right under the toolbar.
+- ConfirmedSection moved from the bottom of the page into the ZoneWatch slot: page order is now Toolbar → feed health → IN TRADE strip → ✅ Trade Confirmed (open trades, confirmed cards, earlier rows, my history) → selected asset detail (gauge + trade plans + sizing + key levels) → footer.
+- Positional copy fixed: ConfirmedBoard sizing tip "sizing panel above" → "below"; SetupBoard trades-changed comment "section below" → "above". IN-TRADE strip's "zones below" pointer still correct (detail stays below).
+- No data-flow changes: ConfirmedSection still receives the shared /api/setups payload as a prop (single 45s poll), confirmation log / take-trade / candle tracking / toasts untouched. Toolbar symbol pills remain the selector (the removed cards were also selectors — nothing lost).
+- Verified end-to-end (agent-browser): DOM order = toolbar → in-trade → Trade confirmed → Bitcoin setup detail → footer; zero ZoneWatch references remain; 7 confirmed + 1 open BTC/USD trade render at top with frozen-plan ladder; detail plans below unaffected; mobile 390px wraps cleanly with sticky footer; AI Signals + SMC Setup tabs unaffected; zero console/page errors; dev.log clean; lint clean.
+
+Stage Summary:
+- Trade Setups now leads with what matters: confirmed entries are the first content under the toolbar (exactly where the watchlist cards were), the watchlist role collapses to the toolbar pills, and the page got shorter by a whole section. Trade Confirmed is on the same page at the top — no tab switch, no scrolling past a redundant zone summary.

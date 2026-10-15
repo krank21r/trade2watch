@@ -44,27 +44,6 @@ const chipCls: Record<string, string> = {
   void: 'bg-tv-muted/12 text-tv-muted border-tv-line-strong',
 }
 
-/** One-chip summary per asset for the ZoneWatch strip. */
-function summarize(s: BoardSetup): { cls: string; txt: string } {
-  const l = s.long
-  const sh = s.short
-  if (sh?.state === 'LIVE') return { cls: chipCls.liveShort, txt: 'SHORT IN ZONE' }
-  if (l?.state === 'LIVE') return { cls: chipCls.liveLong, txt: 'LONG IN ZONE' }
-  // zone was triggered by a wick and price moved on — the confirmation lives on the Trade Confirmed tab
-  if (sh?.state === 'HIT') return { cls: chipCls.hitShort, txt: 'SHORT ZONE HIT' }
-  if (l?.state === 'HIT') return { cls: chipCls.hitLong, txt: 'LONG ZONE HIT' }
-  const waits: string[] = []
-  if (l?.state === 'WAITING' && l.distPct !== null) waits.push(`${l.distPct.toFixed(1)}% to LONG`)
-  if (sh?.state === 'WAITING' && sh.distPct !== null) waits.push(`${sh.distPct.toFixed(1)}% to SHORT`)
-  const voids: string[] = []
-  if (l?.state === 'VOID') voids.push('LONG void')
-  if (sh?.state === 'VOID') voids.push('SHORT void')
-  if (voids.length === 2) return { cls: chipCls.void, txt: 'SETUP VOID' }
-  if (waits.length === 0 && voids.length === 1) return { cls: chipCls.void, txt: `${voids[0].toUpperCase()} — WAIT` }
-  if (voids.length === 1) return { cls: chipCls.waiting, txt: `${waits[0]} · ${voids[0]}` }
-  return { cls: chipCls.waiting, txt: waits.length ? `WAITING · ${waits.join(' · ')}` : 'WAITING' }
-}
-
 // ─── trade-plan ladder — Entry levels · Stop loss · Targets, one glance ─────
 
 function pctFrom(mid: number, v: number): string {
@@ -357,7 +336,7 @@ export function SetupBoard() {
   }, [load])
 
   // refresh the IN TRADE strip the moment a trade is taken/closed in the
-  // Trade Confirmed section below (same page — instant feedback)
+  // Trade Confirmed section above (same page — instant feedback)
   useEffect(() => {
     const h = () => {
       void fetchMyTrades().then((mt) => {
@@ -482,6 +461,23 @@ export function SetupBoard() {
         </div>
       </div>
 
+      {/* feed health — failed symbols / fetch errors (was inside the old ZoneWatch strip) */}
+      {(error || (data && Object.keys(data.failed).length > 0)) && (
+        <div className="flex flex-col gap-1">
+          {data && Object.keys(data.failed).length > 0 && (
+            <p className={`text-[11px] ${C.muted}`}>
+              No data: {Object.entries(data.failed).map(([k, v]) => `${k} (${v.slice(0, 40)})`).join(', ')}
+            </p>
+          )}
+          {error && (
+            <p className="text-[12px] text-bear">
+              Feed error: {error} — retrying automatically.{' '}
+              <button onClick={() => { setLoading(true); load() }} suppressHydrationWarning className="underline transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50">Retry now</button>
+            </p>
+          )}
+        </div>
+      )}
+
       {/* in-trade strip — frozen plans so fresh zones never confuse */}
       {openMyTrades.map((t) => {
         const price = data?.setups.find((x) => x.symbol === t.symbol)?.price ?? null
@@ -516,60 +512,8 @@ export function SetupBoard() {
         )
       })}
 
-      {/* ZoneWatch strip */}
-      <section aria-label="ZoneWatch — live zone monitor">
-        <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">ZoneWatch — every zone, one board</h2>
-        {loading && !data ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-[92px] rounded-2xl border border-tv-line bg-tv-panel animate-pulse" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {(data?.setups ?? []).map((s) => {
-              const chip = summarize(s)
-              return (
-                <button
-                  key={s.symbol}
-                  onClick={() => setSelected(s.symbol)}
-                  suppressHydrationWarning
-                  aria-pressed={active?.symbol === s.symbol}
-                  className={`rounded-2xl border p-3.5 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
-                    active?.symbol === s.symbol ? 'border-bull/40 bg-tv-panel2' : 'border-tv-line bg-tv-panel hover:border-tv-line-strong'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-bold text-tv-ink">
-                      {s.displayName} <span className={C.muted}>· {s.pair}</span>
-                    </span>
-                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold tabular-nums ${s.change24h >= 0 ? 'bg-bull/10 text-bull border-bull/30' : 'bg-bear/10 text-bear border-bear/30'}`}>
-                      {s.change24h >= 0 ? '+' : ''}{s.change24h.toFixed(2)}%
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-tv-ink">
-                    {fmtPrice(s.price, s.currency)}
-                  </div>
-                  <div className="mt-1.5">
-                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${chip.cls}`}>{chip.txt}</span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        )}
-        {data && Object.keys(data.failed).length > 0 && (
-          <p className={`text-[11px] mt-2 ${C.muted}`}>
-            No data: {Object.entries(data.failed).map(([k, v]) => `${k} (${v.slice(0, 40)})`).join(', ')}
-          </p>
-        )}
-        {error && (
-          <p className="text-[12px] mt-2 text-bear">
-            Feed error: {error} — retrying automatically.{' '}
-            <button onClick={() => { setLoading(true); load() }} suppressHydrationWarning className="underline transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50">Retry now</button>
-          </p>
-        )}
-      </section>
+      {/* ── trade confirmed — top of page, where the zone-watchlist cards used to be ── */}
+      <ConfirmedSection data={data} loading={loading} />
 
       {/* selected asset detail */}
       {active && (
@@ -743,9 +687,6 @@ export function SetupBoard() {
           </div>
         </section>
       )}
-
-      {/* ── trade confirmed — same page, compact section ── */}
-      <ConfirmedSection data={data} loading={loading} />
 
       {/* footer / disclaimer */}
       <footer className={`mt-auto pt-2 pb-4 text-[11px] leading-relaxed ${C.muted} border-t border-tv-line`}>
