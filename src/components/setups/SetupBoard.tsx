@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { fmtPrice } from '@/components/signals/types'
 import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
 import { fetchMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
@@ -287,7 +287,8 @@ export function SetupBoard() {
   const [data, setData] = useState<SetupsPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState('BTC')
+  // which watchlist symbol's trade setup is expanded in the dropdown — null = collapsed
+  const [selected, setSelected] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [acct, setAcct] = useState('')
   const [riskPct, setRiskPct] = useState('1')
@@ -353,9 +354,10 @@ export function SetupBoard() {
     saveWatchlist(symbols)
   }, [symbols])
 
-  // keep selection valid
-  const active: BoardSetup | undefined =
-    data?.setups.find((s) => s.symbol === selected) ?? data?.setups[0]
+  // the symbol whose trade setup is dropped down — only when it exists in the feed
+  const active: BoardSetup | undefined = selected
+    ? data?.setups.find((s) => s.symbol === selected)
+    : undefined
 
   const persist = (k: string, v: string, setter: (x: string) => void) => {
     setter(v)
@@ -401,21 +403,28 @@ export function SetupBoard() {
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-3 sm:p-4">
         <div className="mr-1 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Watchlist</div>
-        {(data?.setups ?? []).map((s) => (
-          <button
-            key={s.symbol}
-            onClick={() => setSelected(s.symbol)}
-            suppressHydrationWarning
-            aria-pressed={active?.symbol === s.symbol}
-            className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
-              active?.symbol === s.symbol
-                ? 'border-bull/40 bg-bull/10 text-bull'
-                : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink hover:border-tv-line-strong'
-            }`}
-          >
-            {s.symbol}
-          </button>
-        ))}
+        {(data?.setups ?? []).map((s) => {
+          const open = active?.symbol === s.symbol
+          return (
+            <button
+              key={s.symbol}
+              onClick={() => setSelected((prev) => (prev === s.symbol ? null : s.symbol))}
+              suppressHydrationWarning
+              aria-expanded={open}
+              title={`${open ? 'Hide' : 'Show'} the ${s.displayName} trade setup`}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                open
+                  ? 'border-bull/40 bg-bull/10 text-bull'
+                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink hover:border-tv-line-strong'
+              }`}
+            >
+              {s.symbol}
+              <span aria-hidden="true" className={`text-[9px] leading-none transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+                ▾
+              </span>
+            </button>
+          )
+        })}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <input
             value={input}
@@ -460,6 +469,189 @@ export function SetupBoard() {
           </span>
         </div>
       </div>
+
+      {/* ── watchlist dropdown — click a symbol above, its trade setup drops down here ── */}
+      <AnimatePresence initial={false} mode="wait">
+        {active && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden"
+          >
+            <section aria-label={`${active.displayName} setup detail`} className="flex flex-col gap-4">
+              {/* header + gauge */}
+              <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h2 className="text-lg font-bold tracking-tight text-tv-ink">
+                        {active.displayName} — {active.pair}
+                      </h2>
+                      <span className="rounded-full border border-info/40 bg-info/15 px-2.5 py-0.5 text-[11px] font-bold text-info">
+                        {active.biasTag}
+                      </span>
+                    </div>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-tv-muted">
+                      <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-0.5 text-[11px] font-bold text-tv-muted">
+                        {active.regime.replace('_', ' ')}
+                      </span>
+                      <span>
+                        regime · {active.timeframe} candles · RSI(14){' '}
+                        <b className={`tabular-nums ${active.rsi !== null ? (active.rsi >= 70 ? C.red : active.rsi <= 30 ? C.green : C.text) : ''}`}>
+                          {active.rsi !== null ? active.rsi.toFixed(1) : '—'}
+                        </b>{' '}
+                        · ATR {active.atrPct !== null ? `${active.atrPct.toFixed(2)}%` : '—'}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <div className="text-2xl font-bold tabular-nums tracking-tight text-tv-ink sm:text-3xl">
+                      {fmtPrice(active.price, active.currency)}
+                    </div>
+                    <span
+                      className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold tabular-nums ${
+                        active.change24h >= 0 ? 'bg-bull/10 text-bull border-bull/30' : 'bg-bear/10 text-bear border-bear/30'
+                      }`}
+                    >
+                      {active.change24h >= 0 ? '+' : ''}{active.change24h.toFixed(2)}% 24h
+                    </span>
+                  </div>
+                </div>
+
+                <p className="mt-2 text-[13px] text-warn">{active.biasNote}</p>
+
+                {/* gauge */}
+                <div className="mt-3" aria-hidden="true">
+                  <div className="relative h-2.5 rounded-full bg-tv-panel2 border border-tv-line overflow-visible">
+                    {active.long && (
+                      <div
+                        className="absolute top-0 h-full rounded-full bg-bull/55"
+                        style={{ left: `${gaugePct(active.long.entryLow)}%`, width: `${Math.max(gaugePct(active.long.entryHigh) - gaugePct(active.long.entryLow), 1.5)}%` }}
+                      />
+                    )}
+                    {active.short && (
+                      <div
+                        className="absolute top-0 h-full rounded-full bg-bear/55"
+                        style={{ left: `${gaugePct(active.short.entryLow)}%`, width: `${Math.max(gaugePct(active.short.entryHigh) - gaugePct(active.short.entryLow), 1.5)}%` }}
+                      />
+                    )}
+                    <div
+                      className="absolute -top-1.5 -bottom-1.5 w-[2px] bg-tv-ink"
+                      style={{ left: `${gaugePct(active.price)}%` }}
+                    />
+                  </div>
+                  <div className="mt-1.5 flex justify-between text-[10px] tabular-nums text-tv-muted2">
+                    <span>{fmtPrice(active.gauge.min, active.currency)}</span>
+                    <span className="text-tv-ink font-semibold">▲ {fmtPrice(active.price, active.currency)}</span>
+                    <span>{fmtPrice(active.gauge.max, active.currency)}</span>
+                  </div>
+                  <div className={`text-[11px] mt-1 ${C.muted}`}>
+                    <span className="text-bull">■</span> long zone&nbsp;&nbsp;
+                    <span className="text-bear">■</span> short zone&nbsp;&nbsp;— zones regenerate with market structure
+                  </div>
+                </div>
+              </div>
+
+              {/* the trade plans — preferred side first */}
+              <div className="flex flex-col gap-4">
+                <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+                  Trade plans — <span className="text-warn">entry levels</span>, <span className="text-bear">stop loss</span> &amp;{' '}
+                  <span className="text-info">targets</span>
+                </h2>
+                <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2">
+                  {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>)
+                    .filter((pair): pair is ['long' | 'short', SideSetup] => pair[1] !== null)
+                    .sort((a, b) => (a[1].tag === 'PREFERRED' ? -1 : 0) - (b[1].tag === 'PREFERRED' ? -1 : 0))
+                    .map(([kind, side], idx) => (
+                      <motion.div
+                        key={kind}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25, ease: 'easeOut', delay: idx * 0.05 }}
+                      >
+                        <TradePlanCard
+                          side={side}
+                          kind={kind}
+                          preferred={side.tag === 'PREFERRED'}
+                          pair={active.pair}
+                          currency={active.currency}
+                          livePrice={active.price}
+                        />
+                      </motion.div>
+                    ))}
+                </div>
+              </div>
+
+              {/* sizing */}
+              <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
+                <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Position sizing — risk-first</h3>
+                <div className="flex flex-wrap gap-3 mb-3">
+                  <label className={`text-[12px] ${C.muted}`}>
+                    <span className="block mb-1">Account ($)</span>
+                    <input
+                      value={acct}
+                      onChange={(e) => persist('tw_acct', e.target.value, setAcct)}
+                      inputMode="decimal"
+                      placeholder="10000"
+                      suppressHydrationWarning
+                      className="w-36 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
+                    />
+                  </label>
+                  <label className={`text-[12px] ${C.muted}`}>
+                    <span className="block mb-1">Risk per trade (%)</span>
+                    <input
+                      value={riskPct}
+                      onChange={(e) => persist('tw_risk', e.target.value, setRiskPct)}
+                      inputMode="decimal"
+                      placeholder="1"
+                      suppressHydrationWarning
+                      className="w-28 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
+                    />
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
+                  {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>).map(
+                    ([kind, side]) => {
+                      const sz = sizingFor(side)
+                      const label = kind === 'long' ? 'LONG side' : 'SHORT side'
+                      return (
+                        <div key={kind} className="rounded-xl border border-tv-line bg-tv-panel2 p-2.5">
+                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-warn">{label}</div>
+                          {sz ? (
+                            <>
+                              <div className="font-bold tabular-nums text-tv-ink">{sz.unitsTxt}</div>
+                              <div className="text-[11px] tabular-nums text-tv-muted">{sz.notionalTxt}</div>
+                            </>
+                          ) : (
+                            <div className={C.muted}>Enter account &amp; risk to size</div>
+                          )}
+                        </div>
+                      )
+                    },
+                  )}
+                </div>
+              </div>
+
+              {/* key levels */}
+              <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
+                <h3 className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Key levels — live structure</h3>
+                <ul className="grid grid-cols-1 gap-x-6 gap-y-1 md:grid-cols-2">
+                  {active.levels.map((l, i) => (
+                    <li key={i} className="flex items-baseline gap-3 text-[12.5px]">
+                      <span className={`w-28 shrink-0 font-semibold tabular-nums whitespace-nowrap ${l.t === 'res' ? C.red : l.t === 'sup' ? C.green : C.blue}`}>
+                        {l.t === 'res' ? 'RES' : l.t === 'sup' ? 'SUP' : 'EMA'} {fmtPrice(l.v, active.currency)}
+                      </span>
+                      <span className={C.muted}>{l.w}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* feed health — failed symbols / fetch errors (was inside the old ZoneWatch strip) */}
       {(error || (data && Object.keys(data.failed).length > 0)) && (
@@ -506,7 +698,7 @@ export function SetupBoard() {
               {t.tp2HitAt !== null ? ' ✓' : ''} · SL {fmtPrice(stopNow, t.currency)}{t.slHitAt !== null ? ' ✓' : ''}
             </span>
             <span className="ml-auto text-[11px] text-tv-muted">
-              manage this trade by its plan — new {t.symbol} zones below are your <b className="text-warn">next</b> opportunity
+              manage this trade by its plan — click <b className="text-warn">{t.symbol}</b> in the watchlist above for your next fresh zone
             </span>
           </div>
         )
@@ -514,179 +706,6 @@ export function SetupBoard() {
 
       {/* ── trade confirmed — top of page, where the zone-watchlist cards used to be ── */}
       <ConfirmedSection data={data} loading={loading} />
-
-      {/* selected asset detail */}
-      {active && (
-        <section aria-label={`${active.displayName} setup detail`} className="flex flex-col gap-4">
-          {/* header + gauge */}
-          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h2 className="text-lg font-bold tracking-tight text-tv-ink">
-                    {active.displayName} — {active.pair}
-                  </h2>
-                  <span className="rounded-full border border-info/40 bg-info/15 px-2.5 py-0.5 text-[11px] font-bold text-info">
-                    {active.biasTag}
-                  </span>
-                </div>
-                <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-tv-muted">
-                  <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-0.5 text-[11px] font-bold text-tv-muted">
-                    {active.regime.replace('_', ' ')}
-                  </span>
-                  <span>
-                    regime · {active.timeframe} candles · RSI(14){' '}
-                    <b className={`tabular-nums ${active.rsi !== null ? (active.rsi >= 70 ? C.red : active.rsi <= 30 ? C.green : C.text) : ''}`}>
-                      {active.rsi !== null ? active.rsi.toFixed(1) : '—'}
-                    </b>{' '}
-                    · ATR {active.atrPct !== null ? `${active.atrPct.toFixed(2)}%` : '—'}
-                  </span>
-                </p>
-              </div>
-              <div className="flex flex-col items-end gap-1.5">
-                <div className="text-2xl font-bold tabular-nums tracking-tight text-tv-ink sm:text-3xl">
-                  {fmtPrice(active.price, active.currency)}
-                </div>
-                <span
-                  className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold tabular-nums ${
-                    active.change24h >= 0 ? 'bg-bull/10 text-bull border-bull/30' : 'bg-bear/10 text-bear border-bear/30'
-                  }`}
-                >
-                  {active.change24h >= 0 ? '+' : ''}{active.change24h.toFixed(2)}% 24h
-                </span>
-              </div>
-            </div>
-
-            <p className="mt-2 text-[13px] text-warn">{active.biasNote}</p>
-
-            {/* gauge */}
-            <div className="mt-3" aria-hidden="true">
-              <div className="relative h-2.5 rounded-full bg-tv-panel2 border border-tv-line overflow-visible">
-                {active.long && (
-                  <div
-                    className="absolute top-0 h-full rounded-full bg-bull/55"
-                    style={{ left: `${gaugePct(active.long.entryLow)}%`, width: `${Math.max(gaugePct(active.long.entryHigh) - gaugePct(active.long.entryLow), 1.5)}%` }}
-                  />
-                )}
-                {active.short && (
-                  <div
-                    className="absolute top-0 h-full rounded-full bg-bear/55"
-                    style={{ left: `${gaugePct(active.short.entryLow)}%`, width: `${Math.max(gaugePct(active.short.entryHigh) - gaugePct(active.short.entryLow), 1.5)}%` }}
-                  />
-                )}
-                <div
-                  className="absolute -top-1.5 -bottom-1.5 w-[2px] bg-tv-ink"
-                  style={{ left: `${gaugePct(active.price)}%` }}
-                />
-              </div>
-              <div className="mt-1.5 flex justify-between text-[10px] tabular-nums text-tv-muted2">
-                <span>{fmtPrice(active.gauge.min, active.currency)}</span>
-                <span className="text-tv-ink font-semibold">▲ {fmtPrice(active.price, active.currency)}</span>
-                <span>{fmtPrice(active.gauge.max, active.currency)}</span>
-              </div>
-              <div className={`text-[11px] mt-1 ${C.muted}`}>
-                <span className="text-bull">■</span> long zone&nbsp;&nbsp;
-                <span className="text-bear">■</span> short zone&nbsp;&nbsp;— zones regenerate with market structure
-              </div>
-            </div>
-          </div>
-
-          {/* the trade plans — preferred side first */}
-          <div className="flex flex-col gap-4">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
-              Trade plans — <span className="text-warn">entry levels</span>, <span className="text-bear">stop loss</span> &amp;{' '}
-              <span className="text-info">targets</span>
-            </h2>
-            <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2">
-              {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>)
-                .filter((pair): pair is ['long' | 'short', SideSetup] => pair[1] !== null)
-                .sort((a, b) => (a[1].tag === 'PREFERRED' ? -1 : 0) - (b[1].tag === 'PREFERRED' ? -1 : 0))
-                .map(([kind, side], idx) => (
-                  <motion.div
-                    key={kind}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, ease: 'easeOut', delay: idx * 0.05 }}
-                  >
-                    <TradePlanCard
-                      side={side}
-                      kind={kind}
-                      preferred={side.tag === 'PREFERRED'}
-                      pair={active.pair}
-                      currency={active.currency}
-                      livePrice={active.price}
-                    />
-                  </motion.div>
-                ))}
-            </div>
-          </div>
-
-          {/* sizing */}
-          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
-            <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Position sizing — risk-first</h3>
-            <div className="flex flex-wrap gap-3 mb-3">
-              <label className={`text-[12px] ${C.muted}`}>
-                <span className="block mb-1">Account ($)</span>
-                <input
-                  value={acct}
-                  onChange={(e) => persist('tw_acct', e.target.value, setAcct)}
-                  inputMode="decimal"
-                  placeholder="10000"
-                  suppressHydrationWarning
-                  className="w-36 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
-                />
-              </label>
-              <label className={`text-[12px] ${C.muted}`}>
-                <span className="block mb-1">Risk per trade (%)</span>
-                <input
-                  value={riskPct}
-                  onChange={(e) => persist('tw_risk', e.target.value, setRiskPct)}
-                  inputMode="decimal"
-                  placeholder="1"
-                  suppressHydrationWarning
-                  className="w-28 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-sm text-tv-ink placeholder:text-tv-muted2 transition focus:outline-none focus:ring-2 focus:ring-bull/40 focus:border-bull/60"
-                />
-              </label>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
-              {([['long', active.long], ['short', active.short]] as Array<['long' | 'short', SideSetup | null]>).map(
-                ([kind, side]) => {
-                  const sz = sizingFor(side)
-                  const label = kind === 'long' ? 'LONG side' : 'SHORT side'
-                  return (
-                    <div key={kind} className="rounded-xl border border-tv-line bg-tv-panel2 p-2.5">
-                      <div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-warn">{label}</div>
-                      {sz ? (
-                        <>
-                          <div className="font-bold tabular-nums text-tv-ink">{sz.unitsTxt}</div>
-                          <div className="text-[11px] tabular-nums text-tv-muted">{sz.notionalTxt}</div>
-                        </>
-                      ) : (
-                        <div className={C.muted}>Enter account &amp; risk to size</div>
-                      )}
-                    </div>
-                  )
-                },
-              )}
-            </div>
-          </div>
-
-          {/* key levels */}
-          <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
-            <h3 className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Key levels — live structure</h3>
-            <ul className="grid grid-cols-1 gap-x-6 gap-y-1 md:grid-cols-2">
-              {active.levels.map((l, i) => (
-                <li key={i} className="flex items-baseline gap-3 text-[12.5px]">
-                  <span className={`w-28 shrink-0 font-semibold tabular-nums whitespace-nowrap ${l.t === 'res' ? C.red : l.t === 'sup' ? C.green : C.blue}`}>
-                    {l.t === 'res' ? 'RES' : l.t === 'sup' ? 'SUP' : 'EMA'} {fmtPrice(l.v, active.currency)}
-                  </span>
-                  <span className={C.muted}>{l.w}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      )}
 
       {/* footer / disclaimer */}
       <footer className={`mt-auto pt-2 pb-4 text-[11px] leading-relaxed ${C.muted} border-t border-tv-line`}>

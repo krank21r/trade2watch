@@ -757,3 +757,19 @@ Work Log:
 
 Stage Summary:
 - Trade Setups now leads with what matters: confirmed entries are the first content under the toolbar (exactly where the watchlist cards were), the watchlist role collapses to the toolbar pills, and the page got shorter by a whole section. Trade Confirmed is on the same page at the top — no tab switch, no scrolling past a redundant zone summary.
+
+---
+Task ID: 38
+Agent: Z.ai Code (main)
+Task: Watchlist dropdown — clicking a symbol drops down its trade setup
+
+Work Log:
+- User request: "in Watchlist card, make a drop down. when i click the symbol it should pull up the trade setup... it should dropdown and display the trade setup."
+- SetupBoard.tsx restructured: the bottom "selected asset detail" section moved into an AnimatePresence (mode=wait) + motion.div height-expand dropdown that renders DIRECTLY under the toolbar — clicking a watchlist chip drops down that symbol's full setup (header + bias + gauge, trade plans, position sizing, key levels) right where you clicked.
+- Chips are now disclosure toggles: aria-expanded + rotating ▾/▴ chevron + tooltip; clicking an open chip collapses (selected: string|null, no default symbol, no data?.setups[0] fallback — active only exists when a picked symbol exists in the feed); clicking another chip swaps the panel content in place (same mounted motion.div → no re-animation); add-symbol/quick-add still auto-open the new symbol.
+- Positional copy fixed: IN TRADE strip now says "click {symbol} in the watchlist above for your next fresh zone"; ConfirmedSection sizing tip now says "click a watchlist symbol above to open its trade setup, then set account size & risk there".
+- Mechanical move done via python script (re-indent +4, strict anchor assertions) — caught and fixed one dropped </section> closer before lint.
+- Verified end-to-end (agent-browser): initial state all chips collapsed + no panel + Trade Confirmed present; BTC click → "Bitcoin setup detail" drops down with gauge/plans/sizing/key levels; ETH click while open → content swaps to "Ethereum setup detail"; ETH re-click → collapses to none; scrolled bottom shows Trade Confirmed + updated tip + sticky footer; mobile 390px chips wrap 2 rows, panel stacks cleanly; AI Signals + SMC tabs fine; zero console/page errors; lint clean; dev.log clean.
+
+Stage Summary:
+- The watchlist is now a true dropdown: nothing about a symbol's setup is shown until you click its chip, the full trade setup (gauge → plans → sizing → key levels) expands in place under the toolbar, and clicking again (or another symbol) collapses/swaps. Page default view = toolbar + Trade Confirmed only; the trade setup appears exactly when asked for.

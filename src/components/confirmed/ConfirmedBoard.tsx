@@ -931,7 +931,7 @@ export function ConfirmedSection({ data, loading }: { data: SetupsPayload | null
       {/* sizing hint */}
       {confirmedCount > 0 && !(aNum > 0 && rNum > 0) && (
         <div className="text-[11px] text-tv-muted">
-          Tip: set your account size and risk % in the sizing panel below to see suggested position sizes here.
+          Tip: click a watchlist symbol above to open its trade setup, then set your account size and risk % there to see suggested position sizes here.
         </div>
       )}
     </section>
