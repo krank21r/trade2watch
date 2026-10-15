@@ -36,6 +36,7 @@ import type {
   TF,
 } from './types'
 import { loadSmcMarketData } from './bybit'
+import { ensureSmcTables } from './ensure-tables'
 import { atr } from './atr'
 import { detectSwings } from './swings'
 import { analyzeStructure } from './structure'
@@ -336,6 +337,9 @@ export async function runSmcAnalysis(symbol: string, mode?: StrategyMode): Promi
 
   // ── persistence: dedupe new setups, never resurrect played ones (§17.10/§46) ─
   try {
+    // self-healing schema — ephemeral prod SQLite may predate the SMC tables
+    await ensureSmcTables()
+
     // WATCHLIST radar log — snapshot every staged setup so a setup the user
     // spotted earlier is always findable later. Upsert per
     // (symbol, OB candle, direction, mode); refresh note/score on re-sighting.

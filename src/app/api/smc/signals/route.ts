@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { ensureSmcTables } from '@/lib/smc/ensure-tables'
 import type { SmcJournalConfirmedRow, SmcJournalResponse, SmcJournalStagedRow } from '@/lib/smc/types'
 
 export const dynamic = 'force-dynamic'
@@ -16,6 +17,9 @@ export const dynamic = 'force-dynamic'
  */
 export async function GET() {
   try {
+    // self-healing schema — ephemeral prod SQLite may predate the SMC tables
+    await ensureSmcTables()
+
     const [signalRows, watchRows] = await Promise.all([
       db.smcSignal.findMany({ orderBy: { createdAt: 'desc' }, take: 60 }),
       db.smcWatchLog.findMany({ orderBy: { lastSeen: 'desc' }, take: 60 }),
