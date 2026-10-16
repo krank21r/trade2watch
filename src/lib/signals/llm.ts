@@ -10,7 +10,7 @@
  * matching, and a self-correcting retry that feeds the parse error back.
  */
 
-import ZAI from 'z-ai-web-dev-sdk'
+import ZAI, { type ZAIConfig } from 'z-ai-web-dev-sdk'
 
 type ChatMessage = { role: 'assistant' | 'user'; content: string }
 
@@ -20,9 +20,49 @@ const globalForLLM = globalThis as unknown as {
   __t2wLlmLastStart: number
 }
 
+/**
+ * Build the SDK config from environment variables.
+ *
+ * The SDK's ONLY built-in config discovery is a `.z-ai-config` file in cwd,
+ * the home directory or /etc — and `ZAI.create()` accepts no arguments. That
+ * works in the local sandbox but NOT on a self-hosted/Vercel deployment,
+ * which is why every agent reported "Configuration file not found" in
+ * production. When ZAI_BASE_URL + ZAI_API_KEY are set we construct the
+ * client directly from them; otherwise we fall back to file discovery.
+ *
+ *   ZAI_BASE_URL  e.g. https://api.z.ai/api/paas/v4  (required with API key)
+ *   ZAI_API_KEY   the provider API key               (required with base URL)
+ *   ZAI_MODEL     optional model name, e.g. glm-4.6  (required by most public APIs)
+ *   ZAI_TOKEN / ZAI_CHAT_ID / ZAI_USER_ID  optional extra gateway headers
+ */
+function zaiConfigFromEnv(): ZAIConfig | null {
+  const baseUrl = process.env.ZAI_BASE_URL?.trim()
+  const apiKey = process.env.ZAI_API_KEY?.trim()
+  if (!baseUrl || !apiKey) return null
+  const cfg: ZAIConfig = { baseUrl, apiKey }
+  const token = process.env.ZAI_TOKEN?.trim()
+  const chatId = process.env.ZAI_CHAT_ID?.trim()
+  const userId = process.env.ZAI_USER_ID?.trim()
+  if (token) cfg.token = token
+  if (chatId) cfg.chatId = chatId
+  if (userId) cfg.userId = userId
+  return cfg
+}
+
 async function client() {
   if (!globalForLLM.__t2wZai) {
-    globalForLLM.__t2wZai = await ZAI.create()
+    const envCfg = zaiConfigFromEnv()
+    try {
+      globalForLLM.__t2wZai = envCfg
+        ? // the constructor is typed private but is public at runtime — this
+          // cast is the SDK's only programmatic-config injection path
+          new (ZAI as unknown as new (cfg: ZAIConfig) => ZAI)(envCfg)
+        : await ZAI.create()
+    } catch (e) {
+      throw new Error(
+        `LLM provider is not configured. On a self-hosted/Vercel deployment set ZAI_BASE_URL (e.g. https://api.z.ai/api/paas/v4), ZAI_API_KEY and ZAI_MODEL (e.g. glm-4.6) in the environment, then redeploy. (${String(e).slice(0, 140)})`,
+      )
+    }
   }
   return globalForLLM.__t2wZai
 }
@@ -50,7 +90,9 @@ async function chatOnce(messages: ChatMessage[], timeoutMs: number): Promise<str
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
+    const model = process.env.ZAI_MODEL?.trim()
     const completion = await zai.chat.completions.create({
+      ...(model ? { model } : {}),
       messages,
       thinking: { type: 'disabled' },
     })

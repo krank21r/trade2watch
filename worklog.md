@@ -943,3 +943,17 @@ Work Log:
 Stage Summary:
 - The repository tip contains no credential material; this machine no longer stores the GitHub PAT. Every previously exposed value is burned and none of them work on production.
 - Restoring production access is now purely a user-side step: paste the 5 fresh values into Vercel → Settings → Environment Variables (Production), redeploy, then log in with the new owner password. Values live only in this chat and the user's Vercel dashboard.
+
+---
+Task ID: 43
+Agent: Z.ai Code (main)
+Task: Production multi-agent runs fail with "Technical analysis unavailable this run (Error: Configuration file not found or invalid. Please create .z-ai-config…)"
+
+Work Log:
+- Diagnosis: middleware and the run button now work (Task 41 fix), the pipeline completes, but every LLM agent fails on production. Root cause: z-ai-web-dev-sdk's ONLY config discovery is a .z-ai-config FILE (cwd → homedir → /etc) and ZAI.create() accepts no arguments. The local sandbox has /etc/.z-ai-config (with a session-scoped JWT whose chatId equals THIS conversation id — explicitly NOT copyable to Vercel: it dies with the session), so local dev always worked while production had no provider config at all.
+- Fix (src/lib/signals/llm.ts): new zaiConfigFromEnv() — when ZAI_BASE_URL + ZAI_API_KEY (plus optional ZAI_MODEL, ZAI_TOKEN, ZAI_CHAT_ID, ZAI_USER_ID) are present in the environment, the client is constructed DIRECTLY from them (new ZAI(cfg) — constructor is typed private but public at runtime; single contained cast, the SDK's only programmatic-injection path). Without env vars the previous file discovery is used, so local dev is untouched. chatOnce() now honors ZAI_MODEL (public OpenAI-compatible APIs require a model; the internal gateway did not). Unconfigured deployments now throw a clear actionable message naming the three env vars.
+- src/lib/signals/engine.ts: agent-error truncation widened 80→200 chars (the user-visible error was cut off mid-sentence, which delayed diagnosis).
+- Verified: e2e env-path test — ZAI_* env vars set from the sandbox gateway values, client constructed programmatically, real llmText ("OK", 231ms) + llmJson ({"a":1}) succeed through the same header path production will use. Full pipeline regression run via local API (ETH): HTTP 200 in 13s, completed, all three analysts returned real stances (technical NEUTRAL / news BEARISH / structure NEUTRAL), zero "unavailable" agents. Lint clean.
+
+Stage Summary:
+- Production LLM calls are now configuration-driven: the user sets ZAI_BASE_URL=https://api.z.ai/api/paas/v4, ZAI_API_KEY=<their key from the Z.ai open platform console>, ZAI_MODEL=glm-4.6 (or glm-4.5-flash for lower cost) as Vercel env vars and redeploys — no config file, no sandbox dependency, works with any OpenAI-compatible provider. The sandbox's session-scoped gateway config was deliberately NOT copied anywhere.

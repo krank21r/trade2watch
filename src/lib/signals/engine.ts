@@ -158,7 +158,7 @@ async function analyst(kind: string, system: string, user: string): Promise<Agen
     return {
       stance: 'NEUTRAL',
       confidence: 0,
-      summary: `${kind} analysis unavailable this run (${String(e).slice(0, 80)}).`,
+      summary: `${kind} analysis unavailable this run (${String(e).slice(0, 200)}).`,
       keyPoints: [],
     }
   }
@@ -217,12 +217,12 @@ async function stageDebate(ctx: RunCtx): Promise<void> {
   const bull = await llmText(
     `${HOUSE_STYLE}\n\nYou are the BULL RESEARCHER. Build the strongest honest case for a LONG position in ${s.displayName}, grounded in the reports below. Max 130 words. End with your single strongest argument.`,
     `Analyst reports:\n${ctx.reportsText}${deskMemory}`,
-  ).catch((e) => `Bull case unavailable: ${String(e).slice(0, 80)}`)
+  ).catch((e) => `Bull case unavailable: ${String(e).slice(0, 160)}`)
 
   const bear = await llmText(
     `${HOUSE_STYLE}\n\nYou are the BEAR RESEARCHER. Rebut the bull case and build the strongest honest case for a SHORT (or for standing aside) in ${s.displayName}, grounded in the reports below. Max 130 words. End with your single strongest argument.`,
     `Analyst reports:\n${ctx.reportsText}\n\nBull researcher said:\n${bull}${deskMemory}`,
-  ).catch((e) => `Bear case unavailable: ${String(e).slice(0, 80)}`)
+  ).catch((e) => `Bear case unavailable: ${String(e).slice(0, 160)}`)
 
   const manager = await llmJson<ResearchVerdict>(
     `${HOUSE_STYLE}\n\nYou are the RESEARCH MANAGER. Weigh the bull/bear debate and the analyst reports, then commit to ONE direction for the next ${s.timeframe === '1d' ? '1-4 weeks' : '1-7 days'}. Conflicting evidence alone is not a reason to be NEUTRAL — pick the side that wins, sized by how decisively it wins. Choose NEUTRAL only if evidence is genuinely balanced or too thin.`,
