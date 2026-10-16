@@ -38,6 +38,37 @@ function dirBadge(direction?: string | null): { label: string; bg: string; fg: s
   return null
 }
 
+function placeholderRun(sym: string, mkt: 'crypto' | 'stock'): SignalRunDetail {
+  return {
+    id: 'pending',
+    symbol: sym.toUpperCase(),
+    market: mkt,
+    displayName: null,
+    status: 'running',
+    stage: 'queued',
+    progress: 3,
+    error: null,
+    priceAtRun: null,
+    change24h: null,
+    regime: null,
+    timeframe: null,
+    direction: null,
+    confidence: null,
+    entryLow: null,
+    entryHigh: null,
+    stop: null,
+    target1: null,
+    target2: null,
+    runner: null,
+    riskReward: null,
+    invalidation: null,
+    planNote: null,
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    artifacts: null,
+  }
+}
+
 export function SignalDashboard() {
   const [symbol, setSymbol] = useState('BTC')
   const [market, setMarket] = useState<'crypto' | 'stock'>('crypto')
@@ -46,6 +77,12 @@ export function SignalDashboard() {
   const [starting, setStarting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const missesRef = useRef(0)
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = null
+  }, [])
 
   const loadHistory = useCallback(async () => {
     try {
@@ -63,19 +100,32 @@ export function SignalDashboard() {
         const res = await fetch(`/api/signals/run/${id}`, { cache: 'no-store' })
         const d = await res.json()
         if (d.run) {
+          missesRef.current = 0
           setRun(d.run)
           if (d.run.status !== 'running') {
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
+            stopPolling()
             setStarting(false)
             loadHistory()
+          }
+        } else {
+          // 404 / tracking lost (server restart, serverless instance swap) —
+          // never spin forever: give up after ~30s of consecutive misses.
+          missesRef.current++
+          if (missesRef.current > 12) {
+            stopPolling()
+            setStarting(false)
+            setRun((r) =>
+              r && r.status === 'running'
+                ? { ...r, status: 'failed', error: 'Run tracking was lost (the server restarted). Please run the analysis again.' }
+                : r,
+            )
           }
         }
       } catch {
         /* transient poll failure — keep polling */
       }
     },
-    [loadHistory],
+    [loadHistory, stopPolling],
   )
 
   useEffect(() => {
@@ -91,14 +141,28 @@ export function SignalDashboard() {
       })
     return () => {
       ac.abort()
-      if (pollRef.current) clearInterval(pollRef.current)
+      stopPolling()
     }
-  }, [])
+  }, [stopPolling])
 
   const startRun = useCallback(
     async (sym: string, mkt: 'crypto' | 'stock') => {
       setFormError(null)
       setStarting(true)
+      missesRef.current = 0
+      // Show the pipeline panel immediately: the POST now runs the whole
+      // analysis server-side (serverless-safe — there is no runId to poll
+      // until it finishes). A gentle progress climb keeps the panel alive
+      // while the request is in flight; real stage data replaces it at the end.
+      setRun(placeholderRun(sym, mkt))
+      stopPolling()
+      pollRef.current = setInterval(() => {
+        setRun((r) =>
+          r && r.status === 'running' && r.progress < 90
+            ? { ...r, progress: Math.min(90, r.progress + 1 + Math.round(Math.random() * 2)) }
+            : r,
+        )
+      }, 2200)
       try {
         const res = await fetch('/api/signals/run', {
           method: 'POST',
@@ -107,47 +171,37 @@ export function SignalDashboard() {
         })
         const d = await res.json()
         if (!res.ok) {
+          stopPolling()
+          setRun(null)
           setFormError(d.error || 'Failed to start analysis.')
-          setStarting(false)
           return
         }
-        // show placeholder immediately
-        setRun({
-          id: d.runId,
-          symbol: sym.toUpperCase(),
-          market: mkt,
-          displayName: null,
-          status: 'running',
-          stage: 'queued',
-          progress: 2,
-          error: null,
-          priceAtRun: null,
-          change24h: null,
-          regime: null,
-          timeframe: null,
-          direction: null,
-          confidence: null,
-          entryLow: null,
-          entryHigh: null,
-          stop: null,
-          target1: null,
-          target2: null,
-          runner: null,
-          riskReward: null,
-          invalidation: null,
-          planNote: null,
-          createdAt: new Date().toISOString(),
-          completedAt: null,
-        })
-        if (pollRef.current) clearInterval(pollRef.current)
-        pollRef.current = setInterval(() => pollRun(d.runId), 2500)
-        pollRun(d.runId)
+        if (d.run) {
+          // authoritative: the server ran the pipeline inside the request and
+          // returns the finished row (works on Vercel serverless + local dev)
+          stopPolling()
+          setRun(d.run)
+          loadHistory()
+        } else if (d.runId) {
+          // legacy async server — poll for the result
+          setRun((r) => (r ? { ...r, id: d.runId } : r))
+          stopPolling()
+          pollRef.current = setInterval(() => pollRun(d.runId), 2500)
+          pollRun(d.runId)
+        } else {
+          stopPolling()
+          setRun(null)
+          setFormError('Unexpected server response — please try again.')
+        }
       } catch {
+        stopPolling()
+        setRun(null)
         setFormError('Network error starting analysis.')
+      } finally {
         setStarting(false)
       }
     },
-    [pollRun],
+    [pollRun, loadHistory, stopPolling],
   )
 
   const openRun = useCallback(

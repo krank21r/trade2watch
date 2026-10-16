@@ -787,3 +787,18 @@ Work Log:
 
 Stage Summary:
 - Task 38 is live on production: trade2watch.vercel.app serves commit ac41322; watchlist chips are dropdown toggles and the symbol's trade setup expands in place under the toolbar. Nothing further to ship.
+
+---
+Task ID: 39
+Agent: Z.ai Code (main)
+Task: Fix "Run multi-agent analysis" not running (AI Signals page broken on production)
+
+Work Log:
+- Reproduced: POST /api/signals/run returned 202 + runId, but GET /api/signals/run/[id] then 404'd ("Run not found") on trade2watch.vercel.app; locally the same flow completed in ~12s.
+- Root cause (two compounding serverless issues): (1) the pipeline was fire-and-forget (`void runSignalPipeline(...)` after the 202) — Vercel freezes the function when the response is sent, so the agents never ran; (2) production SQLite lives in the ephemeral per-instance /tmp (db.ts bootstrap creates it per cold start), so a run row created in the POST instance was invisible to the polling GET instance — the client's pollRun silently ignored missing runs and polled forever ("Analysis running…" permanently, button disabled).
+- Fix (backend): POST /api/signals/run now awaits runSignalPipeline() inside the request and returns { runId, run } (200) with the finished row; added `export const maxDuration = 300` for the ~10 LLM calls + backoffs. Engine already self-catches errors → row 'failed', so a usable row is always returned.
+- Fix (client, SignalDashboard.tsx): startRun shows the pipeline panel immediately with a gentle progress climb (3→90%) while the POST is in flight; the POST result is authoritative (no polling dependency). Legacy polling path kept as fallback. pollRun now counts consecutive missing-run responses and after ~30s gives up with a clear "Run tracking was lost" failure instead of spinning forever. Added stopPolling() helper + placeholderRun() factory.
+- Verified locally (agent-browser): AI Signals tab → click Run → "🤖 Agents at work" panel instantly (6% climbing, stages listed) → ~30s later "✅ Analysis complete 100%" with BTC — STAND ASIDE (NEUTRAL, conf 75%) signal card + reports; button re-enabled; zero console/page errors; lint clean; dev.log shows POST /api/signals/run 200 in 11.9s with no engine errors.
+
+Stage Summary:
+- Multi-agent analysis now works on any serverless host: the whole pipeline is request-scoped (maxDuration 300) and the client renders the finished run straight from the POST response. The polling-forever failure mode is eliminated. Note: production signal history is still per-instance ephemeral (/tmp SQLite) — the pre-existing "production DB persistence" item remains open; signal RUNS themselves now work because they complete within a single request.
