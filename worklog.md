@@ -957,3 +957,17 @@ Work Log:
 
 Stage Summary:
 - Production LLM calls are now configuration-driven: the user sets ZAI_BASE_URL=https://api.z.ai/api/paas/v4, ZAI_API_KEY=<their key from the Z.ai open platform console>, ZAI_MODEL=glm-4.6 (or glm-4.5-flash for lower cost) as Vercel env vars and redeploys — no config file, no sandbox dependency, works with any OpenAI-compatible provider. The sandbox's session-scoped gateway config was deliberately NOT copied anywhere.
+
+---
+Task ID: 43-b
+Agent: Z.ai Code (main)
+Task: Verify Task 43 fix in production after user set ZAI_* env vars on Vercel and redeployed ("done" confirmation).
+
+Work Log:
+- Reconciled local git divergence: two identical auto-commits of db/custom.db (local 010e812 vs origin 908ea54, binary-only difference); soft-reset local HEAD onto origin/main — working tree and live dev DB untouched.
+- End-to-end production verification via API: POST /api/auth/login (kranthi) → 200; POST /api/signals/run {symbol: BTC, market: crypto} → HTTP 200 in ~84s, run status "completed", error null.
+- All pipeline stages produced real LLM output: analysts technical NEUTRAL/65, news NEUTRAL/35, structure NEUTRAL/65 (real market data cited: EMA20/50/200 flat, RSI 41.38, support 80,107 / resistance 84,735); debate artifact 1.8k chars with live-price bull/bear arguments ($81,362, 90-bar low $79,775); verdict APPROVE with real reasoning; risk all three profiles APPROVE. artifacts.plan null + planNote "No edge detected — stand aside and wait for levels." confirmed as by-design behavior for NEUTRAL direction (engine.ts:446).
+- Zero occurrences of "unavailable" or "z-ai-config" anywhere in the response — the Task 43 error is fully resolved. Local dev server still healthy (307 → /login).
+
+Stage Summary:
+- Production multi-agent analysis is FIXED and verified end-to-end: the ZAI_BASE_URL / ZAI_API_KEY / ZAI_MODEL env-var configuration path works on Vercel serverless with real GLM calls across all 5 pipeline stages (analysts → debate → verdict → risk → plan gating). No further code changes required for this issue.
