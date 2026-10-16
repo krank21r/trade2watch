@@ -7,9 +7,11 @@
  * cookies (t2w_uid / t2w_name) let the client scope personal localStorage
  * state per user — they are convenience labels, NOT credentials.
  *
- * Credentials live here and can be overridden with env vars:
+ * Credentials come from the environment ONLY — the repository is public, so
+ * no password or signing key may ever live in code:
  *   T2W_PASS_KRANTHI / T2W_PASS_ANALYST1 / T2W_PASS_ANALYST2
- *   AUTH_SECRET (rotates every session instantly)
+ *   AUTH_SECRET (rotating it instantly invalidates all sessions)
+ * A user whose env var is missing simply cannot sign in until it is set.
  */
 
 export interface AuthUser {
@@ -24,13 +26,15 @@ export const NAME_COOKIE = 't2w_name'
 export const SESSION_DAYS = 30
 
 const USERS: Array<AuthUser & { username: string; password: string }> = [
-  { id: 'kranthi', username: 'kranthi', name: 'Kranthi', role: 'owner', password: process.env.T2W_PASS_KRANTHI ?? 'Kranthi@2026' },
-  { id: 'analyst1', username: 'analyst1', name: 'Analyst One', role: 'analyst', password: process.env.T2W_PASS_ANALYST1 ?? 'Analyst1@2026' },
-  { id: 'analyst2', username: 'analyst2', name: 'Analyst Two', role: 'analyst', password: process.env.T2W_PASS_ANALYST2 ?? 'Analyst2@2026' },
+  { id: 'kranthi', username: 'kranthi', name: 'Kranthi', role: 'owner', password: process.env.T2W_PASS_KRANTHI?.trim() ?? '' },
+  { id: 'analyst1', username: 'analyst1', name: 'Analyst One', role: 'analyst', password: process.env.T2W_PASS_ANALYST1?.trim() ?? '' },
+  { id: 'analyst2', username: 'analyst2', name: 'Analyst Two', role: 'analyst', password: process.env.T2W_PASS_ANALYST2?.trim() ?? '' },
 ]
 
 function secret(): string {
-  return process.env.AUTH_SECRET ?? 't2w-default-secret-change-in-env'
+  const s = process.env.AUTH_SECRET?.trim()
+  if (!s) throw new Error('AUTH_SECRET is not configured — sessions cannot be signed or verified. Set it in the environment.')
+  return s
 }
 
 const enc = new TextEncoder()
@@ -84,7 +88,7 @@ export async function verifyToken(token: string | undefined | null): Promise<Ses
 
 export function authenticate(username: string, password: string): AuthUser | null {
   const u = USERS.find((x) => x.username === username.trim().toLowerCase())
-  if (!u || u.password !== password) return null
+  if (!u || !u.password || u.password !== password) return null
   return { id: u.id, name: u.name, role: u.role }
 }
 

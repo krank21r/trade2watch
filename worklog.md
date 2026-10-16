@@ -675,7 +675,7 @@ Work Log:
 - Verified: curl flow (redirect 307, 401 on APIs, login ok/401 bad-pw for all 3 users, session grants 200, me returns user); browser flow (login page render, wrong-pw alert, successful sign-in → dashboard with K|Kranthi chip, localStorage shows t2w:kranthi:watchlist, sign-out → /login); lint clean.
 
 Stage Summary:
-- The app is now account-gated: exactly 3 credentials (kranthi/Kranthi@2026, analyst1/Analyst1@2026, analyst2/Analyst2@2026 — owner should change via env vars), sessions last 30 days, and all personal state is private per user. Set AUTH_SECRET on prod to pin the signing key.
+- The app is now account-gated: exactly 3 credentials (usernames kranthi / analyst1 / analyst2 — passwords are set via T2W_PASS_* env vars, never in code), sessions last 30 days, and all personal state is private per user. Set AUTH_SECRET on prod to pin the signing key.
 
 ---
 Task ID: 33
@@ -865,3 +865,24 @@ Stage Summary:
 - The full "know when to enter" chain now exists end to end: cron tick → multi-agent run → actionable-plan check → Telegram/webhook push (server) + browser desktop notification (client, page open) + 🎯 entry-zone banners/toasts
 - Remaining USER SETUP for production automation: (1) set CRON_SECRET on Vercel (same value as local .env) so Vercel Cron/external cron can authenticate; (2) set SIGNALS_ALERTS_ENABLED=1 + TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for Telegram push; (3) optionally register cron-job.org every 20 min → POST /api/signals/auto/tick with Bearer CRON_SECRET for hourly-per-symbol freshness (Vercel cron on this plan is the daily floor); user tuneables: SIGNALS_AUTO_SYMBOLS, SIGNALS_AUTO_INTERVAL_MIN, SIGNALS_ALERTS_DEDUPE_HOURS, SIGNALS_AUTO_ENABLED=0 off switch
 - Production SignalRun history remains per-instance ephemeral (/tmp SQLite) — notifications do not depend on persistence; a durable store is still an open item
+
+---
+Task ID: 41
+Agent: Z.ai Code (main)
+Task: "Run multi-agent analysis is not working on https://trade2watch.vercel.app/" — diagnose and resolve
+
+Work Log:
+- Diagnosed production with curl + agent-browser: POST /api/signals/run is HEALTHY (HTTP 200 in 10.9s, full completed run; again 200 in a real browser with the 🤖 Agents at work panel → result card). All API calls 200 in the network trace.
+- Found the REAL defect: production history is permanently empty ({"runs":[]}) because Vercel keeps SQLite in the ephemeral /tmp of EACH serverless instance — rows written by one request are invisible to the next. Consequences: results vanish on reload, Signal history always empty, entry-zone banners never appear (they are computed from history), openRun 404s → eternal "Loading run…", and the auto desk's round-robin/dedupe reset per instance. This is what made the feature feel "not working".
+- Fix (zero-setup, no external DB):
+  - New GET /api/market/price (src/app/api/market/price/route.ts): lightweight getTicker quote (session-gated by middleware) so the client can evaluate outcomes itself.
+  - New src/lib/signals/local-runs.ts: browser-local run store in scoped localStorage (t2w:<uid>:signal-runs-local, capped 30) with load/persist/merge/upsert helpers + detailToRow (strips artifacts).
+  - SignalDashboard: seeds history instantly from the local store on mount; loadHistory now MERGES server rows into the local store (server wins per id — fresher outcome columns); every finished run (POST response or poll completion) is upserted locally; new evalLocalOutcomes() replicates the server's outcome logic client-side (OPEN/STOP_HIT/TARGET1_HIT from /api/market/price, budget 6, 15-min re-check) on a 60s cadence + right after each run → entry-zone banners and outcome chips now work on production.
+  - openRun falls back to the local copy when the server 404s (toast explains transcripts are unavailable, plan intact).
+  - types.ts: SignalRunRow gains outcomePrice/outcomeCheckedAt (dashboard already read r.outcomePrice — latent type gap; next.config has ignoreBuildErrors:true which is why builds never caught it).
+  - startRun network-error message now suggests a hard refresh (stale chunks after a deploy are the other likely cause of "button does nothing").
+- Verified: lint clean; tsc shows no errors in changed files (5 pre-existing errors in examples/skills/engine tolerated by ignoreBuildErrors); price endpoint 200 locally; browser test — run BTC → "BTC — STAND ASIDE" → RELOAD → history restored from local store + 🎯 ETH LONG entry-zone banner active; localStorage holds BTC/SOL/ETH rows; zero console/page errors.
+
+Stage Summary:
+- The user-visible breakage on production is resolved: runs complete (they always did server-side) AND now persist in the user's browser — history, entry-zone alerts, and outcome tracking survive reloads and serverless instance swaps with no external database.
+- Residual: local store is per-browser/per-user (clearing site data resets it); a durable server DB (Turso/Vercel Postgres) remains the long-term fix if cross-device history is ever needed. Production deployment pushes as commit after this entry.

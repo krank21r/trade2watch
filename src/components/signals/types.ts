@@ -82,7 +82,9 @@ export interface SignalRunRow {
   invalidation: string | null
   planNote: string | null
   source?: string | null // 'auto' (scheduled desk) | 'manual' (user click)
-  outcome?: string | null
+  outcome?: string | null // OPEN | TARGET1_HIT | TARGET2_HIT | STOP_HIT | INVALIDATED
+  outcomePrice?: number | null // price at the last outcome check
+  outcomeCheckedAt?: string | null // when the outcome was last evaluated
   createdAt: string
   completedAt: string | null
 }

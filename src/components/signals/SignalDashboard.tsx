@@ -6,6 +6,7 @@ import { SignalCard } from './SignalCard'
 import { PipelinePanel } from './PipelinePanel'
 import { ReportsPanel } from './ReportsPanel'
 import { fmtPrice, type SignalRunDetail, type SignalRunRow } from './types'
+import { detailToRow, loadLocalRuns, persistRuns, saveRunsMerged, upsertLocalRun } from '@/lib/signals/run-store'
 import { useToast } from '@/hooks/use-toast'
 import { scopedGetJson, scopedSetJson } from '@/lib/user-scope'
 
@@ -58,6 +59,7 @@ interface AutoStatus {
 
 const ALERT_FRESH_MS = 36 * 60 * 60 * 1000 // signals older than 36h stop alerting
 const NEAR_ZONE_PCT = 0.75 // "close to entry" threshold (% from zone edge)
+const OUTCOME_REFRESH_MS = 15 * 60 * 1000 // re-check open outcomes at most every 15 min
 
 interface EntryAlertView {
   run: SignalRunRow
@@ -160,6 +162,7 @@ export function SignalDashboard() {
   const seenRef = useRef<Set<string> | null>(null) // run ids already toasted/seen
   const zoneSeenRef = useRef<Set<string> | null>(null) // entry-zone activations already notified
   const desktopAlertsRef = useRef(false)
+  const localRef = useRef<SignalRunRow[]>([]) // browser-local run store mirror (survives reloads)
   const mountedAt = useRef(Date.now())
   const { toast } = useToast()
 
@@ -172,9 +175,77 @@ export function SignalDashboard() {
     try {
       const res = await fetch('/api/signals?limit=15', { cache: 'no-store' })
       const d = await res.json()
-      if (Array.isArray(d.runs)) setHistory(d.runs)
+      if (Array.isArray(d.runs)) {
+        // production runs on ephemeral per-instance /tmp SQLite — merge whatever
+        // the server currently sees with this browser's local copy so history
+        // and entry alerts survive reloads and instance swaps
+        localRef.current = saveRunsMerged(d.runs as SignalRunRow[], localRef.current)
+        setHistory([...localRef.current])
+      }
     } catch {
       /* history is non-critical */
+    }
+  }, [])
+
+  // Client-side outcome evaluation: production /tmp SQLite is per-instance, so
+  // the server's evaluator cannot see runs stored on other instances. Refresh
+  // outcomes (OPEN / T1 hit / stopped) locally from a lightweight price quote.
+  const evalLocalOutcomes = useCallback(async () => {
+    const now = Date.now()
+    const stale = localRef.current.filter(
+      (r) =>
+        r.status === 'completed' &&
+        (r.direction === 'LONG' || r.direction === 'SHORT') &&
+        r.entryLow !== null &&
+        r.stop !== null &&
+        r.target1 !== null &&
+        (!r.outcome || r.outcome === 'OPEN') &&
+        (!r.outcomeCheckedAt || now - new Date(r.outcomeCheckedAt).getTime() > OUTCOME_REFRESH_MS),
+    )
+    if (stale.length === 0) return
+    const priced = new Set<string>()
+    let budget = 6
+    let changed = false
+    for (const r of stale) {
+      if (budget <= 0) break
+      const key = `${r.symbol}:${r.market}`
+      if (priced.has(key)) continue
+      priced.add(key)
+      budget--
+      try {
+        const res = await fetch(
+          `/api/market/price?symbol=${encodeURIComponent(r.symbol)}&market=${r.market === 'stock' ? 'stock' : 'crypto'}`,
+          { cache: 'no-store' },
+        )
+        if (!res.ok) continue
+        const d = await res.json()
+        if (typeof d.price !== 'number' || !Number.isFinite(d.price)) continue
+        const checkedAt = new Date().toISOString()
+        for (const row of localRef.current) {
+          if (row.symbol !== r.symbol || row.market !== r.market) continue
+          if (row.status !== 'completed' || !row.direction || row.direction === 'NEUTRAL') continue
+          if (row.outcome && row.outcome !== 'OPEN') continue
+          if (row.entryLow === null || row.stop === null || row.target1 === null) continue
+          let outcome = 'OPEN'
+          if (row.direction === 'LONG') {
+            if (d.price <= row.stop) outcome = 'STOP_HIT'
+            else if (d.price >= row.target1) outcome = 'TARGET1_HIT'
+          } else {
+            if (d.price >= row.stop) outcome = 'STOP_HIT'
+            else if (d.price <= row.target1) outcome = 'TARGET1_HIT'
+          }
+          row.outcome = outcome
+          row.outcomePrice = d.price
+          row.outcomeCheckedAt = checkedAt
+          changed = true
+        }
+      } catch {
+        /* vendor unavailable — retry next cycle */
+      }
+    }
+    if (changed) {
+      persistRuns(localRef.current)
+      setHistory([...localRef.current])
     }
   }, [])
 
@@ -285,12 +356,16 @@ export function SignalDashboard() {
         const res = await fetch(`/api/signals/run/${id}`, { cache: 'no-store' })
         const d = await res.json()
         if (d.run) {
-          missesRef.current = 0
-          setRun(d.run)
           if (d.run.status !== 'running') {
+            missesRef.current = 0
             stopPolling()
             setStarting(false)
+            setRun(d.run)
+            // keep the finished run in the browser-local store (survives reloads)
+            localRef.current = upsertLocalRun(detailToRow(d.run as SignalRunDetail))
+            setHistory([...localRef.current])
             loadHistory()
+            void evalLocalOutcomes()
           }
         } else {
           // 404 / tracking lost (server restart, serverless instance swap) —
@@ -310,38 +385,36 @@ export function SignalDashboard() {
         /* transient poll failure — keep polling */
       }
     },
-    [loadHistory, stopPolling],
+    [loadHistory, stopPolling, evalLocalOutcomes],
   )
 
   useEffect(() => {
-    // mount-fetch history via promise chain (setState happens async, after data arrives)
-    const ac = new AbortController()
-    fetch('/api/signals?limit=15', { cache: 'no-store', signal: ac.signal })
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d.runs)) setHistory(d.runs)
-      })
-      .catch(() => {
-        /* history is non-critical */
-      })
+    // instant history from the browser-local store — production server history
+    // is per-instance ephemeral, so this cache is what makes results survive reloads
+    localRef.current = loadLocalRuns()
+    if (localRef.current.length > 0) setHistory([...localRef.current])
     setClock(Date.now())
     // restore the desktop-alerts preference after first paint (no hydration drift)
     const savedAlerts = scopedGetJson('desktop-alerts', false)
     desktopAlertsRef.current = savedAlerts
     setDesktopAlerts(savedAlerts)
+    void loadHistory()
+    void evalLocalOutcomes()
     void loadAuto()
-    // live desk: refresh history + auto status every 60s, countdown clock every 30s
-    const h = setInterval(() => void loadHistory(), 60_000)
+    // live desk: refresh history + outcomes + auto status every 60s, countdown clock every 30s
+    const h = setInterval(() => {
+      void loadHistory()
+      void evalLocalOutcomes()
+    }, 60_000)
     const a = setInterval(() => void loadAuto(), 60_000)
     const c = setInterval(() => setClock(Date.now()), 30_000)
     return () => {
-      ac.abort()
       stopPolling()
       clearInterval(h)
       clearInterval(a)
       clearInterval(c)
     }
-  }, [stopPolling, loadAuto, loadHistory])
+  }, [stopPolling, loadAuto, loadHistory, evalLocalOutcomes])
 
   // toast new AUTO results that complete while the page is open
   useEffect(() => {
@@ -414,7 +487,11 @@ export function SignalDashboard() {
           // returns the finished row (works on Vercel serverless + local dev)
           stopPolling()
           setRun(d.run)
+          // persist the finished run locally so it survives reloads / instance swaps
+          localRef.current = upsertLocalRun(detailToRow(d.run as SignalRunDetail))
+          setHistory([...localRef.current])
           loadHistory()
+          void evalLocalOutcomes()
         } else if (d.runId) {
           // legacy async server — poll for the result
           setRun((r) => (r ? { ...r, id: d.runId } : r))
@@ -429,23 +506,46 @@ export function SignalDashboard() {
       } catch {
         stopPolling()
         setRun(null)
-        setFormError('Network error starting analysis.')
+        setFormError(
+          'Network error starting the analysis. If the button does nothing after a recent update, hard-refresh the page (Ctrl+Shift+R / Cmd+Shift+R) and try again.',
+        )
       } finally {
         setStarting(false)
       }
     },
-    [pollRun, loadHistory, stopPolling],
+    [pollRun, loadHistory, stopPolling, evalLocalOutcomes],
   )
 
   const openRun = useCallback(
     async (id: string) => {
       setRun({ id, status: 'loading' } as SignalRunDetail)
-      const res = await fetch(`/api/signals/run/${id}`, { cache: 'no-store' })
-      const d = await res.json()
-      if (d.run) setRun(d.run)
+      try {
+        const res = await fetch(`/api/signals/run/${id}`, { cache: 'no-store' })
+        const d = await res.json()
+        if (d.run) {
+          setRun(d.run)
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+          return
+        }
+      } catch {
+        /* fall through to the local copy */
+      }
+      // serverless instance swap — the server may no longer know this run;
+      // show the browser-local copy (full plan, no agent transcripts)
+      const local = localRef.current.find((r) => r.id === id)
+      if (local) {
+        setRun({ ...local, artifacts: null } as SignalRunDetail)
+        toast({
+          title: `Opened ${local.symbol} from local history`,
+          description: 'The server instance holding the full transcripts was recycled — the trade plan is intact, agent reports are unavailable.',
+        })
+      } else {
+        setRun(null)
+        toast({ title: 'Run not found', description: 'This analysis is no longer available.', variant: 'destructive' })
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' })
     },
-    [],
+    [toast],
   )
 
   const busy = run?.status === 'running'
