@@ -893,14 +893,14 @@ Agent: Z.ai Code (main)
 Task: Security remediation — credentials were committed to the public repo
 
 Work Log:
-- Audit found in the PUBLIC GitHub repo: all 3 login passwords as hardcoded fallbacks in src/lib/auth.ts (Kranthi@2026 / Analyst1@2026 / Analyst2@2026), a public AUTH_SECRET fallback ('t2w-default-secret-change-in-env'), and .env (with CRON_SECRET) tracked since 8817c5c; worklog.md quoted the passwords too.
+- Audit found in the PUBLIC GitHub repo: all 3 login passwords as hardcoded fallbacks in src/lib/auth.ts (three plaintext passwords, since redacted from this worklog), a public AUTH_SECRET fallback (a default signing secret, since redacted), and .env (with CRON_SECRET) tracked since 8817c5c; worklog.md quoted the passwords too.
 - Fixed: auth.ts now reads T2W_PASS_* / AUTH_SECRET from the environment ONLY (no fallbacks; authenticate() rejects empty passwords; secret() throws a clear error when AUTH_SECRET is unset); worklog.md redacted; .env untracked (git rm --cached; .gitignore already had .env*).
-- Rotated values (new, given to the user for Vercel): T2W_PASS_KRANTHI=T2w-Kranthi-F0A871, T2W_PASS_ANALYST1=T2w-Analyst1-D2E4DD, T2W_PASS_ANALYST2=T2w-Analyst2-E426AD, AUTH_SECRET=508757c0…, CRON_SECRET=0a3a938e… — local .env updated too.
+- Rotated values (delivered to the user privately for Vercel — NEVER store them in this repo again): the three T2W_PASS_* login passwords, AUTH_SECRET, CRON_SECRET — all values redacted from this worklog; local .env (untracked) updated too. Treat every value that ever appeared in this file or in git history as burned: do not reuse them anywhere.
 - Verified locally: login works with the new env-driven password. Production after deploy f392a77: clean 401 (not 500) on login → AUTH_SECRET is set on Vercel; login is LOCKED until the user adds the 3 T2W_PASS_* vars in the Vercel dashboard (+ redeploy) — old passwords no longer exist in code by design.
 - Git note: local commit 471b3f1 had been rewritten locally as 55709b9 (same tree, different db blob) causing a non-fast-forward; resolved via fetch + rebase --skip, pushed f392a77 cleanly.
 
 Stage Summary:
-- No credential or signing material remains in the repository; .env is untracked permanently. Production login resumes the moment the user adds the three T2W_PASS_* env vars and redeploys — the new passwords are the ones above (user must store them safely).
+- No credential or signing material remains in the repository; .env is untracked permanently. Production login resumes the moment the user adds the three T2W_PASS_* env vars and redeploys — values were delivered to the user privately (chat only), never in the repo.
 - Passwords previously visible on GitHub must be treated as burned; the T2W_PASS_* env values now override everything.
 
 ---
@@ -925,3 +925,21 @@ Stage Summary:
 - The middleware can no longer take the whole site down: worst case is a clean redirect to /login or a 401. The run button surfaces hosting-side errors clearly instead of failing silently.
 - USER ACTION REQUIRED (Vercel dashboard → trade2watch → Settings → Environment Variables, ALL environments Production/Preview/Development): confirm AUTH_SECRET, T2W_PASS_KRANTHI, T2W_PASS_ANALYST1, T2W_PASS_ANALYST2, CRON_SECRET are all still present with the rotated values from the 41-security entry (any blank/missing one re-creates this outage in degraded form: AUTH_SECRET missing → everyone bounced to /login; T2W_PASS_* missing → login returns the new clear 503 message). Then redeploy/push to apply this fix and re-login (old cookies die with a rotated AUTH_SECRET).
 - If the middleware 500 was the transient platform kind, this fresh deployment itself also resolves it.
+
+---
+Task ID: 42
+Agent: Z.ai Code (main)
+Task: Remove credential material from the public repo (worklog redaction) + remove the stored GitHub PAT from this machine; restore the user's access to production
+
+Work Log:
+- Audit: worklog.md (public repo) still quoted the old hardcoded passwords in the 41-security entry AND the rotated values (three T2w-… passwords plus partial AUTH_SECRET / CRON_SECRET prefixes). git grep confirmed NO other tracked file contains secret material.
+- Redacted both worklog lines to value-free descriptions with an explicit "treat every value that ever appeared here or in git history as burned" warning.
+- Generated a FRESH credential set (3 login passwords + AUTH_SECRET + CRON_SECRET) and delivered it to the user in chat ONLY — never written to any tracked file. Local .env (untracked) updated to the same set; dev server restarted; local login verified.
+- Committed + pushed the redaction BEFORE removing the stored GitHub PAT from the machine.
+- Removed the GitHub PAT from ~/.git-credentials (credential.helper=store). The git remote URL was already clean (no token embedded). Future pushes require the user to supply a fresh token (the old one sat in chat history and must be treated as burned/revoked).
+- Production re-verified after push: / → 307 /login, /login → 200, API → clean 401 — no 500s anywhere.
+- Diagnosis note (from Task 41 evidence): the middleware 500 + both previously-known passwords being rejected by the login endpoint imply T2W_PASS_* / AUTH_SECRET were never set (or no longer set) on Vercel — the user is effectively locked out of production until the fresh values are added there. Removing the auth gate entirely was considered and recommended AGAINST (it would expose the private dashboard and open the paid-LLM endpoints to the public internet); if the user still wants that, it is a separate explicit decision.
+
+Stage Summary:
+- The repository tip contains no credential material; this machine no longer stores the GitHub PAT. Every previously exposed value is burned and none of them work on production.
+- Restoring production access is now purely a user-side step: paste the 5 fresh values into Vercel → Settings → Environment Variables (Production), redeploy, then log in with the new owner password. Values live only in this chat and the user's Vercel dashboard.
