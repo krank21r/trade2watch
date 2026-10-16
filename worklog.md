@@ -820,3 +820,48 @@ Work Log:
 
 Stage Summary:
 - The AI desk now runs itself: every 20 min (configurable) the stalest watchlist symbol gets a fresh multi-agent analysis, and the user sees 🎯 ENTRY ZONE ACTIVE banners + toasts the moment price reaches an actionable signal's entry zone — no manual clicking needed. Manual runs still available (button + "Run a desk analysis now"). Production automation = push + set CRON_SECRET env on Vercel + point an external cron at POST /api/signals/auto/tick with `Authorization: Bearer <CRON_SECRET>`; in-process loop intentionally skipped on Vercel. PUSH STILL BLOCKED: waiting on a fresh GitHub token from the user (old PAT never stored in this container).
+
+---
+Task ID: 40-explore
+Agent: Explore
+Task: Investigate watchlist source, alerts infra, signals engine interface, auth/middleware, deploy config, and AI signals page structure for Task 40 (automated signals + notifications)
+
+Work Log:
+- Read worklog.md tail (Tasks 38→40) + full repo tree: discovered Task 40 is ALREADY IMPLEMENTED and committed locally (commits 8817c5c + 38c5765 on main; 3 commits ahead of origin/main, push blocked on fresh GitHub token) — scheduler, tick endpoint, CRON bypass, auto-desk UI, entry banners all exist
+- Watchlist: read src/lib/watchlist.ts (DEFAULT_WATCHLIST='BTC,ETH,SOL,AAPL,TSLA,NVDA' line 13; loadWatchlist/saveWatchlist over localStorage) + src/lib/user-scope.ts (key `t2w:<uid>:watchlist`); grepped usage → only SetupBoard.tsx (lines 6, 286, 304-307, 354); ConfirmedBoard derives symbols from /api/setups payload; /api/setups defaults to the same 6 symbols (route.ts line 11). No Prisma/zustand/API backing — server cannot read it
+- Alerts: read src/lib/smc/alerts.ts (Telegram + generic webhook, env-gated SMC_ALERTS_ENABLED=1 + TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or SMC_WEBHOOK_URL, idempotent in-memory per signalId:event, fire-and-forget, 8s timeout); only call sites smc/analysis.ts:689,825; grepped telegram/webhook/notify/nodemailer/resend/web-push/email/browser-Notification across src → nothing else exists
+- Engine: read src/lib/signals/engine.ts (runSignalPipeline(runId, symbol, market) line 453 — caller creates the SignalRun row first; self-catches → row 'failed'; stages data→analysts→debate→plan→risk→decision writing direction/confidence/levels at done), llm.ts (z-ai SDK, 1.6s spacing queue, 429 backoffs 5→30s, 90s per-call timeout), types.ts, run route (row created with source:'manual' then awaited, returns {runId, run}), run/[id] (stale-heal >6min), /api/signals (outcome evaluation: LONG px≤stop→STOP_HIT, px≥T1→TARGET1_HIT, 15min refresh budget 6)
+- Prisma: read schema.prisma SignalRun model (lines 12-56) incl. source/outcome columns; db.ts DDL bootstrap for /tmp SQLite incl. `ALTER TABLE SignalRun ADD COLUMN source`
+- Auth: read middleware.ts (global matcher incl. /api/*; session cookie t2w_session; EXISTING CRON_SECRET Bearer bypass for exactly /api/signals/auto/tick lines 13-22) + lib/auth.ts (HMAC tokens, 3 fixed users, T2W_PASS_*/AUTH_SECRET); grepped API routes for verifyToken → only /api/trades and /api/auth/* check sessions themselves, all others rely on middleware
+- Deploy: vercel.json = {framework, prisma build, bun install, regions [hnd1]} — NO crons key; package.json has NO notification/cron packages (Telegram via plain fetch; sonner installed but NOT mounted — app uses shadcn use-toast + ui/toaster per layout.tsx); no .github/workflows; .env holds DATABASE_URL + CRON_SECRET
+- Signals page: it's a TAB in src/app/page.tsx (line 98), not a route; read SignalDashboard.tsx fully (742 lines): market pill + symbol input + hardcoded QUICK_PICKS (not wired to watchlist lib), startRun with placeholderRun + fake progress → authoritative POST response, auto-desk card (Pause/Resume/Run-now), entryAlertViews (fresh ≤36h, outcome OPEN, price in [entryLow,entryHigh] → active; ≤0.75% → near), 60s history/auto polls, 30s clock, toasts on new auto runs
+- Env: grepped all process.env reads in src → 16 distinct vars (listed in report)
+
+Stage Summary:
+- Task 40 backend+UI already exists: scheduler.ts autoTick (stalest-symbol round-robin, SIGNALS_AUTO_SYMBOLS/INTERVAL_MIN/ENABLED envs, globalThis state, skipped on VERCEL), POST /api/signals/auto/tick (maxDuration 300) with middleware CRON_SECRET bypass, GET/POST /api/signals/auto, auto-desk card + entry banners + auto toasts in SignalDashboard
+- REMAINING GAPS for the "know when to enter" goal: (1) NO server-side push notification on the AI-signal path — smc/alerts.ts is SMC-payload-specific and uncalled from the scheduler; (2) no crons in vercel.json / external cron registered; (3) browser Notification API unused (client toasts only); (4) CRON_SECRET in .env but must also be set on Vercel; (5) 3 local commits unpushed
+- Watchlist for a server cron: only reliable production source is env (SIGNALS_AUTO_SYMBOLS, default BTC,ETH,SOL) or SignalRun history; localStorage is client-only and /tmp SQLite is ephemeral, so a DB-synced watchlist would not persist either
+- Middleware bypass is path-exact ('/api/signals/auto/tick') — a NEW cron route requires extending that condition; reusing tick avoids any middleware change
+- "Actionable enter-now" = status completed + direction LONG|SHORT + outcome OPEN + entryLow/High/stop/target1 non-null + current price inside [entryLow,entryHigh] (client replica: entryAlertViews)
+- Engine contract: route/scheduler creates the SignalRun row (status running, stage queued, progress 2, source manual|auto) then awaits runSignalPipeline(runId, symbol, market) — engine never throws, always leaves a usable row
+
+---
+Task ID: 40-notify
+Agent: Z.ai Code (main)
+Task: Close Task 40 gaps — push the blocked commits, add entry-signal push notifications, browser desktop alerts, Vercel cron schedule, and fix the prod auto-status 500
+
+Work Log:
+- PUSHED with the user's fresh fine-grained PAT: b32f9be..38c5765 (291e495 signals fix + 8817c5c auto desk + 38c5765) — Vercel auto-deployed; POST /api/signals/run verified live in production (HTTP 200 in 11.7s, BTC run complete → maxDuration=300 accepted at build, plan is not Hobby-limited for this route)
+- Production bug found & fixed: GET /api/signals/auto returned 500 on fresh instances (no ensureTables() before querying; cold /tmp SQLite has no tables, warm old ones may lack `source`) — added await ensureTables() to the GET handler
+- New src/lib/signals/notify.ts: Telegram (shared TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID) + generic webhook (SIGNALS_WEBHOOK_URL), gated by SIGNALS_ALERTS_ENABLED=1; HTML-formatted entry signal message (direction, confidence, regime, entry zone, stop, T1/T2/runner, R:R, price-vs-zone verdict, plan note, dashboard link); dedupe per (symbol,market,direction) with in-memory map + best-effort DB window check (SIGNALS_ALERTS_DEDUPE_HOURS, default 6h); 8s timeout, never throws
+- scheduler.autoTick: full-row re-fetch after pipeline; actionable runs (completed + LONG/SHORT) now AWAIT sendSignalAlert in-request (Vercel freezes background work after the response — delivery must be in-request, bounded 8s); SIGNALS_AUTO_ENABLED=0 env hard kill switch for every tick path
+- tick route now exports GET too (Vercel Cron fires GET; external schedulers can use either) — middleware CRON bypass was already method-agnostic
+- vercel.json: added crons → /api/signals/auto/tick daily at 45 2 * * * (02:45 UTC = 08:15 IST) as a zero-setup floor; sub-daily cadence via external cron-job.org (Hobby-safe schedule)
+- SignalDashboard: 🔔/🔕 Desktop alerts toggle in the auto-desk card (Notification.requestPermission flow, persisted via scoped localStorage t2w:<uid>:desktop-alerts); desktop Notification on new actionable auto completions AND the moment price ENTERS a standing signal's entry zone (zoneSeenRef mirrors seenRef pattern; alerts computation memoized); autoDesc hints at the toggle on production
+- Verified locally: lint clean; notify unit test against a local webhook receiver (delivery ✓, in-memory dedupe ✓, per-symbol keying ✓, DB-window query ✓); full autoTick end-to-end ran SOL (NEUTRAL 65%) and correctly sent NO alert (gate works); agent-browser: toggle renders, click → "Desktop alerts blocked" toast in headless (expected), zero console/page errors, mobile 390px + desktop 1440px layouts clean
+- Temp test files removed after runs
+
+Stage Summary:
+- The full "know when to enter" chain now exists end to end: cron tick → multi-agent run → actionable-plan check → Telegram/webhook push (server) + browser desktop notification (client, page open) + 🎯 entry-zone banners/toasts
+- Remaining USER SETUP for production automation: (1) set CRON_SECRET on Vercel (same value as local .env) so Vercel Cron/external cron can authenticate; (2) set SIGNALS_ALERTS_ENABLED=1 + TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for Telegram push; (3) optionally register cron-job.org every 20 min → POST /api/signals/auto/tick with Bearer CRON_SECRET for hourly-per-symbol freshness (Vercel cron on this plan is the daily floor); user tuneables: SIGNALS_AUTO_SYMBOLS, SIGNALS_AUTO_INTERVAL_MIN, SIGNALS_ALERTS_DEDUPE_HOURS, SIGNALS_AUTO_ENABLED=0 off switch
+- Production SignalRun history remains per-instance ephemeral (/tmp SQLite) — notifications do not depend on persistence; a durable store is still an open item

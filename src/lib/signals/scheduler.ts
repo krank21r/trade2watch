@@ -21,6 +21,7 @@
 
 import { db, ensureTables } from '@/lib/db'
 import { runSignalPipeline } from './engine'
+import { sendSignalAlert } from './notify'
 
 export const AUTO_DEFAULT_SYMBOLS = ['BTC', 'ETH', 'SOL']
 
@@ -84,6 +85,8 @@ export interface TickOutcome {
 
 /** Run one scheduled analysis for the stalest watchlist symbol. */
 export async function autoTick(force = false): Promise<TickOutcome> {
+  // hard kill switch — SIGNALS_AUTO_ENABLED=0 stops every tick path, even forced ones
+  if (process.env.SIGNALS_AUTO_ENABLED === '0') return { ran: false, skipped: 'auto-disabled-by-env' }
   const s = state()
   if (s.busy) return { ran: false, skipped: 'busy' }
   if (!s.enabled && !force) return { ran: false, skipped: 'disabled' }
@@ -115,10 +118,32 @@ export async function autoTick(force = false): Promise<TickOutcome> {
       data: { symbol, market, status: 'running', stage: 'queued', progress: 2, source: 'auto' },
     })
     await runSignalPipeline(run.id, symbol, market)
-    const done = await db.signalRun.findUnique({
-      where: { id: run.id },
-      select: { id: true, status: true, direction: true, confidence: true },
-    })
+    const done = await db.signalRun.findUnique({ where: { id: run.id } })
+
+    // push notification for actionable plans — awaited IN-REQUEST on purpose:
+    // on Vercel serverless a background task is frozen the moment the tick
+    // response is sent, so delivery must complete here (bounded 8s timeout).
+    if (done?.status === 'completed' && (done.direction === 'LONG' || done.direction === 'SHORT')) {
+      await sendSignalAlert({
+        runId: done.id,
+        symbol: done.symbol,
+        market: done.market === 'stock' ? 'stock' : 'crypto',
+        direction: done.direction,
+        confidence: done.confidence,
+        regime: done.regime,
+        timeframe: done.timeframe,
+        entryLow: done.entryLow,
+        entryHigh: done.entryHigh,
+        stop: done.stop,
+        target1: done.target1,
+        target2: done.target2,
+        runner: done.runner,
+        riskReward: done.riskReward,
+        planNote: done.planNote,
+        priceAtRun: done.priceAtRun,
+        dashboardUrl: process.env.APP_URL?.trim() || 'https://trade2watch.vercel.app',
+      })
+    }
 
     s.lastTickAt = new Date().toISOString()
     s.runCount++

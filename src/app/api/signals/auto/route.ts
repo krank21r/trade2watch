@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, ensureTables } from '@/lib/db'
 import { autoDeskStatus, setAutoEnabled } from '@/lib/signals/scheduler'
 
 export const dynamic = 'force-dynamic'
@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic'
 // GET /api/signals/auto — auto-desk status + recent auto runs
 export async function GET() {
   try {
+    // cold serverless instances start with an empty /tmp SQLite (and warm old
+    // ones may predate the `source` column) — bootstrap before querying
+    await ensureTables()
     const recent = await db.signalRun.findMany({
       where: { source: 'auto' },
       orderBy: { createdAt: 'desc' },

@@ -1,12 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { SignalCard } from './SignalCard'
 import { PipelinePanel } from './PipelinePanel'
 import { ReportsPanel } from './ReportsPanel'
 import { fmtPrice, type SignalRunDetail, type SignalRunRow } from './types'
 import { useToast } from '@/hooks/use-toast'
+import { scopedGetJson, scopedSetJson } from '@/lib/user-scope'
 
 const QUICK_PICKS: Array<{ symbol: string; market: 'crypto' | 'stock'; label: string }> = [
   { symbol: 'BTC', market: 'crypto', label: 'BTC' },
@@ -152,10 +153,13 @@ export function SignalDashboard() {
   const [formError, setFormError] = useState<string | null>(null)
   const [auto, setAuto] = useState<AutoStatus | null>(null)
   const [autoBusy, setAutoBusy] = useState(false)
+  const [desktopAlerts, setDesktopAlerts] = useState(false)
   const [clock, setClock] = useState(0) // client time for countdowns (avoids hydration drift)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const missesRef = useRef(0)
   const seenRef = useRef<Set<string> | null>(null) // run ids already toasted/seen
+  const zoneSeenRef = useRef<Set<string> | null>(null) // entry-zone activations already notified
+  const desktopAlertsRef = useRef(false)
   const mountedAt = useRef(Date.now())
   const { toast } = useToast()
 
@@ -197,6 +201,57 @@ export function SignalDashboard() {
       /* non-critical */
     }
   }, [auto?.enabled])
+
+  const fireDesktopNotification = useCallback((title: string, body: string) => {
+    if (!desktopAlertsRef.current) return
+    try {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+      const n = new Notification(title, { body, tag: `t2w:${title}`, icon: '/favicon.ico' })
+      n.onclick = () => {
+        window.focus()
+        n.close()
+      }
+    } catch {
+      /* notifications unsupported here — in-page toasts still cover it */
+    }
+  }, [])
+
+  const toggleDesktopAlerts = useCallback(async () => {
+    if (desktopAlertsRef.current) {
+      desktopAlertsRef.current = false
+      setDesktopAlerts(false)
+      scopedSetJson('desktop-alerts', false)
+      return
+    }
+    if (typeof Notification === 'undefined') {
+      toast({
+        title: 'Desktop alerts unavailable',
+        description: 'This browser does not support the Notifications API.',
+        variant: 'destructive',
+      })
+      return
+    }
+    let perm = Notification.permission
+    if (perm === 'default') {
+      try {
+        perm = await Notification.requestPermission()
+      } catch {
+        perm = 'denied'
+      }
+    }
+    if (perm !== 'granted') {
+      toast({
+        title: 'Desktop alerts blocked',
+        description: 'Allow notifications for this site (padlock icon in the address bar), then toggle again.',
+        variant: 'destructive',
+      })
+      return
+    }
+    desktopAlertsRef.current = true
+    setDesktopAlerts(true)
+    scopedSetJson('desktop-alerts', true)
+    fireDesktopNotification('🔔 Desktop alerts on', 'You will be notified when a trade plan is ready and when price reaches an entry zone.')
+  }, [toast, fireDesktopNotification])
 
   const runAutoNow = useCallback(async () => {
     setAutoBusy(true)
@@ -270,6 +325,10 @@ export function SignalDashboard() {
         /* history is non-critical */
       })
     setClock(Date.now())
+    // restore the desktop-alerts preference after first paint (no hydration drift)
+    const savedAlerts = scopedGetJson('desktop-alerts', false)
+    desktopAlertsRef.current = savedAlerts
+    setDesktopAlerts(savedAlerts)
     void loadAuto()
     // live desk: refresh history + auto status every 60s, countdown clock every 30s
     const h = setInterval(() => void loadHistory(), 60_000)
@@ -303,6 +362,12 @@ export function SignalDashboard() {
               ? `No edge detected — the desk stands aside on ${r.symbol}.`
               : `${r.direction} @ ${fmtPrice(r.priceAtRun)} · confidence ${r.confidence ?? '—'}% — the full plan is in this view.`,
         })
+        if (r.direction === 'LONG' || r.direction === 'SHORT') {
+          fireDesktopNotification(
+            `🎯 ${r.symbol} ${r.direction} signal ready`,
+            `Entry ${fmtPrice(r.entryLow)} – ${fmtPrice(r.entryHigh)} · stop ${fmtPrice(r.stop)} · T1 ${fmtPrice(r.target1)} · conf ${r.confidence ?? '—'}%`,
+          )
+        }
       } else if (r.status === 'failed') {
         toast({
           title: `🤖 Auto run failed — ${r.symbol}`,
@@ -311,7 +376,7 @@ export function SignalDashboard() {
         })
       }
     }
-  }, [history, toast])
+  }, [history, toast, fireDesktopNotification])
 
   const startRun = useCallback(
     async (sym: string, mkt: 'crypto' | 'stock') => {
@@ -384,12 +449,29 @@ export function SignalDashboard() {
   )
 
   const busy = run?.status === 'running'
-  const alerts = entryAlertViews(history)
+  const alerts = useMemo(() => entryAlertViews(history), [history])
+
+  // 🔔 desktop notification the moment price ENTERS a standing signal's zone
+  useEffect(() => {
+    if (zoneSeenRef.current === null) {
+      zoneSeenRef.current = new Set(alerts.active.map((v) => v.run.id)) // first paint — seed silently
+      return
+    }
+    const seen = zoneSeenRef.current
+    for (const v of alerts.active) {
+      if (seen.has(v.run.id)) continue
+      seen.add(v.run.id)
+      fireDesktopNotification(
+        `🚀 ${v.run.symbol} is IN the entry zone`,
+        `${v.run.direction} · entry ${fmtPrice(v.run.entryLow)} – ${fmtPrice(v.run.entryHigh)} · stop ${fmtPrice(v.run.stop)} — check the plan now.`,
+      )
+    }
+  }, [alerts.active, fireDesktopNotification])
 
   const autoDesc = (() => {
     if (!auto) return 'Connecting to the auto desk…'
     if (auto.external)
-      return `On production the desk is driven by external cron: one watchlist symbol (${auto.symbols.join(', ')}) per tick.`
+      return `On production the desk runs on a schedule: one watchlist symbol (${auto.symbols.join(', ')}) per tick, and it pings you the moment a plan is ready. Turn on 🔔 Alerts for pop-ups even when this tab is in the background.`
     const parts = [
       `Every ${Math.max(1, Math.round(auto.intervalMs / 60_000))} min it analyzes the stalest of ${auto.symbols.join(' / ')} and alerts you when price reaches an entry zone.`,
     ]
@@ -411,7 +493,7 @@ export function SignalDashboard() {
             transition={{ duration: 0.25, ease: 'easeOut' }}
             className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5 space-y-3"
           >
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <span
                   className="h-8 w-8 rounded-xl bg-info/12 border border-info/30 text-info inline-flex items-center justify-center text-sm"
@@ -431,13 +513,28 @@ export function SignalDashboard() {
                   {auto?.enabled ? 'ON' : 'PAUSED'}
                 </span>
               </div>
-              <button
-                onClick={() => void toggleAuto()}
-                suppressHydrationWarning
-                className="rounded-full px-3 py-1 text-[11px] font-semibold border border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
-              >
-                {auto?.enabled ? 'Pause' : 'Resume'}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => void toggleDesktopAlerts()}
+                  suppressHydrationWarning
+                  aria-pressed={desktopAlerts}
+                  title="Browser notifications when a signal is ready or price reaches an entry zone"
+                  className={`rounded-full px-3 py-1 text-[11px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
+                    desktopAlerts
+                      ? 'border-info/45 bg-info/12 text-info'
+                      : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink'
+                  }`}
+                >
+                  {desktopAlerts ? '🔔 Alerts on' : '🔕 Alerts off'}
+                </button>
+                <button
+                  onClick={() => void toggleAuto()}
+                  suppressHydrationWarning
+                  className="rounded-full px-3 py-1 text-[11px] font-semibold border border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+                >
+                  {auto?.enabled ? 'Pause' : 'Resume'}
+                </button>
+              </div>
             </div>
             <p className="text-[11.5px] leading-relaxed text-tv-muted">{autoDesc}</p>
             <button
