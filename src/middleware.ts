@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { SESSION_COOKIE, verifyToken } from '@/lib/auth'
+import { SESSION_COOKIE, verifyToken, type SessionPayload } from '@/lib/auth'
 
 /**
  * Auth gate — every route requires a valid signed session except:
  *   /login, /api/auth/*, static assets.
  * Page requests without a session redirect to /login; API requests get 401.
  * A valid session hitting /login bounces back to the app.
+ *
+ * CRITICAL: this function runs in the edge middleware — an unhandled throw
+ * here produces Vercel's "500 MIDDLEWARE_INVOCATION_FAILED / This page is
+ * unavailable", which takes the ENTIRE site down (pages AND every API call,
+ * including the multi-agent analysis button). So auth verification is wrapped
+ * and any unexpected failure degrades to "not signed in" (redirect/401) —
+ * the site stays up and the user can still reach /login.
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -21,7 +28,15 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  const session = await verifyToken(req.cookies.get(SESSION_COOKIE)?.value)
+  // fail-safe token verification — verifyToken itself never throws, but the
+  // try/catch guards against anything unexpected in this edge context
+  let session: SessionPayload | null = null
+  try {
+    session = await verifyToken(req.cookies.get(SESSION_COOKIE)?.value)
+  } catch {
+    session = null
+  }
+
   const isAuthApi = pathname.startsWith('/api/auth')
 
   if (isAuthApi) return NextResponse.next()

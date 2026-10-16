@@ -20,7 +20,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'wrong username or password' }, { status: 401 })
   }
 
-  const { token, maxAge } = await createToken(user)
+  let token: string
+  let maxAge: number
+  try {
+    ;({ token, maxAge } = await createToken(user))
+  } catch (e) {
+    // Almost always a missing/empty AUTH_SECRET on the server (it throws).
+    // Surface a clear, actionable message instead of an unhandled 500.
+    console.error('[api/auth/login] token signing failed:', e)
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          'Sign-in is temporarily unavailable: the server session key (AUTH_SECRET) is missing or misconfigured. Set AUTH_SECRET (and the T2W_PASS_* variables) in the hosting environment, then redeploy.',
+      },
+      { status: 503 },
+    )
+  }
+
   const secure = process.env.NODE_ENV === 'production'
   const common = { maxAge, sameSite: 'lax' as const, secure, path: '/' }
 

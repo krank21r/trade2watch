@@ -475,11 +475,18 @@ export function SignalDashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbol: sym, market: mkt }),
         })
-        const d = await res.json()
+        // The server may answer a 5xx with an HTML error page (e.g. Vercel's
+        // "This page is unavailable" middleware outage) — res.json() would
+        // then throw and mask the real failure as a generic network error.
+        const d = await res.json().catch(() => null)
         if (!res.ok) {
           stopPolling()
           setRun(null)
-          setFormError(d.error || 'Failed to start analysis.')
+          setFormError(
+            res.status >= 500
+              ? `Server error ${res.status} — the analysis request did not reach the engine. This is a hosting-side problem (check the platform status / env vars) — please try again shortly.`
+              : d?.error || 'Failed to start analysis.',
+          )
           return
         }
         if (d.run) {

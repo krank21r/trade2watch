@@ -902,3 +902,26 @@ Work Log:
 Stage Summary:
 - No credential or signing material remains in the repository; .env is untracked permanently. Production login resumes the moment the user adds the three T2W_PASS_* env vars and redeploys — the new passwords are the ones above (user must store them safely).
 - Passwords previously visible on GitHub must be treated as burned; the T2W_PASS_* env values now override everything.
+
+---
+Task ID: 41
+Agent: Z.ai Code (main)
+Task: Fix production "Run multi-agent analysis" not working + Vercel 500 MIDDLEWARE_INVOCATION_FAILED ("This page is unavailable — Routing Middleware for this page temporarily failed")
+
+Work Log:
+- Symptom evolved mid-task: first the run button failed on trade2watch.vercel.app, then the user pasted the full Vercel error page: 500 MIDDLEWARE_INVOCATION_FAILED (bom1 region) — the edge middleware itself was crashing, which explains BOTH symptoms (page 500s AND every API call, including POST /api/signals/run, failing).
+- Root-cause analysis of src/middleware.ts + src/lib/auth.ts: verifyToken() → sign() → secret() THROWS when AUTH_SECRET is missing/empty. Any request carrying a session cookie therefore crashed the middleware → 500. Requests without a cookie returned null early (no throw), so /login stayed reachable — exactly the reported behavior. Likely trigger: the env-var changes the user made in the Vercel dashboard after the 41-security credential rotation (AUTH_SECRET touched/removed), and/or a flaky Vercel edge deployment (community reports of MIDDLEWARE_INVOCATION_FAILED on Next 16.x). Confirmed bun.lock pins next@16.1.3 (not the 16.2.4 packaging bug), so the code-level throw path is the actionable culprit.
+- Confirmed NON-issue from the old hypothesis: engine.ts writes status 'completed' (line 435) and scheduler.ts gates on 'completed' — no enum mismatch; notification chain is consistent.
+- Defense-in-depth fixes (4 files):
+  1. src/lib/auth.ts — verifyToken() wraps its whole body in try/catch and NEVER throws; a missing/rotated AUTH_SECRET, malformed cookie or crypto hiccup now degrades to "not signed in" (redirect to /login) instead of a site-wide 500.
+  2. src/middleware.ts — belt-and-suspenders try/catch around token verification (typed SessionPayload import); middleware can no longer produce MIDDLEWARE_INVOCATION_FAILED from auth logic. Documented the failure mode in the header comment.
+  3. src/app/api/auth/login/route.ts — createToken() wrapped; signing failures (missing AUTH_SECRET) return a clear 503 JSON telling the user exactly which env var to set, instead of an unhandled 500.
+  4. src/components/signals/SignalDashboard.tsx — startRun() parses the response with .catch(() => null); a 5xx HTML error page (Vercel's "This page is unavailable") no longer throws in res.json() and mask the failure as a generic "Network error"; 5xx now shows "Server error <code> — the analysis request did not reach the engine…".
+- Verified locally: bun repro script — verifyToken with garbage/no/malformed cookie while AUTH_SECRET is deleted returns null in all cases (pre-fix it threw). Lint clean. curl matrix: no cookie → 307 /login; forged cookie → 307 /login (NOT 500); valid cookie → 200 on / and /api/signals; /login with valid session → 307 /.
+- E2E golden path (curl): POST /api/signals/run BTC crypto → HTTP 200 in 17s, run completed, all artifacts (analysts/debate/plan/risk/verdict) populated, PM = APPROVE with NEUTRAL direction.
+- E2E golden path (agent-browser): login via UI → AI Signals tab → clicked "Run multi-agent analysis" → progress ran → "Analysis complete 100%" with all 7 stages green; run detail renders "BTC — STAND ASIDE · NEUTRAL · conf 75% · RANGING"; history updated; zero console/page errors; footer sticky.
+
+Stage Summary:
+- The middleware can no longer take the whole site down: worst case is a clean redirect to /login or a 401. The run button surfaces hosting-side errors clearly instead of failing silently.
+- USER ACTION REQUIRED (Vercel dashboard → trade2watch → Settings → Environment Variables, ALL environments Production/Preview/Development): confirm AUTH_SECRET, T2W_PASS_KRANTHI, T2W_PASS_ANALYST1, T2W_PASS_ANALYST2, CRON_SECRET are all still present with the rotated values from the 41-security entry (any blank/missing one re-creates this outage in degraded form: AUTH_SECRET missing → everyone bounced to /login; T2W_PASS_* missing → login returns the new clear 503 message). Then redeploy/push to apply this fix and re-login (old cookies die with a rotated AUTH_SECRET).
+- If the middleware 500 was the transient platform kind, this fresh deployment itself also resolves it.

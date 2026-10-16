@@ -67,21 +67,26 @@ export async function createToken(user: AuthUser, now = Date.now()): Promise<{ t
 
 export async function verifyToken(token: string | undefined | null): Promise<SessionPayload | null> {
   if (!token) return null
-  const dot = token.lastIndexOf('.')
-  if (dot <= 0) return null
-  const body = token.slice(0, dot)
-  const sig = token.slice(dot + 1)
-  const expected = await sign(body)
-  // constant-time-ish compare
-  if (sig.length !== expected.length) return null
-  let diff = 0
-  for (let i = 0; i < expected.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i)
-  if (diff !== 0) return null
   try {
+    const dot = token.lastIndexOf('.')
+    if (dot <= 0) return null
+    const body = token.slice(0, dot)
+    const sig = token.slice(dot + 1)
+    const expected = await sign(body)
+    // constant-time-ish compare
+    if (sig.length !== expected.length) return null
+    let diff = 0
+    for (let i = 0; i < expected.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i)
+    if (diff !== 0) return null
     const payload = JSON.parse(b64urlDecode(body)) as SessionPayload
     if (!payload?.id || typeof payload.exp !== 'number' || payload.exp < Date.now()) return null
     return payload
   } catch {
+    // NEVER throw from verification. A missing/empty AUTH_SECRET (secret()
+    // throws), a malformed cookie or any crypto hiccup must degrade to
+    // "not signed in" — an unhandled throw here happens inside the edge
+    // middleware and takes the WHOLE site down with Vercel's
+    // 500 MIDDLEWARE_INVOCATION_FAILED ("This page is unavailable").
     return null
   }
 }
