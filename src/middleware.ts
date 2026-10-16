@@ -9,6 +9,18 @@ import { SESSION_COOKIE, verifyToken } from '@/lib/auth'
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+
+  // external-cron bypass: the auto-desk tick endpoint accepts a bearer secret
+  // so a scheduler (GitHub Actions / cron-job.org) can drive it in production
+  const cronSecret = process.env.CRON_SECRET
+  if (
+    cronSecret &&
+    pathname === '/api/signals/auto/tick' &&
+    req.headers.get('authorization') === `Bearer ${cronSecret}`
+  ) {
+    return NextResponse.next()
+  }
+
   const session = await verifyToken(req.cookies.get(SESSION_COOKIE)?.value)
   const isAuthApi = pathname.startsWith('/api/auth')
 

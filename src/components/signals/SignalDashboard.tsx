@@ -6,6 +6,7 @@ import { SignalCard } from './SignalCard'
 import { PipelinePanel } from './PipelinePanel'
 import { ReportsPanel } from './ReportsPanel'
 import { fmtPrice, type SignalRunDetail, type SignalRunRow } from './types'
+import { useToast } from '@/hooks/use-toast'
 
 const QUICK_PICKS: Array<{ symbol: string; market: 'crypto' | 'stock'; label: string }> = [
   { symbol: 'BTC', market: 'crypto', label: 'BTC' },
@@ -36,6 +37,79 @@ function dirBadge(direction?: string | null): { label: string; bg: string; fg: s
   if (direction === 'SHORT') return { label: 'SHORT', bg: 'var(--bear-soft)', fg: 'var(--bear)', border: 'var(--bear-line)' }
   if (direction === 'NEUTRAL') return { label: 'WAIT', bg: 'var(--warn-soft)', fg: 'var(--warn)', border: 'var(--warn-line)' }
   return null
+}
+
+// ─── auto desk + entry alerts (client helpers) ──────────────────────────────
+
+interface AutoStatus {
+  enabled: boolean
+  running: boolean
+  intervalMs: number
+  symbols: string[]
+  bootedAt: string
+  lastTickAt: string | null
+  nextTickAt: string | null
+  lastResult: { symbol: string; status: string; direction: string | null; confidence: number | null; runId: string; at: string } | null
+  lastError: string | null
+  runCount: number
+  external: boolean
+}
+
+const ALERT_FRESH_MS = 36 * 60 * 60 * 1000 // signals older than 36h stop alerting
+const NEAR_ZONE_PCT = 0.75 // "close to entry" threshold (% from zone edge)
+
+interface EntryAlertView {
+  run: SignalRunRow
+  pctAway: number
+}
+
+/** Compute actionable entry states from signal history (price vs entry zone). */
+function entryAlertViews(history: SignalRunRow[]): { active: EntryAlertView[]; near: EntryAlertView[]; waiting: number } {
+  const now = Date.now()
+  const active: EntryAlertView[] = []
+  const near: EntryAlertView[] = []
+  let waiting = 0
+  for (const r of history) {
+    if (r.status !== 'completed') continue
+    if (r.direction !== 'LONG' && r.direction !== 'SHORT') continue
+    if (r.outcome && r.outcome !== 'OPEN') continue
+    if (r.entryLow === null || r.entryHigh === null) continue
+    if (now - new Date(r.createdAt).getTime() > ALERT_FRESH_MS) continue
+    const px = r.outcomePrice
+    if (px === null || px === undefined || !Number.isFinite(px)) {
+      waiting++
+      continue
+    }
+    let pctAway: number
+    if (px >= r.entryLow && px <= r.entryHigh) {
+      pctAway = 0
+    } else if (r.direction === 'LONG') {
+      pctAway = px > r.entryHigh ? ((px - r.entryHigh) / px) * 100 : ((r.entryLow - px) / px) * 100
+    } else {
+      pctAway = px < r.entryLow ? ((r.entryLow - px) / px) * 100 : ((px - r.entryHigh) / px) * 100
+    }
+    if (pctAway <= 0) active.push({ run: r, pctAway: 0 })
+    else if (pctAway <= NEAR_ZONE_PCT) near.push({ run: r, pctAway })
+    else waiting++
+  }
+  return { active, near, waiting }
+}
+
+function fmtAgo(iso: string | null, now: number): string {
+  if (!iso || !now) return ''
+  const diff = now - new Date(iso).getTime()
+  if (diff < 90_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`
+  if (diff < 48 * 3_600_000) return `${Math.round(diff / 3_600_000)}h ago`
+  return `${Math.round(diff / (24 * 3_600_000))}d ago`
+}
+
+function fmtIn(iso: string | null, now: number): string {
+  if (!iso || !now) return ''
+  const diff = new Date(iso).getTime() - now
+  if (diff <= 0) return 'due now'
+  if (diff < 3_600_000) return `~${Math.max(1, Math.round(diff / 60_000))}m`
+  return `~${Math.round(diff / 3_600_000)}h`
 }
 
 function placeholderRun(sym: string, mkt: 'crypto' | 'stock'): SignalRunDetail {
@@ -76,8 +150,14 @@ export function SignalDashboard() {
   const [history, setHistory] = useState<SignalRunRow[]>([])
   const [starting, setStarting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [auto, setAuto] = useState<AutoStatus | null>(null)
+  const [autoBusy, setAutoBusy] = useState(false)
+  const [clock, setClock] = useState(0) // client time for countdowns (avoids hydration drift)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const missesRef = useRef(0)
+  const seenRef = useRef<Set<string> | null>(null) // run ids already toasted/seen
+  const mountedAt = useRef(Date.now())
+  const { toast } = useToast()
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current)
@@ -93,6 +173,56 @@ export function SignalDashboard() {
       /* history is non-critical */
     }
   }, [])
+
+  const loadAuto = useCallback(async () => {
+    try {
+      const res = await fetch('/api/signals/auto', { cache: 'no-store' })
+      const d = await res.json()
+      if (d.status) setAuto(d.status)
+    } catch {
+      /* auto status is non-critical */
+    }
+  }, [])
+
+  const toggleAuto = useCallback(async () => {
+    try {
+      const res = await fetch('/api/signals/auto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !(auto?.enabled ?? true) }),
+      })
+      const d = await res.json()
+      if (d.status) setAuto(d.status)
+    } catch {
+      /* non-critical */
+    }
+  }, [auto?.enabled])
+
+  const runAutoNow = useCallback(async () => {
+    setAutoBusy(true)
+    try {
+      const res = await fetch('/api/signals/auto/tick', { method: 'POST' })
+      const d = await res.json()
+      if (d.ran) {
+        toast({
+          title: `🤖 Auto desk — ${d.symbol} ${d.direction ?? d.status}`,
+          description:
+            d.status === 'completed'
+              ? d.direction === 'NEUTRAL'
+                ? `No edge detected — the desk stands aside on ${d.symbol}.`
+                : `${d.direction} @ confidence ${d.confidence ?? '—'}% — the plan is in the signal view.`
+              : `The ${d.symbol} analysis failed — the desk will retry.`,
+          variant: d.status === 'completed' ? undefined : 'destructive',
+        })
+      }
+    } catch {
+      /* keep quiet — status poll will reflect reality */
+    } finally {
+      setAutoBusy(false)
+      void loadAuto()
+      void loadHistory()
+    }
+  }, [toast, loadAuto, loadHistory])
 
   const pollRun = useCallback(
     async (id: string) => {
@@ -139,11 +269,49 @@ export function SignalDashboard() {
       .catch(() => {
         /* history is non-critical */
       })
+    setClock(Date.now())
+    void loadAuto()
+    // live desk: refresh history + auto status every 60s, countdown clock every 30s
+    const h = setInterval(() => void loadHistory(), 60_000)
+    const a = setInterval(() => void loadAuto(), 60_000)
+    const c = setInterval(() => setClock(Date.now()), 30_000)
     return () => {
       ac.abort()
       stopPolling()
+      clearInterval(h)
+      clearInterval(a)
+      clearInterval(c)
     }
-  }, [stopPolling])
+  }, [stopPolling, loadAuto, loadHistory])
+
+  // toast new AUTO results that complete while the page is open
+  useEffect(() => {
+    if (seenRef.current === null) {
+      seenRef.current = new Set(history.map((r) => r.id)) // first paint — seed silently
+      return
+    }
+    const seen = seenRef.current
+    for (const r of history) {
+      if (seen.has(r.id)) continue
+      seen.add(r.id)
+      if (r.source !== 'auto' || new Date(r.createdAt).getTime() < mountedAt.current) continue
+      if (r.status === 'completed') {
+        toast({
+          title: `🤖 Auto signal — ${r.symbol} ${r.direction ?? ''}`,
+          description:
+            r.direction === 'NEUTRAL'
+              ? `No edge detected — the desk stands aside on ${r.symbol}.`
+              : `${r.direction} @ ${fmtPrice(r.priceAtRun)} · confidence ${r.confidence ?? '—'}% — the full plan is in this view.`,
+        })
+      } else if (r.status === 'failed') {
+        toast({
+          title: `🤖 Auto run failed — ${r.symbol}`,
+          description: 'The desk will retry on its next tick.',
+          variant: 'destructive',
+        })
+      }
+    }
+  }, [history, toast])
 
   const startRun = useCallback(
     async (sym: string, mkt: 'crypto' | 'stock') => {
@@ -216,12 +384,72 @@ export function SignalDashboard() {
   )
 
   const busy = run?.status === 'running'
+  const alerts = entryAlertViews(history)
+
+  const autoDesc = (() => {
+    if (!auto) return 'Connecting to the auto desk…'
+    if (auto.external)
+      return `On production the desk is driven by external cron: one watchlist symbol (${auto.symbols.join(', ')}) per tick.`
+    const parts = [
+      `Every ${Math.max(1, Math.round(auto.intervalMs / 60_000))} min it analyzes the stalest of ${auto.symbols.join(' / ')} and alerts you when price reaches an entry zone.`,
+    ]
+    const next = auto.enabled && auto.nextTickAt ? ` Next tick ${fmtIn(auto.nextTickAt, clock)}.` : ''
+    const last = auto.lastResult
+      ? ` Last: ${auto.lastResult.symbol} ${auto.lastResult.direction ?? auto.lastResult.status}${auto.lastResult.confidence ? ` ${auto.lastResult.confidence}%` : ''}${fmtAgo(auto.lastResult.at, clock) ? ` · ${fmtAgo(auto.lastResult.at, clock)}` : ''}.`
+      : ''
+    return parts.join('') + next + last
+  })()
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-5 sm:py-6">
       <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5 items-start">
-        {/* ── left column: form + history ── */}
+        {/* ── left column: auto desk + form + history ── */}
         <div className="space-y-5 order-2 lg:order-1">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5 space-y-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="h-8 w-8 rounded-xl bg-info/12 border border-info/30 text-info inline-flex items-center justify-center text-sm"
+                  aria-hidden="true"
+                >
+                  🤖
+                </span>
+                <h3 className="text-sm font-semibold tracking-tight text-tv-ink">Auto desk</h3>
+                <span
+                  className={`h-2 w-2 rounded-full ${auto?.enabled ? 'bg-bull' : 'bg-tv-muted2'}`}
+                  aria-hidden="true"
+                />
+                <span
+                  className="text-[11px] font-bold"
+                  style={{ color: auto?.enabled ? 'var(--bull)' : 'var(--tv-muted)' }}
+                >
+                  {auto?.enabled ? 'ON' : 'PAUSED'}
+                </span>
+              </div>
+              <button
+                onClick={() => void toggleAuto()}
+                suppressHydrationWarning
+                className="rounded-full px-3 py-1 text-[11px] font-semibold border border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+              >
+                {auto?.enabled ? 'Pause' : 'Resume'}
+              </button>
+            </div>
+            <p className="text-[11.5px] leading-relaxed text-tv-muted">{autoDesc}</p>
+            <button
+              onClick={() => void runAutoNow()}
+              disabled={autoBusy || auto?.running}
+              suppressHydrationWarning
+              className="w-full rounded-xl px-3 py-2 text-[12.5px] font-semibold border border-info/35 bg-info/10 text-info hover:bg-info/15 transition disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50"
+            >
+              {autoBusy || auto?.running ? 'Desk analyzing…' : 'Run a desk analysis now'}
+            </button>
+          </motion.div>
+
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -355,6 +583,11 @@ export function SignalDashboard() {
                       <span className="text-[13px] font-semibold text-tv-ink">
                         {h.symbol}
                         <span className="ml-1.5 text-[10.5px] font-medium text-tv-muted">{h.market === 'crypto' ? '₿' : '📈'}</span>
+                        {h.source === 'auto' && (
+                          <span className="ml-1 text-[10px]" title="Generated by the auto desk" suppressHydrationWarning>
+                            🤖
+                          </span>
+                        )}
                       </span>
                       {badge && (
                         <span
@@ -380,8 +613,58 @@ export function SignalDashboard() {
           </motion.div>
         </div>
 
-        {/* ── right column: run view ── */}
+        {/* ── right column: entry alerts + run view ── */}
         <div className="space-y-5 order-1 lg:order-2 min-w-0">
+          {(alerts.active.length > 0 || alerts.near.length > 0 || alerts.waiting > 0) && (
+            <div className="space-y-2" aria-label="Entry alerts">
+              {alerts.active.slice(0, 3).map(({ run: r }) => {
+                const isLong = r.direction === 'LONG'
+                const c = isLong
+                  ? { bg: 'var(--bull-soft)', fg: 'var(--bull)', bd: 'var(--bull-line)' }
+                  : { bg: 'var(--bear-soft)', fg: 'var(--bear)', bd: 'var(--bear-line)' }
+                return (
+                  <motion.button
+                    key={r.id}
+                    onClick={() => void openRun(r.id)}
+                    suppressHydrationWarning
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: 'easeOut' }}
+                    className="w-full text-left rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 shadow-sm hover:brightness-[1.03] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+                    style={{ background: c.bg, borderColor: c.bd }}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-bold truncate" style={{ color: c.fg }}>
+                        🎯 {r.symbol} {r.direction} — ENTRY ZONE ACTIVE
+                      </p>
+                      <p className="text-[11.5px] text-tv-muted mt-0.5 tabular-nums truncate">
+                        entry {fmtPrice(r.entryLow)} – {fmtPrice(r.entryHigh)} · stop {fmtPrice(r.stop)} · T1{' '}
+                        {fmtPrice(r.target1)} · conf {r.confidence ?? '—'}%
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold shrink-0" style={{ color: c.fg }}>
+                      View plan →
+                    </span>
+                  </motion.button>
+                )
+              })}
+              {(alerts.near.length > 0 || alerts.waiting > 0) && (
+                <div className="rounded-2xl border border-warn-line bg-warn-soft/40 px-4 py-2.5 space-y-0.5">
+                  {alerts.near.slice(0, 2).map(({ run: r, pctAway }) => (
+                    <p key={r.id} className="text-[12px] text-warn font-medium">
+                      ⏳ {r.symbol} {r.direction} — price {pctAway.toFixed(1)}% from the entry zone
+                    </p>
+                  ))}
+                  {alerts.waiting > 0 && (
+                    <p className="text-[11.5px] text-tv-muted">
+                      {alerts.waiting} open signal{alerts.waiting > 1 ? 's' : ''} waiting for entry — the desk re-analyzes on schedule.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {!run && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}

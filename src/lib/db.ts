@@ -20,11 +20,14 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 // signals API works without a manual migration step. Local dev (file:./db/…)
 // is untouched — the bootstrap only activates for /tmp paths.
 const DDL = [
+  // column added later than the table — keep old databases working
+  `ALTER TABLE "SignalRun" ADD COLUMN "source" TEXT`,
   `CREATE TABLE IF NOT EXISTS "SignalRun" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "symbol" TEXT NOT NULL,
     "market" TEXT NOT NULL,
     "displayName" TEXT,
+    "source" TEXT,
     "status" TEXT NOT NULL DEFAULT 'running',
     "stage" TEXT NOT NULL DEFAULT 'queued',
     "progress" INTEGER NOT NULL DEFAULT 0,

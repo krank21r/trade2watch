@@ -14,6 +14,7 @@ model SignalRun {
   symbol      String // BTC, ETH, AAPL, TSLA...
   market      String // 'crypto' | 'stock'
   displayName String? // "Bitcoin", "Apple Inc."
+  source      String? // 'auto' (scheduled desk) | 'manual' (user click)
   status      String    @default("running") // running | completed | failed
   stage       String    @default("queued") // queued | data | analysts | debate | plan | risk | decision | done
   progress    Int       @default(0) // 0-100

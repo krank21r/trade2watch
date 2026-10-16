@@ -81,6 +81,7 @@ export interface SignalRunRow {
   riskReward: string | null
   invalidation: string | null
   planNote: string | null
+  source?: string | null // 'auto' (scheduled desk) | 'manual' (user click)
   outcome?: string | null
   createdAt: string
   completedAt: string | null

@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     }
 
     const run = await db.signalRun.create({
-      data: { symbol: rawSymbol, market, status: 'running', stage: 'queued', progress: 2 },
+      data: { symbol: rawSymbol, market, status: 'running', stage: 'queued', progress: 2, source: 'manual' },
     })
 
     // Await the full pipeline — it catches its own errors and marks the row

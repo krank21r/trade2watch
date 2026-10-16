@@ -85,6 +85,7 @@ export async function GET(req: NextRequest) {
         target2: true,
         riskReward: true,
         regime: true,
+        source: true,
         outcome: true,
         outcomeCheckedAt: true,
         outcomePrice: true,
