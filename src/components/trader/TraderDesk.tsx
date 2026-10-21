@@ -420,8 +420,8 @@ export function TraderDesk() {
 
       {/* ── stage 1: targets ─────────────────────────────────────────────── */}
       {stage === 1 && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl border border-tv-line bg-tv-panel p-4">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+          <section className="min-w-0 rounded-2xl border border-tv-line bg-tv-panel p-4">
             <h2 className="mb-1 text-[13px] font-extrabold text-tv-ink">Crypto screener</h2>
             <p className="mb-3 text-[11px] leading-snug text-tv-muted">
               Screen ~32 Binance assets against explicit rules; every pass and fail is explained; passers are
@@ -429,7 +429,7 @@ export function TraderDesk() {
             </p>
             <ScreenerPanel onUseWeights={useWeights} />
           </section>
-          <section className="rounded-2xl border border-tv-line bg-tv-panel p-4">
+          <section className="min-w-0 rounded-2xl border border-tv-line bg-tv-panel p-4">
             <h2 className="mb-1 text-[13px] font-extrabold text-tv-ink">Copy an investor (stocks)</h2>
             <p className="mb-3 text-[11px] leading-snug text-tv-muted">
               Reads a fund's latest 13F-HR from SEC EDGAR, rebuilds the portfolio as weights and diffs the

@@ -154,16 +154,19 @@ export function ScreenerPanel({
       </details>
 
       {res && (
-        <div className="max-h-72 overflow-y-auto rounded-lg border border-tv-line">
-          <table className="w-full text-[11.5px]">
+        <div className="max-h-72 min-w-0 overflow-auto rounded-lg border border-tv-line">
+          <table className="w-full min-w-[420px] text-[11.5px]">
             <thead className="sticky top-0 bg-tv-panel2 text-tv-muted">
               <tr className="text-left">
                 <th className="px-2.5 py-1.5 font-semibold">#</th>
                 <th className="px-2 py-1.5 font-semibold">Asset</th>
                 <th className="px-2 py-1.5 text-right font-semibold">Price</th>
-                <th className="px-2 py-1.5 text-right font-semibold">7d</th>
-                <th className="px-2 py-1.5 text-right font-semibold">30d</th>
-                <th className="px-2 py-1.5 text-right font-semibold">Vol σ</th>
+                <th className="px-2 py-1.5 text-right font-semibold">Entry</th>
+                <th className="px-2 py-1.5 text-right font-semibold">Stop</th>
+                <th className="px-2 py-1.5 text-right font-semibold">T1 · T2</th>
+                <th className="hidden px-2 py-1.5 text-right font-semibold 2xl:table-cell">7d</th>
+                <th className="hidden px-2 py-1.5 text-right font-semibold 2xl:table-cell">30d</th>
+                <th className="hidden px-2 py-1.5 text-right font-semibold 2xl:table-cell">Vol σ</th>
                 <th className="px-2 py-1.5 text-right font-semibold">Score</th>
               </tr>
             </thead>
@@ -177,16 +180,25 @@ export function ScreenerPanel({
                   <td className="px-2.5 py-1.5 text-tv-muted">{i + 1}</td>
                   <td className="px-2 py-1.5">
                     <span className="font-bold text-tv-ink">{r.symbol}</span>
-                    <span className="ml-1.5 hidden text-tv-muted sm:inline">{r.name}</span>
+                    <span className="ml-1.5 hidden text-tv-muted 2xl:inline">{r.name}</span>
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{usd(r.metrics.price)}</td>
-                  <td className={`px-2 py-1.5 text-right tabular-nums ${r.metrics.momentum7d >= 0 ? 'text-bull' : 'text-bear'}`}>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-tv-ink">
+                    {r.plan ? `${usd(r.plan.entryLow)}–${usd(r.plan.entryHigh)}` : '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-bear">
+                    {r.plan ? usd(r.plan.stop) : '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-bull">
+                    {r.plan ? `${usd(r.plan.target1)} · ${usd(r.plan.target2)}` : '—'}
+                  </td>
+                  <td className={`hidden px-2 py-1.5 text-right tabular-nums 2xl:table-cell ${r.metrics.momentum7d >= 0 ? 'text-bull' : 'text-bear'}`}>
                     {pctS(r.metrics.momentum7d, 1)}
                   </td>
-                  <td className={`px-2 py-1.5 text-right tabular-nums ${r.metrics.momentum30d >= 0 ? 'text-bull' : 'text-bear'}`}>
+                  <td className={`hidden px-2 py-1.5 text-right tabular-nums 2xl:table-cell ${r.metrics.momentum30d >= 0 ? 'text-bull' : 'text-bear'}`}>
                     {pctS(r.metrics.momentum30d, 1)}
                   </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-tv-muted">{r.metrics.volatility30d.toFixed(1)}</td>
+                  <td className="hidden px-2 py-1.5 text-right tabular-nums text-tv-muted 2xl:table-cell">{r.metrics.volatility30d.toFixed(1)}</td>
                   <td className="px-2 py-1.5 text-right font-bold tabular-nums text-bull-ink">
                     {r.score !== null ? r.score.toFixed(2) : '—'}
                   </td>
@@ -194,7 +206,7 @@ export function ScreenerPanel({
               ))}
               {!res.result.rows.length && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-4 text-center text-tv-muted">
+                  <td colSpan={10} className="px-3 py-4 text-center text-tv-muted">
                     Nothing passed these rules — loosen them and run again.
                   </td>
                 </tr>
@@ -202,6 +214,13 @@ export function ScreenerPanel({
             </tbody>
           </table>
         </div>
+      )}
+
+      {res && res.result.rows.length > 0 && (
+        <p className="text-[10.5px] leading-relaxed text-tv-muted2">
+          Entry zone · stop loss · T1/T2 use the same level math as the desk tickets (4h). The final
+          levels are fixed on each ticket in stage 3 — the desk never chases above the entry zone.
+        </p>
       )}
 
       {res && res.weights.length > 0 && (

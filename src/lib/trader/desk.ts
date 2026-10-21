@@ -117,7 +117,7 @@ async function livePrice(symbol: string, market: 'crypto' | 'stock'): Promise<nu
  * when the market data cannot support a plan — the ticket then falls back to
  * today's behavior (fill at the live price on approval).
  */
-async function planLevels(symbol: string, market: 'crypto' | 'stock'): Promise<TicketPlan | null> {
+export async function planLevels(symbol: string, market: 'crypto' | 'stock'): Promise<TicketPlan | null> {
   try {
     const timeframe = market === 'crypto' ? '4h' : '1d'
     const [ticker, candles] = await Promise.all([getTicker(symbol, market), getCandles(symbol, market, timeframe)])

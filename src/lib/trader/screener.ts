@@ -23,6 +23,7 @@
  */
 
 import { fetchCryptoCandles } from '@/lib/market/providers'
+import type { TicketPlan } from './desk'
 
 export interface ScreenerRule {
   metric: string
@@ -67,6 +68,12 @@ export interface ScreenRow {
   fails: string[]
   passes: string[]
   metrics: AssetMetrics
+  /**
+   * Desk plan preview — entry zone / stop / T1 / T2 from the same level math
+   * the tickets carry. Attached to passing rows by the screen API route;
+   * null when the market data is too thin for a plan.
+   */
+  plan?: TicketPlan | null
 }
 
 const UNIVERSE: Array<[string, string]> = [

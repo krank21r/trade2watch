@@ -140,6 +140,8 @@ export interface ScreenRowView {
     volumeRatio: number
     drawdownFrom30dHigh: number
   }
+  /** Entry zone / stop / T1 / T2 preview (same math as the tickets) — null when data is thin. */
+  plan: TicketPlanView | null
 }
 
 export interface ScreenResponse {

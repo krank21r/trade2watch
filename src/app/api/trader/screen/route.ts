@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SESSION_COOKIE, verifyToken } from '@/lib/auth'
+import { planLevels } from '@/lib/trader/desk'
 import {
   PRESETS,
   ScreenError,
@@ -58,6 +59,14 @@ export async function POST(req: NextRequest) {
   try {
     validateSpec(spec)
     const result = await runScreen(spec)
+    // Entry zone / stop / T1 / T2 previews for the ranked passers — the same
+    // planLevels() the tickets use, so stage 1 already shows a full trade plan
+    // (a preview is never a blocker: null simply renders as "—").
+    await Promise.all(
+      result.rows.map(async (row) => {
+        row.plan = await planLevels(row.symbol, 'crypto')
+      }),
+    )
     return NextResponse.json({
       ok: true,
       result,
