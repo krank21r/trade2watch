@@ -4,8 +4,11 @@ import { planLevels } from '@/lib/trader/desk'
 import {
   PRESETS,
   ScreenError,
-  runScreen,
+  UNIVERSE_SIZE,
+  buildFeed,
   validateSpec,
+  type Market,
+  type ScreenRow,
   type ScreenerSpec,
 } from '@/lib/trader/screener'
 
@@ -22,27 +25,34 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     presets: PRESETS.map((p) => ({ key: p.key, label: p.label, spec: p.spec })),
+    universe: UNIVERSE_SIZE,
     metrics: [
-      'momentum24h', 'momentum7d', 'momentum30d', 'volatility30d',
-      'volumeRatio', 'drawdownFrom30dHigh', 'price', 'change24hPct', 'quoteVolume24h',
+      'momentum24h', 'momentum7d', 'momentum30d', 'absMomentum7d', 'absMomentum30d',
+      'volatility30d', 'volumeRatio', 'drawdownFrom30dHigh', 'price', 'change24hPct', 'quoteVolume24h',
     ],
   })
 }
 
 /**
- * POST /api/trader/screen — run the crypto screen.
- * Body: { spec } (the repo's rules JSON: {rules, rank, missing, top}) or
- * { preset: "momentum" | "breakout" | "calm" }.
+ * POST /api/trader/screen — run the screen and return the signal feed.
+ * Body: { market?: "crypto" | "stock" | "all", spec } (the repo's rules JSON:
+ * {rules, rank, missing, top}) or { preset: "best" | "momentum" | "breakout" | "calm" }.
+ *
+ * Every feed row carries BOTH a longPlan and a shortPlan (entry zone, stop,
+ * T1, T2, R:R) — the pinned crypto majors (BTC, ETH, SOL, XRP) are always
+ * included for the crypto side.
  */
 export async function POST(req: NextRequest) {
   const uid = await userId(req)
   if (!uid) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  let body: { spec?: unknown; preset?: unknown }
+  let body: { market?: unknown; spec?: unknown; preset?: unknown }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ ok: false, error: 'invalid request body' }, { status: 400 })
   }
+
+  const market: Market | 'all' = body.market === 'crypto' || body.market === 'stock' ? body.market : 'all'
 
   let spec: ScreenerSpec
   if (typeof body.preset === 'string') {
@@ -57,19 +67,52 @@ export async function POST(req: NextRequest) {
 
   try {
     validateSpec(spec)
-    const result = await runScreen(spec)
-    // Entry zone / stop / T1 / T2 previews for the ranked passers — the same
-    // planLevels() the tickets use, so stage 1 already shows a full trade plan
-    // (a preview is never a blocker: null simply renders as "—").
-    await Promise.all(
-      result.rows.map(async (row) => {
-        row.plan = await planLevels(row.symbol, 'crypto')
+    const markets: Market[] = market === 'all' ? ['crypto', 'stock'] : [market]
+
+    // one market failing (e.g. Yahoo throttling) must not sink the other
+    const feeds = await Promise.all(
+      markets.map(async (m) => {
+        try {
+          return await buildFeed(spec, m)
+        } catch (e) {
+          if (e instanceof ScreenError) throw e
+          console.error(`[api/trader/screen] ${m} scan failed:`, e)
+          return null
+        }
       }),
     )
+    if (feeds.every((f) => f === null)) {
+      return NextResponse.json({ ok: false, error: 'the screen failed to run — try again' }, { status: 502 })
+    }
+    const rows: ScreenRow[] = feeds.flatMap((f) => f?.rows ?? [])
+
+    // Entry zone / stop / T1 / T2 previews for BOTH directions on every feed
+    // row — the same planLevels() the journal freezes on take (a preview is
+    // never a blocker: null simply renders as "—" and that side is untakeable).
+    await Promise.all(
+      rows.flatMap((row) => [
+        planLevels(row.symbol, row.market, 'LONG').then((p) => {
+          row.longPlan = p
+        }),
+        planLevels(row.symbol, row.market, 'SHORT').then((p) => {
+          row.shortPlan = p
+        }),
+      ]),
+    )
+
+    const scanned = feeds.reduce((s, f) => s + (f?.scanned ?? 0), 0)
     return NextResponse.json({
       ok: true,
-      result,
-      note: 'A screen is a filter, not a recommendation — signals come with entry, stop and targets; taking one freezes the plan into your trade tracker.',
+      result: {
+        name: spec.name ?? 'screen',
+        market,
+        scanned,
+        passed: rows.length,
+        asOf: new Date().toISOString(),
+        rows,
+        failedRows: [],
+      },
+      note: 'A screen is a filter, not a recommendation — every signal comes with a long AND a short plan (entry, stop, targets); taking one freezes the plan into your trade tracker.',
     })
   } catch (e) {
     if (e instanceof ScreenError) return NextResponse.json({ ok: false, error: e.message }, { status: 400 })

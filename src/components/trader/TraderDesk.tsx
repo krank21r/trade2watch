@@ -202,7 +202,8 @@ export function TraderDesk() {
         <div>
           <h1 className="text-lg font-extrabold tracking-tight text-tv-ink">Trader Desk</h1>
           <p className="text-[11.5px] text-tv-muted">
-            Screener signals with entry, stop and targets → take the trade → the tracker updates the status for you.
+            Long & short signals on crypto majors and top US stocks → take the trade → the tracker updates the status
+            for you.
           </p>
         </div>
         {openTrades.length > 0 && (
@@ -216,7 +217,8 @@ export function TraderDesk() {
       <section aria-label="Your taken trades" className="rounded-2xl border border-tv-line bg-tv-panel p-4">
         <h2 className="text-[13px] font-extrabold text-tv-ink">Your taken trades</h2>
         <p className="mb-3 text-[11px] text-tv-muted">
-          Plan frozen at take time · tracked against real 4h candles every 45s · TP1 banks half & moves the stop to entry.
+          Plan frozen at take time · tracked against real candles (4h crypto / 1d stocks) every 45s · TP1 banks half &
+          moves the stop to entry.
         </p>
 
         {openTrades.length === 0 && closedTrades.length === 0 ? (
@@ -271,12 +273,13 @@ export function TraderDesk() {
         )}
       </section>
 
-      {/* ── signals — crypto screener ───────────────────────────────────────── */}
-      <section aria-label="Signals" className="rounded-2xl border border-tv-line bg-tv-panel p-4">
-        <h2 className="mb-1 text-[13px] font-extrabold text-tv-ink">Signals — crypto screener</h2>
+      {/* ── signals — crypto + US stock screener ───────────────────────────── */}
+      <section aria-label="Signals" className="min-w-0 rounded-2xl border border-tv-line bg-tv-panel p-4">
+        <h2 className="mb-1 text-[13px] font-extrabold text-tv-ink">Signals — crypto & US stocks</h2>
         <p className="mb-3 text-[11px] leading-snug text-tv-muted">
-          ~32 Binance assets against explicit rules (every pass/fail explained); passers arrive as signals with an entry
-          zone, stop loss and two targets. A screen is a filter, not a recommendation.
+          Binance majors (BTC, ETH, SOL, XRP always pinned) + top US large caps against explicit rules — every asset
+          arrives as BOTH a long and a short setup with an entry zone, stop loss and two targets. A screen is a filter,
+          not a recommendation.
         </p>
         <ScreenerPanel onTaken={() => void refreshTrades()} />
       </section>
@@ -302,8 +305,12 @@ function DeskOpenCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <h3 className="text-[13.5px] font-bold tracking-tight text-tv-ink">{t.pair}</h3>
-          <span className="rounded-full border border-bull/40 bg-bull/10 px-1.5 py-0.5 text-[9.5px] font-bold uppercase text-bull">
-            long
+          <span
+            className={`rounded-full border px-1.5 py-0.5 text-[9.5px] font-bold uppercase ${
+              t.side === 'long' ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'
+            }`}
+          >
+            {t.side}
           </span>
           {afterTp1 ? (
             <span className="rounded-full border border-bull/40 bg-bull/10 px-1.5 py-0.5 text-[9.5px] font-bold text-bull">

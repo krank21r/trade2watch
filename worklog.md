@@ -1075,3 +1075,24 @@ Work Log:
 
 Stage Summary:
 - Trader Desk is now exactly: signals (entry/stop/T1/T2) → "I took this trade" (editable fill) → automatic status tracking (OPEN → TP1 → TP2/SL, live price + R, manual close, history). All budget/ticket/portfolio machinery deleted from UI, API, schema. Status engine shared with the Setups tab journal — one source of truth per account. Needs Vercel Redeploy to go live.
+
+---
+Task ID: 49
+Agent: Z.ai Code (main)
+Task: Signals for BTC/ETH/SOL/XRP + US stocks, with BOTH long and short setups for every asset
+
+Work Log:
+- Extended the screener to two markets: added a curated US large-cap universe (AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA, AVGO, AMD, NFLX, ORCL, CRM, PLTR, COIN, JPM, V, BAC, WMT, COST, MCD, KO, UNH, LLY, XOM) alongside the 33 Binance crypto majors; metricsFor() is market-aware (Yahoo daily candles sliced to the same 31-day window) so one rules JSON drives both markets
+- Added absMomentum7d/absMomentum30d metrics so the new "Best signals" preset (rules: [], rank by |momentum| + volume + low vol) surfaces the strongest movers in EITHER direction; also fixed a pre-existing bug where momentum24h was never computed (Breakout preset failed everything)
+- Pinned majors: BTC, ETH, SOL, XRP are ALWAYS in the crypto feed — ranked pins sort first, rule-excluded pins are appended with pinned:true and an honest fail list (verified: Breakout preset → 0 passers, 4 pinned signals still delivered)
+- buildFeed(spec, market) assembles the feed (top 12 ranked + pins); POST /api/trader/screen takes {market: all|crypto|stock, spec|preset}, runs per-market (one market failing never sinks the other), merges, and attaches BOTH longPlan and shortPlan to every row via planLevels(symbol, market, LONG|SHORT)
+- desk.ts planLevels() gained a side param — SHORT plans mirror LONG (entry zone above price, stop above, targets below); rounding now keeps 3 decimals for $1-$10 and 4 significant digits below $1 so XRP zones don't collapse and PEPE never rounds to $0
+- ScreenerPanel rebuilt: market chips (All/Crypto/US Stocks), Best/Momentum/Breakout/Calm presets, and the table now flattens each asset into up to 2 signal rows with a Dir badge (LONG green / SHORT red), CRYPTO/US tag, per-direction Take + inline confirm (bear-themed for shorts); deskKey/builtDeskTrade are side+market aware (stocks use bare ticker pair, crypto SYMBOL/USD)
+- TraderDesk: open-trade card shows the real side badge; copy updated to "crypto & US stocks"; usd() formatter handles every price band ($84k BTC → $1.387 XRP → $0.00000464 PEPE)
+- Verified: lint clean; API matrix (all/best → 57 scanned, 24 assets, 48 signals; crypto/breakout → pins only; stock/momentum works); agent-browser E2E — ran feed, took ETH LONG and NFLX SHORT, both tracked live with correct side badges/R multiples, closed+deleted both test trades to restore the journal; 390px mobile table scrolls internally; zero console/page errors
+- Screenshots: /tmp/desk-dual-signals.png, /tmp/desk-mobile-dual.png
+
+Stage Summary:
+- Signal feed now covers crypto majors (BTC/ETH/SOL/XRP always present) + 24 best US stocks, every asset with BOTH long and short trade plans (entry zone · stop · T1 · T2 · R:R)
+- Take flow unchanged: "I took this trade" freezes the chosen direction's plan into the shared journal; tracker auto-updates status (TP1 → stop to entry, TP2 → full win, SL → stopped out)
+- New Best signals preset is the default one-click feed across both markets

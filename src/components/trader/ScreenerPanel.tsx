@@ -1,11 +1,13 @@
 'use client'
 
 /**
- * Stage "signals" (crypto): the trader-screener — pick a preset or edit the
- * rules JSON, run the screen, and every passer arrives as a signal with an
- * entry zone, stop loss and two targets. "I took this trade" freezes the plan
- * into the shared trade journal (src/lib/mytrades.ts), which then tracks the
- * position against real candles and updates the status automatically.
+ * The desk signal feed — crypto + US stocks. Pick a market scope and a preset
+ * (or edit the rules JSON), run it, and every asset arrives as TWO signals —
+ * a LONG and a SHORT setup, each with an entry zone, stop loss and two
+ * targets. The pinned crypto majors (BTC, ETH, SOL, XRP) are always included.
+ * "I took this trade" freezes the chosen direction's plan into the shared
+ * trade journal (src/lib/mytrades.ts), which then tracks the position
+ * against real candles and updates the status automatically.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -13,9 +15,26 @@ import { Loader2, Play, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { fetchMyTrades, saveMyTrades, type MyTrade } from '@/lib/mytrades'
-import { usd, jfetch, pctS, type ScreenResponse, type ScreenRowView } from './types'
+import { usd, jfetch, type ScreenResponse, type ScreenRowView, type TicketPlanView } from './types'
+
+type Side = 'long' | 'short'
+type MarketScope = 'all' | 'crypto' | 'stock'
 
 const PRESET_JSON: Record<string, string> = {
+  best: JSON.stringify(
+    {
+      rules: [],
+      rank: [
+        { metric: 'absMomentum7d', order: 'desc', weight: 2 },
+        { metric: 'absMomentum30d', order: 'desc', weight: 1.5 },
+        { metric: 'volumeRatio', order: 'desc', weight: 1 },
+        { metric: 'volatility30d', order: 'asc', weight: 0.75 },
+      ],
+      top: 12,
+    },
+    null,
+    2,
+  ),
   momentum: JSON.stringify(
     {
       rules: [
@@ -29,7 +48,7 @@ const PRESET_JSON: Record<string, string> = {
         { metric: 'volumeRatio', order: 'desc', weight: 1 },
         { metric: 'volatility30d', order: 'asc', weight: 1 },
       ],
-      top: 8,
+      top: 12,
     },
     null,
     2,
@@ -45,7 +64,7 @@ const PRESET_JSON: Record<string, string> = {
         { metric: 'volumeRatio', order: 'desc', weight: 1.5 },
         { metric: 'momentum7d', order: 'desc', weight: 1 },
       ],
-      top: 8,
+      top: 12,
     },
     null,
     2,
@@ -61,29 +80,48 @@ const PRESET_JSON: Record<string, string> = {
         { metric: 'momentum30d', order: 'desc', weight: 1.5 },
         { metric: 'momentum7d', order: 'desc', weight: 1 },
       ],
-      top: 8,
+      top: 12,
     },
     null,
     2,
   ),
 }
 
-/** The desk key namespace inside the shared trade journal. */
-export const deskKey = (symbol: string): string => `DESK:${symbol}:long`
+const PRESET_LABELS: Array<[string, string]> = [
+  ['best', 'Best signals'],
+  ['momentum', 'Momentum'],
+  ['breakout', 'Breakout watch'],
+  ['calm', 'Calm trends'],
+]
 
-export function buildDeskTrade(r: ScreenRowView, entryFill: number, screenName: string, now = Date.now()): MyTrade {
-  const plan = r.plan!
+const MARKET_LABELS: Array<[MarketScope, string]> = [
+  ['all', 'All markets'],
+  ['crypto', 'Crypto'],
+  ['stock', 'US Stocks'],
+]
+
+/** The desk key namespace inside the shared trade journal — one slot per symbol+side. */
+export const deskKey = (symbol: string, side: Side): string => `DESK:${symbol}:${side}`
+
+export function buildDeskTrade(
+  r: ScreenRowView,
+  side: Side,
+  entryFill: number,
+  screenName: string,
+  now = Date.now(),
+): MyTrade {
+  const plan = (side === 'long' ? r.longPlan : r.shortPlan)!
   return {
-    id: `${deskKey(r.symbol)}:${now}`,
-    key: deskKey(r.symbol),
+    id: `${deskKey(r.symbol, side)}:${now}`,
+    key: deskKey(r.symbol, side),
     symbol: r.symbol,
-    market: 'crypto',
+    market: r.market,
     displayName: r.name,
-    pair: `${r.symbol}/USD`,
+    pair: r.market === 'crypto' ? `${r.symbol}/USD` : r.symbol,
     currency: 'USD',
-    side: 'long',
+    side,
     tag: 'DESK',
-    strategy: `Desk signal — ${screenName}`,
+    strategy: `Desk signal — ${screenName} · ${side === 'long' ? 'Long' : 'Short'}`,
     entryLow: plan.entryLow,
     entryHigh: plan.entryHigh,
     entryFill,
@@ -106,21 +144,28 @@ export function buildDeskTrade(r: ScreenRowView, entryFill: number, screenName: 
   }
 }
 
+interface Signal {
+  r: ScreenRowView
+  side: Side
+  plan: TicketPlanView
+}
+
 export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; disabled?: boolean }) {
   const { toast } = useToast()
-  const [preset, setPreset] = useState<string>('momentum')
-  const [specText, setSpecText] = useState<string>(PRESET_JSON.momentum)
+  const [market, setMarket] = useState<MarketScope>('all')
+  const [preset, setPreset] = useState<string>('best')
+  const [specText, setSpecText] = useState<string>(PRESET_JSON.best)
   const [res, setRes] = useState<ScreenResponse | null>(null)
   const [busy, setBusy] = useState(false)
-  const [taking, setTaking] = useState<string | null>(null)
+  const [taking, setTaking] = useState<string | null>(null) // `${symbol}:${side}`
   const [entryInput, setEntryInput] = useState<string>('')
   const [saving, setSaving] = useState(false)
-  const openDeskSymbols = useRef<Set<string>>(new Set())
+  const openDeskKeys = useRef<Set<string>>(new Set())
 
   const refreshJournal = async () => {
     try {
       const list = await fetchMyTrades()
-      openDeskSymbols.current = new Set(list.filter((t) => t.tag === 'DESK' && t.status === 'OPEN').map((t) => t.key))
+      openDeskKeys.current = new Set(list.filter((t) => t.tag === 'DESK' && t.status === 'OPEN').map((t) => t.key))
     } catch {
       /* journal unreachable — take buttons stay enabled; the confirm re-checks */
     }
@@ -142,29 +187,30 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
       const data = await jfetch<ScreenResponse>('/api/trader/screen', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spec }),
+        body: JSON.stringify({ market, spec }),
       })
       setRes(data)
+      const signals = data.result.rows.reduce((n, r) => n + (r.longPlan ? 1 : 0) + (r.shortPlan ? 1 : 0), 0)
       toast({
-        title: `${data.result.passed} of ${data.result.scanned} assets pass “${data.result.name}”`,
-        description: 'Signals carry entry, stop and targets — take one to start tracking it.',
+        title: `${data.result.passed} assets · ${signals} signals (${data.result.name})`,
+        description: 'Every asset carries a long AND a short setup — take either one to start tracking it.',
       })
     } catch (e) {
-      const msg = JSON.parse(specText) && e instanceof SyntaxError ? 'Rules are not valid JSON.' : (e as Error).message
+      const msg = e instanceof SyntaxError ? 'Rules are not valid JSON.' : (e as Error).message
       toast({ title: 'Screen failed', description: msg, variant: 'destructive' })
     } finally {
       setBusy(false)
     }
   }
 
-  const startTake = (r: ScreenRowView) => {
-    if (!r.plan) return
-    setTaking(r.symbol)
+  const startTake = (r: ScreenRowView, side: Side) => {
+    if (!(side === 'long' ? r.longPlan : r.shortPlan)) return
+    setTaking(`${r.symbol}:${side}`)
     setEntryInput(String(r.metrics.price))
   }
 
-  const confirmTake = async (r: ScreenRowView) => {
-    if (!r.plan) return
+  const confirmTake = async (r: ScreenRowView, side: Side) => {
+    if (!(side === 'long' ? r.longPlan : r.shortPlan)) return
     const entryFill = Number(entryInput)
     if (!Number.isFinite(entryFill) || entryFill <= 0) {
       toast({ title: 'Entry price looks wrong', description: 'Enter the price you actually filled at.', variant: 'destructive' })
@@ -173,20 +219,20 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
     setSaving(true)
     try {
       const list = await fetchMyTrades()
-      if (list.some((t) => t.key === deskKey(r.symbol) && t.status === 'OPEN')) {
-        toast({ title: `Already tracking ${r.symbol}`, description: 'Close the open desk trade first.' })
+      if (list.some((t) => t.key === deskKey(r.symbol, side) && t.status === 'OPEN')) {
+        toast({ title: `Already tracking ${r.symbol} ${side}`, description: 'Close the open desk trade first.' })
         setTaking(null)
         return
       }
-      const t = buildDeskTrade(r, entryFill, res?.result.name ?? 'screen')
+      const t = buildDeskTrade(r, side, entryFill, res?.result.name ?? 'screen')
       const next = [t, ...list]
       saveMyTrades(next)
       window.dispatchEvent(new Event('t2w:trades-changed'))
-      openDeskSymbols.current.add(t.key)
+      openDeskKeys.current.add(t.key)
       setTaking(null)
       onTaken?.()
       toast({
-        title: `🎯 Trade taken — ${t.pair} LONG`,
+        title: `🎯 Trade taken — ${t.pair} ${side.toUpperCase()}`,
         description: `Plan frozen · fill ${usd(t.entryFill)} · stop ${usd(t.stop)} · T1 ${usd(t.t1)} · T2 ${usd(t.t2)} — status updates automatically.`,
       })
     } catch {
@@ -196,21 +242,49 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
     }
   }
 
+  // flatten: every asset yields up to two signals (long + short)
+  const signals: Signal[] = []
+  if (res) {
+    for (const r of res.result.rows) {
+      if (r.longPlan) signals.push({ r, side: 'long', plan: r.longPlan })
+      if (r.shortPlan) signals.push({ r, side: 'short', plan: r.shortPlan })
+    }
+  }
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
+      {/* market scope */}
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Market scope">
+        {MARKET_LABELS.map(([k, label]) => (
+          <button
+            key={k}
+            suppressHydrationWarning
+            onClick={() => setMarket(k)}
+            className={`btn rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold ${
+              market === k
+                ? 'border-info-line bg-info-soft text-info'
+                : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* presets + run */}
       <div className="flex flex-wrap items-center gap-2">
-        {(['momentum', 'breakout', 'calm'] as const).map((k) => (
+        {PRESET_LABELS.map(([k, label]) => (
           <button
             key={k}
             suppressHydrationWarning
             onClick={() => pickPreset(k)}
-            className={`btn rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold capitalize ${
+            className={`btn rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold ${
               preset === k
                 ? 'border-bull-line bg-bull-soft text-bull-ink'
                 : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink'
             }`}
           >
-            {k === 'calm' ? 'Calm trends' : k}
+            {label}
           </button>
         ))}
         <Button
@@ -220,7 +294,7 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
           className="ml-auto h-8 gap-1.5 rounded-lg bg-bull px-3 text-[12px] font-bold text-white hover:bg-bull-deep"
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-          {busy ? 'Screening…' : 'Run screen'}
+          {busy ? 'Screening…' : 'Get signals'}
         </Button>
       </div>
 
@@ -236,18 +310,20 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
           className="mt-2 w-full rounded-lg border border-tv-line bg-tv-panel2 p-2.5 font-mono text-[11px] leading-relaxed text-tv-ink outline-none focus:border-bull-line"
         />
         <p className="mt-1 text-[10.5px] text-tv-muted2">
-          Metrics: momentum24h · momentum7d · momentum30d · volatility30d (daily-return σ) · volumeRatio · drawdownFrom30dHigh
+          Metrics: momentum24h · momentum7d · momentum30d · absMomentum7d · absMomentum30d · volatility30d (daily-return
+          σ) · volumeRatio · drawdownFrom30dHigh — same vocabulary for crypto and US stocks
         </p>
       </details>
 
       {res && (
-        <div className="max-h-80 min-w-0 overflow-auto rounded-lg border border-tv-line">
-          <table className="w-full min-w-[520px] text-[11.5px]">
+        <div className="max-h-96 min-w-0 overflow-auto rounded-lg border border-tv-line">
+          <table className="w-full min-w-[560px] text-[11.5px]">
             <thead className="sticky top-0 bg-tv-panel2 text-tv-muted">
               <tr className="text-left">
                 <th className="px-2.5 py-1.5 font-semibold">#</th>
                 <th className="px-2 py-1.5 font-semibold">Asset</th>
                 <th className="px-2 py-1.5 text-right font-semibold">Price</th>
+                <th className="px-2 py-1.5 font-semibold">Dir</th>
                 <th className="px-2 py-1.5 text-right font-semibold">Entry</th>
                 <th className="px-2 py-1.5 text-right font-semibold">Stop</th>
                 <th className="px-2 py-1.5 text-right font-semibold">T1 · T2</th>
@@ -256,28 +332,25 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
               </tr>
             </thead>
             <tbody>
-              {res.result.rows.map((r, i) => {
-                const p = r.plan
-                const tracked = openDeskSymbols.current.has(deskKey(r.symbol))
-                return (
-                  <TakeRow
-                    key={r.symbol}
-                    r={r}
-                    index={i}
-                    taking={taking === r.symbol}
-                    entryInput={entryInput}
-                    setEntryInput={setEntryInput}
-                    saving={saving}
-                    tracked={tracked}
-                    onStart={() => startTake(r)}
-                    onConfirm={() => void confirmTake(r)}
-                    onCancel={() => setTaking(null)}
-                  />
-                )
-              })}
-              {!res.result.rows.length && (
+              {signals.map((s, i) => (
+                <TakeRow
+                  key={`${s.r.symbol}:${s.side}`}
+                  r={s.r}
+                  side={s.side}
+                  index={i + 1}
+                  taking={taking === `${s.r.symbol}:${s.side}`}
+                  entryInput={entryInput}
+                  setEntryInput={setEntryInput}
+                  saving={saving}
+                  tracked={openDeskKeys.current.has(deskKey(s.r.symbol, s.side))}
+                  onStart={() => startTake(s.r, s.side)}
+                  onConfirm={() => void confirmTake(s.r, s.side)}
+                  onCancel={() => setTaking(null)}
+                />
+              ))}
+              {!signals.length && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-4 text-center text-tv-muted">
+                  <td colSpan={9} className="px-3 py-4 text-center text-tv-muted">
                     Nothing passed these rules — loosen them and run again.
                   </td>
                 </tr>
@@ -287,16 +360,18 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
         </div>
       )}
 
-      {res && res.result.rows.length > 0 && (
+      {res && signals.length > 0 && (
         <p className="text-[10.5px] leading-relaxed text-tv-muted2">
-          Levels come from the same technical math as the AI Signals desk (4h). Taking a signal freezes the plan —
-          after TP1 the tracker moves the stop to entry; TP2 closes the trade as a full win; the stop closes it as a loss.
+          Every asset carries a LONG and a SHORT plan built from the same technical math as the AI Signals desk (4h
+          crypto · 1d stocks). Taking a signal freezes the plan — after TP1 the tracker moves the stop to entry; TP2
+          closes the trade as a full win; the stop closes it as a loss.
         </p>
       )}
 
       {res === null && (
         <div className="flex items-center gap-1.5 rounded-lg border border-tv-line bg-tv-panel2 px-3 py-2 text-[11.5px] text-tv-muted">
-          <XCircle className="h-3.5 w-3.5" /> Run a screen to get signals with entry, stop and targets.
+          <XCircle className="h-3.5 w-3.5" /> Press “Get signals” for long & short setups on crypto majors and top US
+          stocks.
         </div>
       )}
     </div>
@@ -307,6 +382,7 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
 
 function TakeRow({
   r,
+  side,
   index,
   taking,
   entryInput,
@@ -318,6 +394,7 @@ function TakeRow({
   onCancel,
 }: {
   r: ScreenRowView
+  side: Side
   index: number
   taking: boolean
   entryInput: string
@@ -328,19 +405,37 @@ function TakeRow({
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const p = r.plan
+  const p = side === 'long' ? r.longPlan : r.shortPlan
+  const isLong = side === 'long'
   return (
     <>
       <tr
         title={r.passes.join(' · ') || r.fails.join(' · ')}
         className="border-t border-tv-line/60 hover:bg-tv-panel2/60"
       >
-        <td className="px-2.5 py-1.5 text-tv-muted">{index + 1}</td>
+        <td className="px-2.5 py-1.5 text-tv-muted">{index}</td>
         <td className="px-2 py-1.5">
           <span className="font-bold text-tv-ink">{r.symbol}</span>
+          {r.pinned && (
+            <span className="ml-1 text-[9px] text-warn" title="Pinned major — always shown">
+              ★
+            </span>
+          )}
           <span className="ml-1.5 hidden text-tv-muted 2xl:inline">{r.name}</span>
+          <span className="ml-1.5 rounded border border-tv-line px-1 py-px text-[8.5px] font-bold uppercase tracking-wide text-tv-muted2">
+            {r.market === 'stock' ? 'US' : 'Crypto'}
+          </span>
         </td>
         <td className="px-2 py-1.5 text-right tabular-nums">{usd(r.metrics.price)}</td>
+        <td className="px-2 py-1.5">
+          <span
+            className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+              isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'
+            }`}
+          >
+            {side}
+          </span>
+        </td>
         <td className="px-2 py-1.5 text-right tabular-nums text-tv-ink">
           {p ? `${usd(p.entryLow)}–${usd(p.entryHigh)}` : '—'}
         </td>
@@ -357,19 +452,25 @@ function TakeRow({
               suppressHydrationWarning
               onClick={onStart}
               disabled={!p || taking}
-              aria-label={`Take ${r.symbol} long — I took this trade`}
-              className="rounded-lg border border-bull/50 bg-bull/15 px-2 py-1 text-[10.5px] font-bold text-bull transition hover:bg-bull/25 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label={`Take ${r.symbol} ${side} — I took this trade`}
+              className={`rounded-lg border px-2 py-1 text-[10.5px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                isLong
+                  ? 'border-bull/50 bg-bull/15 text-bull hover:bg-bull/25'
+                  : 'border-bear/50 bg-bear/15 text-bear hover:bg-bear/25'
+              }`}
             >
               ▶ Take
             </button>
           )}
         </td>
       </tr>
-      {taking && (
-        <tr className="border-t border-bull-line/40 bg-bull-soft/50">
-          <td colSpan={8} className="px-3 py-2">
+      {taking && p && (
+        <tr className={`border-t ${isLong ? 'border-bull-line/40 bg-bull-soft/50' : 'border-bear/40 bg-bear/10'}`}>
+          <td colSpan={9} className="px-3 py-2">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11.5px]">
-              <span className="font-bold text-bull-ink">Take {r.symbol} LONG — confirm your fill</span>
+              <span className={`font-bold ${isLong ? 'text-bull-ink' : 'text-bear'}`}>
+                Take {r.symbol} {side.toUpperCase()} — confirm your fill
+              </span>
               <input
                 value={entryInput}
                 onChange={(e) => setEntryInput(e.target.value)}
@@ -377,18 +478,18 @@ function TakeRow({
                 aria-label="Entry fill price"
                 className="w-24 rounded-lg border border-tv-line bg-tv-panel2 px-2 py-1 text-right font-mono text-[11.5px] tabular-nums text-tv-ink outline-none focus:border-bull-line"
               />
-              {p && (
-                <span className="tabular-nums text-tv-muted">
-                  plan frozen · stop {usd(p.stop)} · T1 {usd(p.target1)} · T2 {usd(p.target2)}
-                </span>
-              )}
+              <span className="tabular-nums text-tv-muted">
+                plan frozen · stop {usd(p.stop)} · T1 {usd(p.target1)} · T2 {usd(p.target2)}
+              </span>
               <button
                 suppressHydrationWarning
                 onClick={onConfirm}
                 disabled={saving}
-                className="ml-auto rounded-lg bg-bull px-2.5 py-1 text-[11px] font-bold text-white hover:bg-bull-deep disabled:opacity-50"
+                className={`ml-auto rounded-lg px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-50 ${
+                  isLong ? 'bg-bull hover:bg-bull-deep' : 'bg-bear hover:bg-bear/90'
+                }`}
               >
-                {saving ? 'Saving…' : '✓ Confirm — I took this trade'}
+                {saving ? 'Saving…' : `✓ Confirm — I took this trade`}
               </button>
               <button
                 suppressHydrationWarning

@@ -17,31 +17,39 @@ export interface TicketPlanView {
 export interface ScreenRowView {
   symbol: string
   name: string
+  market: 'crypto' | 'stock'
   passed: boolean
   score: number | null
   rankGaps: string[]
   fails: string[]
   passes: string[]
+  /** True for pinned majors (BTC, ETH, SOL, XRP) — always shown regardless of rank. */
+  pinned?: boolean
   metrics: {
     symbol: string
     name: string
+    market: 'crypto' | 'stock'
     price: number
     change24hPct: number
+    momentum24h: number
     quoteVolume24h: number
     momentum7d: number
     momentum30d: number
+    absMomentum7d: number
+    absMomentum30d: number
     volatility30d: number
     volumeRatio: number
     drawdownFrom30dHigh: number
   }
-  /** Entry zone / stop / T1 / T2 preview (same math as the frozen plan) — null when data is thin. */
-  plan: TicketPlanView | null
+  /** Entry zone / stop / T1 / T2 preview for each direction — null when data is thin. */
+  longPlan: TicketPlanView | null
+  shortPlan: TicketPlanView | null
 }
 
 export interface ScreenResponse {
   ok: boolean
   error?: string
-  result: { name: string; scanned: number; passed: number; asOf: string; rows: ScreenRowView[]; failedRows: ScreenRowView[] }
+  result: { name: string; market: string; scanned: number; passed: number; asOf: string; rows: ScreenRowView[]; failedRows: ScreenRowView[] }
   note?: string
 }
 
@@ -61,10 +69,12 @@ export async function jfetch<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-export const usd = (x: number | null | undefined): string =>
-  x === null || x === undefined || !Number.isFinite(x)
-    ? '—'
-    : `$${x.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+/** $ formatter that keeps every price band readable ($84k BTC → $1.387 XRP → PEPE). */
+export const usd = (x: number | null | undefined): string => {
+  if (x === null || x === undefined || !Number.isFinite(x)) return '—'
+  const digits = x >= 10 ? 2 : x >= 1 ? 3 : x >= 0.01 ? 4 : 8
+  return `$${x.toLocaleString('en-US', { maximumFractionDigits: digits })}`
+}
 
 export const pctS = (x: number | null | undefined, digits = 2): string =>
   x === null || x === undefined || !Number.isFinite(x) ? '—' : `${x >= 0 ? '' : ''}${x.toFixed(digits)}%`

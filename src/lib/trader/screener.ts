@@ -1,29 +1,37 @@
 /**
- * Crypto screener for the Trader Desk.
+ * Crypto + US-stock screener for the Trader Desk.
  *
  * Ported from trader-skill/trader-screener/screen.py (MIT, Jake Schincariol):
  * every asset is checked against explicit rules (each pass/fail is explained),
  * the ones that pass are ranked by a weighted percentile score, and nothing
  * here is a recommendation — a screen is a filter, not advice.
  *
- * The crypto adaptation computes its own metrics from public Binance data
- * (keyless): momentum over 24h / 7d / 30d, 30d daily-return volatility, the
- * volume ratio (today's quote volume vs its 30d average) and the drawdown
- * from the 30-day high. The rules/rank JSON shape is identical to the repo's
- * rules.example.json, so the same vocabulary applies:
+ * Metrics are computed from public keyless data:
+ *   - crypto: Binance daily klines (24h/7d/30d momentum, 30d daily-return
+ *     volatility, volume ratio vs its own 30d average, drawdown from the 30d high)
+ *   - stocks: Yahoo Finance daily candles — the exact same metric vocabulary,
+ *     so one rules JSON drives both markets.
+ *
+ * The rules/rank JSON shape is identical to the repo's rules.example.json:
  *
  *   { "rules": [{ "metric": "momentum7d", "op": ">=", "value": 0 }],
  *     "rank":  [{ "metric": "momentum7d", "order": "desc", "weight": 2 }],
- *     "missing": "fail", "top": 8 }
+ *     "missing": "fail", "top": 12 }
  *
  *   ops: > >= < <= == != between [low, high]
  * Ranking: each rank metric gives a score from 0 (worst) to 1 (best); the
  * final score is their weighted average. Missing rank metrics are skipped and
  * reported as gaps.
+ *
+ * The signal feed (buildFeed) guarantees the pinned crypto majors —
+ * BTC, ETH, SOL, XRP — are ALWAYS present, ranked passers fill the rest,
+ * and every selected asset carries BOTH a long and a short trade plan.
  */
 
-import { fetchCryptoCandles } from '@/lib/market/providers'
+import { fetchCryptoCandles, fetchStockCandles } from '@/lib/market/providers'
 import type { TicketPlan } from './desk'
+
+export type Market = 'crypto' | 'stock'
 
 export interface ScreenerRule {
   metric: string
@@ -48,11 +56,17 @@ export interface ScreenerSpec {
 export interface AssetMetrics {
   symbol: string
   name: string
+  market: Market
   price: number
   change24hPct: number
+  /** alias of change24hPct — keeps the breakout preset's vocabulary valid */
+  momentum24h: number
   quoteVolume24h: number
   momentum7d: number
   momentum30d: number
+  /** |momentum| — lets one rank key surface the strongest movers in BOTH directions. */
+  absMomentum7d: number
+  absMomentum30d: number
   volatility30d: number
   volumeRatio: number
   drawdownFrom30dHigh: number
@@ -61,6 +75,7 @@ export interface AssetMetrics {
 export interface ScreenRow {
   symbol: string
   name: string
+  market: Market
   passed: boolean
   score: number | null
   rankParts: Record<string, number>
@@ -68,15 +83,21 @@ export interface ScreenRow {
   fails: string[]
   passes: string[]
   metrics: AssetMetrics
+  /** True when the row is a pinned major (always shown regardless of rank). */
+  pinned?: boolean
   /**
-   * Desk plan preview — entry zone / stop / T1 / T2 from the same level math
-   * the tickets carry. Attached to passing rows by the screen API route;
-   * null when the market data is too thin for a plan.
+   * Desk plan previews — entry zone / stop / T1 / T2 for the LONG and the
+   * SHORT setup, from the same level math the journal freezes. Attached to
+   * feed rows by the screen API route; null when the data is too thin.
    */
-  plan?: TicketPlan | null
+  longPlan?: TicketPlan | null
+  shortPlan?: TicketPlan | null
 }
 
-const UNIVERSE: Array<[string, string]> = [
+/** The crypto majors that must ALWAYS appear in the feed, named by the user. */
+export const PINNED_CRYPTO = ['BTC', 'ETH', 'SOL', 'XRP'] as const
+
+const CRYPTO_UNIVERSE: Array<[string, string]> = [
   ['BTC', 'Bitcoin'], ['ETH', 'Ethereum'], ['SOL', 'Solana'], ['BNB', 'BNB'],
   ['XRP', 'XRP'], ['ADA', 'Cardano'], ['DOGE', 'Dogecoin'], ['AVAX', 'Avalanche'],
   ['DOT', 'Polkadot'], ['LINK', 'Chainlink'], ['TRX', 'TRON'], ['LTC', 'Litecoin'],
@@ -88,13 +109,42 @@ const UNIVERSE: Array<[string, string]> = [
   ['ICP', 'Internet Computer'], ['PEPE', 'Pepe'],
 ]
 
+/** Curated US large caps — the "best stocks" list (mega caps + retail favorites). */
+const STOCK_UNIVERSE: Array<[string, string]> = [
+  ['AAPL', 'Apple'], ['MSFT', 'Microsoft'], ['NVDA', 'NVIDIA'], ['GOOGL', 'Alphabet'],
+  ['AMZN', 'Amazon'], ['META', 'Meta Platforms'], ['TSLA', 'Tesla'], ['AVGO', 'Broadcom'],
+  ['AMD', 'AMD'], ['NFLX', 'Netflix'], ['ORCL', 'Oracle'], ['CRM', 'Salesforce'],
+  ['PLTR', 'Palantir'], ['COIN', 'Coinbase'], ['JPM', 'JPMorgan Chase'], ['V', 'Visa'],
+  ['BAC', 'Bank of America'], ['WMT', 'Walmart'], ['COST', 'Costco'], ['MCD', "McDonald's"],
+  ['KO', 'Coca-Cola'], ['UNH', 'UnitedHealth'], ['LLY', 'Eli Lilly'], ['XOM', 'Exxon Mobil'],
+]
+
+export const UNIVERSE_SIZE = { crypto: CRYPTO_UNIVERSE.length, stock: STOCK_UNIVERSE.length }
+
 /** Preset screens — editable in the UI as the repo's rules JSON. */
 export const PRESETS: Array<{ key: string; label: string; spec: ScreenerSpec }> = [
+  {
+    key: 'best',
+    label: 'Best signals',
+    spec: {
+      name: 'Best long & short setups',
+      // no gate rules — every asset is ranked; the strongest movers in either
+      // direction surface first and each carries a long AND a short plan
+      rules: [],
+      rank: [
+        { metric: 'absMomentum7d', order: 'desc', weight: 2 },
+        { metric: 'absMomentum30d', order: 'desc', weight: 1.5 },
+        { metric: 'volumeRatio', order: 'desc', weight: 1 },
+        { metric: 'volatility30d', order: 'asc', weight: 0.75 },
+      ],
+      top: 12,
+    },
+  },
   {
     key: 'momentum',
     label: 'Momentum',
     spec: {
-      name: 'Crypto momentum',
+      name: 'Momentum',
       rules: [
         { metric: 'momentum7d', op: '>=', value: 0 },
         { metric: 'momentum30d', op: '>=', value: 0 },
@@ -106,14 +156,14 @@ export const PRESETS: Array<{ key: string; label: string; spec: ScreenerSpec }> 
         { metric: 'volumeRatio', order: 'desc', weight: 1 },
         { metric: 'volatility30d', order: 'asc', weight: 1 },
       ],
-      top: 8,
+      top: 12,
     },
   },
   {
     key: 'breakout',
     label: 'Breakout watch',
     spec: {
-      name: 'Crypto breakout',
+      name: 'Breakout watch',
       rules: [
         { metric: 'drawdownFrom30dHigh', op: '<=', value: 6 },
         { metric: 'volumeRatio', op: '>=', value: 1 },
@@ -123,14 +173,14 @@ export const PRESETS: Array<{ key: string; label: string; spec: ScreenerSpec }> 
         { metric: 'volumeRatio', order: 'desc', weight: 1.5 },
         { metric: 'momentum7d', order: 'desc', weight: 1 },
       ],
-      top: 8,
+      top: 12,
     },
   },
   {
     key: 'calm',
     label: 'Calm trends',
     spec: {
-      name: 'Low-volatility trends',
+      name: 'Calm trends',
       rules: [
         { metric: 'volatility30d', op: '<=', value: 5 },
         { metric: 'momentum30d', op: '>=', value: 0 },
@@ -140,12 +190,15 @@ export const PRESETS: Array<{ key: string; label: string; spec: ScreenerSpec }> 
         { metric: 'momentum30d', order: 'desc', weight: 1.5 },
         { metric: 'momentum7d', order: 'desc', weight: 1 },
       ],
-      top: 8,
+      top: 12,
     },
   },
 ]
 
 export class ScreenError extends Error {}
+
+/** How many ranked assets the signal feed shows (pinned majors come on top). */
+export const FEED_CAP = 12
 
 const fmtNum = (v: unknown): string => {
   const n = Number(v)
@@ -227,9 +280,19 @@ export function validateSpec(spec: ScreenerSpec): void {
     throw new ScreenError('missing must be "fail" or "skip"')
 }
 
-/** 30-day daily metrics for one asset from Binance 1d klines (last 31). */
-async function metricsFor(symbol: string, name: string): Promise<AssetMetrics> {
-  const candles = await fetchCryptoCandles(symbol, '1d', 31)
+const METRIC_WINDOW = 31 // 30d lookback + today
+
+/** 30-day daily metrics for one asset (crypto via Binance, stocks via Yahoo). */
+async function metricsFor(symbol: string, name: string, market: Market): Promise<AssetMetrics> {
+  let candles
+  if (market === 'crypto') {
+    candles = await fetchCryptoCandles(symbol, '1d', METRIC_WINDOW)
+  } else {
+    // 1y of daily bars — same cache key the plan engine uses, sliced to the
+    // same 31-day metric window so the vocabulary matches crypto exactly
+    const yearly = await fetchStockCandles(symbol, '1d', '1y')
+    candles = yearly.slice(-METRIC_WINDOW)
+  }
   if (candles.length < 8) throw new ScreenError(`${symbol}: not enough price history`)
   const closes = candles.map((c) => c.close)
   const last = closes[closes.length - 1]
@@ -240,17 +303,24 @@ async function metricsFor(symbol: string, name: string): Promise<AssetMetrics> {
   for (let i = 1; i < closes.length; i++) rets.push(((closes[i] - closes[i - 1]) / closes[i - 1]) * 100)
   const mean = rets.reduce((s, r) => s + r, 0) / rets.length
   const stdev = Math.sqrt(rets.reduce((s, r) => s + (r - mean) ** 2, 0) / rets.length)
-  const volToday = candles[candles.length - 1].volume * last // quote volume (USDT) of the last day
+  const volToday = candles[candles.length - 1].volume * last // quote volume of the last day
   const volAvg = candles.slice(0, -1).reduce((s, c) => s + c.volume * c.close, 0) / Math.max(1, candles.length - 1)
   const high30 = Math.max(...closes)
+  const momentum7d = ((last - d7) / d7) * 100
+  const momentum30d = ((last - d30) / d30) * 100
+  const change24h = ((last - prevDay) / prevDay) * 100
   return {
     symbol,
     name,
+    market,
     price: last,
-    change24hPct: ((last - prevDay) / prevDay) * 100,
+    change24hPct: change24h,
+    momentum24h: change24h,
     quoteVolume24h: volToday,
-    momentum7d: ((last - d7) / d7) * 100,
-    momentum30d: ((last - d30) / d30) * 100,
+    momentum7d,
+    momentum30d,
+    absMomentum7d: Math.abs(momentum7d),
+    absMomentum30d: Math.abs(momentum30d),
     volatility30d: stdev,
     volumeRatio: volAvg > 0 ? volToday / volAvg : 0,
     drawdownFrom30dHigh: ((high30 - last) / high30) * 100,
@@ -259,6 +329,7 @@ async function metricsFor(symbol: string, name: string): Promise<AssetMetrics> {
 
 export interface ScreenResult {
   name: string
+  market: Market
   scanned: number
   passed: number
   asOf: string
@@ -266,14 +337,15 @@ export interface ScreenResult {
   failedRows: ScreenRow[]
 }
 
-/** Run the screen over the whole universe. Returns ranked passers + failures. */
-export async function runScreen(spec: ScreenerSpec): Promise<ScreenResult> {
+/** Run the screen over one market's universe. Returns ranked passers + failures. */
+export async function runScreen(spec: ScreenerSpec, market: Market): Promise<ScreenResult> {
   validateSpec(spec)
   const missing = spec.missing ?? 'fail'
+  const universe = market === 'crypto' ? CRYPTO_UNIVERSE : STOCK_UNIVERSE
   const metas = await Promise.all(
-    UNIVERSE.map(async ([symbol, name]) => {
+    universe.map(async ([symbol, name]) => {
       try {
-        return await metricsFor(symbol, name)
+        return await metricsFor(symbol, name, market)
       } catch {
         return null // delisted / rate-limited symbol: skip quietly
       }
@@ -293,6 +365,7 @@ export async function runScreen(spec: ScreenerSpec): Promise<ScreenResult> {
     return {
       symbol: m.symbol,
       name: m.name,
+      market,
       passed: fails.length === 0,
       score: null,
       rankParts: {},
@@ -312,10 +385,34 @@ export async function runScreen(spec: ScreenerSpec): Promise<ScreenResult> {
   const top = spec.top && spec.top > 0 ? passedRows.slice(0, spec.top) : passedRows
   return {
     name: spec.name ?? 'screen',
+    market,
     scanned: rows.length,
     passed: passedRows.length,
     asOf: new Date().toISOString(),
     rows: top,
     failedRows,
   }
+}
+
+/**
+ * The signal feed for one market: the top-ranked assets, plus the pinned
+ * crypto majors (BTC, ETH, SOL, XRP) ALWAYS present — first when they rank
+ * on their own, appended (with an honest fail list) when the rules exclude
+ * them. Returns rows ordered: pinned first, then the rest by score.
+ */
+export async function buildFeed(spec: ScreenerSpec, market: Market, cap = FEED_CAP): Promise<ScreenResult> {
+  const result = await runScreen(spec, market)
+  if (market !== 'crypto') return result // stocks: pure ranking, no pins
+
+  const pins: string[] = [...PINNED_CRYPTO]
+  const ranked = result.rows.slice(0, cap)
+  const rankedPins = ranked.filter((r) => pins.includes(r.symbol))
+  const rankedRest = ranked.filter((r) => !pins.includes(r.symbol))
+  const missingPins = pins
+    .filter((p) => !result.rows.some((r) => r.symbol === p))
+    .map((p) => result.failedRows.find((r) => r.symbol === p) ?? result.rows.find((r) => r.symbol === p))
+    .filter((r): r is ScreenRow => r !== undefined)
+    .map((r) => ({ ...r, pinned: true }))
+  result.rows = [...rankedPins, ...rankedRest, ...missingPins]
+  return result
 }
