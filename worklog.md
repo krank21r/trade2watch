@@ -1042,3 +1042,19 @@ Work Log:
 
 Stage Summary:
 - Desk tickets are now full trade plans: every PASS buy carries an entry zone, stop loss and two targets from the same deterministic level math as AI Signals; approval above the zone arms instead of chasing, the poll fills armed tickets at the zone, and every planned fill arms stop/T1/T2 alerts and shows levels in the portfolio.
+
+---
+Task ID: 47
+Agent: Z.ai Code (main)
+Task: "i cant see the entry and targets. please check the screenshot" — user's production view shows no entry/targets/stop anywhere.
+
+Work Log:
+- Root cause found: production (Vercel) serves a build OLDER than 99f0cbb — live /api/trader/screen rows carry no plan field (verified via prod login + screen call); also stage 1 (screener table) never rendered levels even locally — levels only existed on stage-3 ticket cards and stage-4 portfolio.
+- Reused planLevels(): exported it from desk.ts and attached a plan preview (entry zone/stop/T1/T2/R:R — identical math to the tickets) to every passing screener row in POST /api/trader/screen; ScreenRow gained plan?: TicketPlan | null (type-only import from desk.ts, no runtime cycle).
+- UI: ScreenerPanel table now shows Entry / Stop / T1 · T2 columns (entry zone tv-ink, stop bear, targets bull) + explainer line ("same level math as the desk tickets (4h)… the desk never chases"); ScreenRowView gained plan.
+- Responsive fix: min-w table propagated min-content width up the flex/grid chain (sections forced 640px wide, clipped by the app's overflow-hidden root on 390px mobile) → added min-w-0 to stage-1 grid + both sections + the table scroll container; hid 7d/30d/Vol σ and asset name below 2xl, table min-w-[420px] → desktop 1440 fits exactly (sw=cw=448), mobile 390 scrolls internally (sw 420 / cw 330, body stays 390).
+- Verified: lint clean; local API — momentum screen 33 scanned/2 passed, INJ plan 8.4–8.63/8.14/9.26/9.81, NEAR 5.17–5.37/5.02/5.77/6.15 (R:R 2.0/3.5); browser E2E — stage-1 columns render, full flow (use weights → size → tickets with Entry zone/Stop/T1/T2/R:R chips + "Yes, fill it") intact, zero console errors; screenshots /tmp/desk-desktop-v3.png, /tmp/desk-mobile-v3.png, /tmp/desk-tickets-check.png.
+- Git: found 99f0cbb was already on GitHub (stale local tracking ref misled earlier reads) but production predates it; committed af68b61 ("Trader Desk: entry/targets/stop previews on the stage-1 screener table") and pushed main → af68b61; prod check after push still shows old build (plan absent).
+
+Stage Summary:
+- Entry/targets/stop now visible at every stage: stage-1 screener rows carry plan previews, stage-3 tickets carry the authoritative plan, stage-4 portfolio shows Stop/T1/T2 with auto alert wiring. GitHub main = af68b61. BLOCKED ON USER: Vercel production must be Redeployed/Promoted — production still serves the pre-99f0cbb build (verified plan absent on live API).
