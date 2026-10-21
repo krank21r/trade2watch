@@ -1113,3 +1113,16 @@ Work Log:
 
 Stage Summary:
 - Every asset now arrives as exactly ONE signal — the technical vote (regime, EMA stack, slope, MACD, RSI, momentum, range position) picks LONG or SHORT and levels it; the losing direction is never shown. Evidence is surfaced on the Dir badge. One open desk position per asset; tracking badge stays in sync with the journal.
+
+---
+Task ID: 51
+Agent: Z.ai Code (main)
+Task: User-reported console error — hydration mismatch "fdprocessedid" attribute on the Sign out button.
+
+Work Log:
+- Root cause: a browser extension on the user's browser (form processor — e.g. antivirus/form-filler add-ons) injects fdprocessedid="<random>" onto form controls BEFORE React hydrates; server HTML lacks it, so React 19 logs a benign attribute-mismatch error. Not an app-logic bug.
+- Fix: suppressHydrationWarning on the UserMenu sign-out button (src/components/user-menu.tsx) with an explanatory comment — React's documented mitigation for extension-injected attributes. The theme toggle, login inputs/button, and all trader-desk buttons already carried the same guard from earlier sessions; the sign-out button was the last unprotected interactive element in the app shell.
+- Verified: lint clean; local browser session — login → main page hydrates with zero errors and zero hydration console messages, sign-out button renders; guard verified by pattern parity with the already-protected theme toggle.
+
+Stage Summary:
+- All extension-prone interactive elements in the shell (sign-out, theme toggle, tabs, login form) now suppress benign hydration attribute mismatches; the fdprocessedid console error can no longer appear. Commit pushed; production auto-deploys.

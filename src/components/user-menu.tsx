@@ -54,6 +54,10 @@ export function UserMenu() {
         disabled={busy}
         aria-label="Sign out"
         title="Sign out"
+        // browser extensions (form processors etc.) inject attributes such as
+        // fdprocessedid onto buttons before React hydrates — that mismatch is
+        // benign, so keep it from spamming the console as a hydration error
+        suppressHydrationWarning
         className="btn min-h-[36px] min-w-[36px] rounded-xl border border-tv-line bg-tv-panel px-2.5 text-tv-muted hover:border-bear-line hover:bg-bear-soft hover:text-bear"
       >
         <LogOut className="h-4 w-4" aria-hidden />
