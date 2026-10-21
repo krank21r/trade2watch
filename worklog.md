@@ -1126,3 +1126,17 @@ Work Log:
 
 Stage Summary:
 - All extension-prone interactive elements in the shell (sign-out, theme toggle, tabs, login form) now suppress benign hydration attribute mismatches; the fdprocessedid console error can no longer appear. Commit pushed; production auto-deploys.
+
+---
+Task ID: 51
+Agent: main (Z.ai Code)
+Task: Analyse the live BTC LONG signal — has entry been hit? Should the user wait for a re-touch? Confirm the signal.
+
+Work Log:
+- Read desk.ts + signals/engine.ts buildTradePlan: for a LONG, entryHigh = price at signal generation; entryLow = clamp(px - 1.2*ATR .. px - 0.15*ATR); stop = min(entryLow - 0.75*ATR, support - 0.35*ATR); targets = entryMid + 2R / 3.5R.
+- Pulled live BTCUSDT from Binance: spot $84,592, 24h range $82,526-$84,898, +2.48% 24h. Last 4h candles: 12:00 UTC candle ranged 83,266-84,828 (through the whole entry zone), current 16:00 UTC candle low $84,180 (inside the zone).
+- User's frozen plan: entry 83,583.10-84,558.01, stop 82,886.68, T1 86,438.30, T2 88,214.10. Verified geometry: entryMid 84,070.56, risk 1,183.88, T1 = exactly 2.0R, T2 = exactly 3.5R. Stop = detected support 83,171.03 - 0.35*ATR(812.43); entryLow clamped at px - 1.2*ATR = 83,583.09.
+- Re-ran POST /api/trader/screen (preset best, crypto) at 19:41 UTC: BTC still LONG, same evidence ("price above EMA50 - EMA20 above EMA50 - 4h slope +0.15%/bar - MACD bullish"), same ATR 812.43, IDENTICAL stop 82,886.68, fresh zone 83,625.34-84,600.25, T1 86,565.02, T2 88,404.18. Signal stable and reproducible.
+
+Stage Summary:
+- Answer delivered: entry zone HAS been touched (price traded through it in the 12:00-16:00 UTC candles); spot is now $34 above the zone top (0.04%) - effectively at entry. Desk confirms the same LONG signal on re-run (identical stop). Entering at market degrades T1 R:R to ~1:1.1 vs planned 1:2.0; the designed play is a limit inside the zone (full 1:2.0/1:3.5). Invalidation: 4h close below $82,886.68 (note: stop sits just above the Oct-21 early lows 82,635-82,729). No code changes; analysis only.
