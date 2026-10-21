@@ -1009,3 +1009,17 @@ Work Log:
 Stage Summary:
 - The trader-skill strategy now runs end-to-end inside Trade2watch as a per-user paper desk: crypto screener or 13F copycat → trader-budget sizing → trader-risk PASS/BLOCK → per-ticket explicit yes (fingerprint-gated) → live-marked paper portfolio with drift bands, rebalance proposals and ring-once price alerts. Nothing can touch a real exchange; all trades are paper by construction.
 - Reused artefacts: copycat backend (prior session) finally surfaced in the UI; size.ts/risk.ts ports unchanged in core math (risk.ts gained an optional start-account + sell checks).
+
+---
+Task ID: 45-b
+Agent: Z.ai Code (main)
+Task: Re-verify the completed trader-skill implementation after session restart ("is it done?").
+
+Work Log:
+- Confirmed commit 7321569 ("Trader Desk: implement the trader-skill strategy") is on GitHub main; local main == origin/main (0/0 divergence).
+- Dev server healthy: / 307 to login, login 200; dev.log shows live /api/trader/account + /api/trader/tickets traffic all 200.
+- Live API matrix: GET /api/trader/account 200 (budget $5,000, cash $3,750, NEAR position 234.9624 @ 5.32 live-marked 5.359, targets stored); POST /api/trader/screen (momentum preset) 200 — 33 scanned, 2 passed, faithful screen.py rank output (INJ score 0.727 with rankParts); GET /api/trader/tickets 200 (NEAR PASS→approved→filled; INJ PASS→proposed).
+- agent-browser E2E: login → 3-tab shell (Trade Setups | ⚡ AI Signals | 🧢 Trader Desk) → Trader Desk 4-stage pipeline renders with account chips (Cash $3,750 / Positions $1,257.52 / Total $5,007.52 live marks); stage 3 "Tickets — nothing fills without your yes" shows APPROVED NEAR ticket + PROPOSED INJ ticket with "Yes, fill it"/"No" buttons; zero console errors; screenshot /tmp/trader-desk-final.png.
+
+Stage Summary:
+- Trader-skill implementation confirmed complete, healthy and pushed. No code changes this session — pure re-verification. Remaining user action: Vercel production still serves the old build until Redeploy/Promote to Production.
