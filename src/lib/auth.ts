@@ -93,7 +93,11 @@ export async function verifyToken(token: string | undefined | null): Promise<Ses
 
 export function authenticate(username: string, password: string): AuthUser | null {
   const u = USERS.find((x) => x.username === username.trim().toLowerCase())
-  if (!u || !u.password || u.password !== password) return null
+  // Trim the password too: copy-paste from chat/messaging apps frequently
+  // appends a trailing space or newline, and the provisioned passwords
+  // never contain leading/trailing whitespace themselves.
+  const pass = password.trim()
+  if (!u || !u.password || u.password !== pass) return null
   return { id: u.id, name: u.name, role: u.role }
 }
 
