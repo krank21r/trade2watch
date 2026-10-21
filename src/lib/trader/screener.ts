@@ -25,7 +25,8 @@
  *
  * The signal feed (buildFeed) guarantees the pinned crypto majors —
  * BTC, ETH, SOL, XRP — are ALWAYS present, ranked passers fill the rest,
- * and every selected asset carries BOTH a long and a short trade plan.
+ * and every selected asset carries exactly ONE trade plan: the desk's
+ * technical vote picks LONG or SHORT per asset, never both.
  */
 
 import { fetchCryptoCandles, fetchStockCandles } from '@/lib/market/providers'
@@ -86,12 +87,14 @@ export interface ScreenRow {
   /** True when the row is a pinned major (always shown regardless of rank). */
   pinned?: boolean
   /**
-   * Desk plan previews — entry zone / stop / T1 / T2 for the LONG and the
-   * SHORT setup, from the same level math the journal freezes. Attached to
-   * feed rows by the screen API route; null when the data is too thin.
+   * The desk signal — the ONE direction the analysis picked (LONG or SHORT)
+   * with its entry zone / stop / T1 / T2 plan from the same level math the
+   * journal freezes, plus the evidence behind the pick. Attached to feed
+   * rows by the screen API route; null when the data is too thin.
    */
-  longPlan?: TicketPlan | null
-  shortPlan?: TicketPlan | null
+  side?: 'LONG' | 'SHORT' | null
+  sideReason?: string | null
+  plan?: TicketPlan | null
 }
 
 /** The crypto majors that must ALWAYS appear in the feed, named by the user. */

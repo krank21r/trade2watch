@@ -1096,3 +1096,20 @@ Stage Summary:
 - Signal feed now covers crypto majors (BTC/ETH/SOL/XRP always present) + 24 best US stocks, every asset with BOTH long and short trade plans (entry zone · stop · T1 · T2 · R:R)
 - Take flow unchanged: "I took this trade" freezes the chosen direction's plan into the shared journal; tracker auto-updates status (TP1 → stop to entry, TP2 → full win, SL → stopped out)
 - New Best signals preset is the default one-click feed across both markets
+
+---
+Task ID: 50
+Agent: Z.ai Code (main)
+Task: "your providing two signals at a time both long and short this is bit contradictory. it should be only one long or short based on the analysis. so either it should be long or short"
+
+Work Log:
+- Built decideSide() in desk.ts: a weighted technical vote that commits to ONE side per asset — regime TRENDING_UP/DOWN ±3, price vs EMA50 ±1.5, EMA20 vs EMA50 ±1, 20-bar slope ±1, MACD histogram ±1, RSI 50-line ±0.5, screener 7d/30d momentum ±1 each, and (RANGING only) range-edge position ±1 matching the plan engine's range-bottom/top fade strategies; ties break on 7d momentum → 24h change → LONG. Returns the side plus a human-readable evidence string (top-4 weighted contributors, e.g. "1d downtrend regime · price below EMA50 · EMA20 below EMA50 · 1d slope -0.34%/bar").
+- deskSignal(symbol, market, momentum) replaces planLevels: one ticker+candles fetch → buildSnapshot → decideSide → buildTradePlan for that side only → validated geometry + rounded TicketPlan; null when data is thin. Same rounding/precision guards as before ($84k BTC → $0.00000464 PEPE).
+- ScreenRow/ScreenRowView/API/UI reshaped: longPlan+shortPlan → side + sideReason + plan (single signal per row); screen route attaches deskSignal per feed row passing the screener's 7d/30d/24h momentum as extra evidence.
+- ScreenerPanel: one signal row per asset (was up to two), Dir badge carries the evidence as a tooltip, take flow reads r.plan/r.side; take guard made SYMBOL-level (one open desk position per asset — a long+short on the same asset would be a hedge, not two signals); copy updated everywhere (header, section blurb, toast, explainer, empty state).
+- Fixed a real bug found in E2E: "✓ Tracking" badge never cleared after a trade was closed/deleted elsewhere (badge set only refreshed on mount) → ScreenerPanel now re-syncs on the 't2w:trades-changed' event; verified take → badge → close → delete → badge clears.
+- Sandbox incident (not a code bug): SQLite "attempt to write a readonly database" on PUT /api/trades (stale dev-server handle after the auto-committer replaced db/custom.db); restarted dev via .zscripts/dev.sh and restored the wiped journal (NEAR long + BTC EDGE ONLY) byte-for-byte from the browser localStorage cache before continuing E2E.
+- Verified: lint clean; API matrix — best/all: 24 unique assets, 20 LONG + 4 SHORT (NFLX/ORCL/BAC/GOOGL), every row side+plan+sideReason, LONG geometry (entry below price, stop < entry, targets above) and mirrored SHORT geometry all valid, zero legacy longPlan/shortPlan fields; momentum crypto (7 rows all LONG — correct for a positive-momentum gate) and calm stocks (12 LONG) presets; browser E2E — feed shows one row per asset, took NFLX SHORT (confirm row with frozen plan), open card "NFLX short OPEN · $65.49 · Entry/Stop/T1/T2 · R:R 1:2.0" appeared alongside the untouched NEAR long card, server journal confirmed 3 trades, then closed + deleted the test trade restoring the user's original journal (NEAR:OPEN, BTC:OPEN); mobile 390px body stays 390 with the table scrolling internally; zero console/page errors. Screenshots /tmp/desk-one-side-desktop.png, /tmp/desk-one-side-mobile.png.
+
+Stage Summary:
+- Every asset now arrives as exactly ONE signal — the technical vote (regime, EMA stack, slope, MACD, RSI, momentum, range position) picks LONG or SHORT and levels it; the losing direction is never shown. Evidence is surfaced on the Dir badge. One open desk position per asset; tracking badge stays in sync with the journal.

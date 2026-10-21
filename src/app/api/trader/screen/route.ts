@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SESSION_COOKIE, verifyToken } from '@/lib/auth'
-import { planLevels } from '@/lib/trader/desk'
+import { deskSignal } from '@/lib/trader/desk'
 import {
   PRESETS,
   ScreenError,
@@ -38,9 +38,10 @@ export async function GET() {
  * Body: { market?: "crypto" | "stock" | "all", spec } (the repo's rules JSON:
  * {rules, rank, missing, top}) or { preset: "best" | "momentum" | "breakout" | "calm" }.
  *
- * Every feed row carries BOTH a longPlan and a shortPlan (entry zone, stop,
- * T1, T2, R:R) — the pinned crypto majors (BTC, ETH, SOL, XRP) are always
- * included for the crypto side.
+ * Every feed row carries ONE desk signal — the analysis (regime, EMA stack,
+ * slope, MACD, RSI, momentum) picks LONG or SHORT per asset — with the entry
+ * zone, stop, T1, T2 plan and the evidence behind the pick. The pinned crypto
+ * majors (BTC, ETH, SOL, XRP) are always included for the crypto side.
  */
 export async function POST(req: NextRequest) {
   const uid = await userId(req)
@@ -86,18 +87,20 @@ export async function POST(req: NextRequest) {
     }
     const rows: ScreenRow[] = feeds.flatMap((f) => f?.rows ?? [])
 
-    // Entry zone / stop / T1 / T2 previews for BOTH directions on every feed
-    // row — the same planLevels() the journal freezes on take (a preview is
-    // never a blocker: null simply renders as "—" and that side is untakeable).
+    // ONE desk signal per feed row: the technical vote picks LONG or SHORT
+    // and the plan engine levels it (entry zone, stop, T1, T2). A null signal
+    // renders as "—" and that row is untakeable — never a blocker.
     await Promise.all(
-      rows.flatMap((row) => [
-        planLevels(row.symbol, row.market, 'LONG').then((p) => {
-          row.longPlan = p
-        }),
-        planLevels(row.symbol, row.market, 'SHORT').then((p) => {
-          row.shortPlan = p
-        }),
-      ]),
+      rows.map(async (row) => {
+        const sig = await deskSignal(row.symbol, row.market, {
+          d7: row.metrics.momentum7d,
+          d30: row.metrics.momentum30d,
+          d24: row.metrics.momentum24h,
+        })
+        row.side = sig?.side ?? null
+        row.sideReason = sig?.reason ?? null
+        row.plan = sig?.plan ?? null
+      }),
     )
 
     const scanned = feeds.reduce((s, f) => s + (f?.scanned ?? 0), 0)
@@ -112,7 +115,7 @@ export async function POST(req: NextRequest) {
         rows,
         failedRows: [],
       },
-      note: 'A screen is a filter, not a recommendation — every signal comes with a long AND a short plan (entry, stop, targets); taking one freezes the plan into your trade tracker.',
+      note: 'A screen is a filter, not a recommendation — each asset arrives as ONE directional signal (long or short, picked by the technical analysis) with entry, stop and targets; taking it freezes the plan into your trade tracker.',
     })
   } catch (e) {
     if (e instanceof ScreenError) return NextResponse.json({ ok: false, error: e.message }, { status: 400 })

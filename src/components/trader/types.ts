@@ -41,9 +41,15 @@ export interface ScreenRowView {
     volumeRatio: number
     drawdownFrom30dHigh: number
   }
-  /** Entry zone / stop / T1 / T2 preview for each direction — null when data is thin. */
-  longPlan: TicketPlanView | null
-  shortPlan: TicketPlanView | null
+  /**
+   * The ONE desk signal for this asset — the analysis (regime, EMAs, slope,
+   * MACD, RSI, momentum) picks LONG or SHORT, never both. plan is its entry
+   * zone / stop / T1 / T2; null when the data is thin (row renders "—").
+   */
+  side: 'LONG' | 'SHORT' | null
+  /** Evidence behind the direction pick ("uptrend regime · price above EMA50 …"). */
+  sideReason: string | null
+  plan: TicketPlanView | null
 }
 
 export interface ScreenResponse {

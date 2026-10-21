@@ -202,8 +202,8 @@ export function TraderDesk() {
         <div>
           <h1 className="text-lg font-extrabold tracking-tight text-tv-ink">Trader Desk</h1>
           <p className="text-[11.5px] text-tv-muted">
-            Long & short signals on crypto majors and top US stocks → take the trade → the tracker updates the status
-            for you.
+            One directional signal per asset (long OR short) on crypto majors and top US stocks → take the trade → the
+            tracker updates the status for you.
           </p>
         </div>
         {openTrades.length > 0 && (
@@ -277,9 +277,9 @@ export function TraderDesk() {
       <section aria-label="Signals" className="min-w-0 rounded-2xl border border-tv-line bg-tv-panel p-4">
         <h2 className="mb-1 text-[13px] font-extrabold text-tv-ink">Signals — crypto & US stocks</h2>
         <p className="mb-3 text-[11px] leading-snug text-tv-muted">
-          Binance majors (BTC, ETH, SOL, XRP always pinned) + top US large caps against explicit rules — every asset
-          arrives as BOTH a long and a short setup with an entry zone, stop loss and two targets. A screen is a filter,
-          not a recommendation.
+          Binance majors (BTC, ETH, SOL, XRP always pinned) + top US large caps against explicit rules — the technical
+          analysis picks ONE side per asset (long or short, never both) with an entry zone, stop loss and two targets.
+          A screen is a filter, not a recommendation.
         </p>
         <ScreenerPanel onTaken={() => void refreshTrades()} />
       </section>

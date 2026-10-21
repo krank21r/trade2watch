@@ -2,12 +2,13 @@
 
 /**
  * The desk signal feed — crypto + US stocks. Pick a market scope and a preset
- * (or edit the rules JSON), run it, and every asset arrives as TWO signals —
- * a LONG and a SHORT setup, each with an entry zone, stop loss and two
- * targets. The pinned crypto majors (BTC, ETH, SOL, XRP) are always included.
- * "I took this trade" freezes the chosen direction's plan into the shared
- * trade journal (src/lib/mytrades.ts), which then tracks the position
- * against real candles and updates the status automatically.
+ * (or edit the rules JSON), run it, and every asset arrives as ONE signal —
+ * the technical analysis (regime, EMAs, slope, MACD, RSI, momentum) picks
+ * LONG or SHORT, never both — with an entry zone, stop loss and two targets.
+ * The pinned crypto majors (BTC, ETH, SOL, XRP) are always included.
+ * "I took this trade" freezes the signal's plan into the shared trade
+ * journal (src/lib/mytrades.ts), which then tracks the position against
+ * real candles and updates the status automatically.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -110,7 +111,7 @@ export function buildDeskTrade(
   screenName: string,
   now = Date.now(),
 ): MyTrade {
-  const plan = (side === 'long' ? r.longPlan : r.shortPlan)!
+  const plan = r.plan!
   return {
     id: `${deskKey(r.symbol, side)}:${now}`,
     key: deskKey(r.symbol, side),
@@ -157,15 +158,17 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
   const [specText, setSpecText] = useState<string>(PRESET_JSON.best)
   const [res, setRes] = useState<ScreenResponse | null>(null)
   const [busy, setBusy] = useState(false)
-  const [taking, setTaking] = useState<string | null>(null) // `${symbol}:${side}`
+  const [taking, setTaking] = useState<string | null>(null) // symbol currently confirming
   const [entryInput, setEntryInput] = useState<string>('')
   const [saving, setSaving] = useState(false)
-  const openDeskKeys = useRef<Set<string>>(new Set())
+  const openDeskSymbols = useRef<Set<string>>(new Set())
 
   const refreshJournal = async () => {
     try {
       const list = await fetchMyTrades()
-      openDeskKeys.current = new Set(list.filter((t) => t.tag === 'DESK' && t.status === 'OPEN').map((t) => t.key))
+      // one open position per SYMBOL — a long and a short on the same asset
+      // would be a hedge, not two signals
+      openDeskSymbols.current = new Set(list.filter((t) => t.tag === 'DESK' && t.status === 'OPEN').map((t) => t.symbol))
     } catch {
       /* journal unreachable — take buttons stay enabled; the confirm re-checks */
     }
@@ -173,6 +176,10 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
 
   useEffect(() => {
     void refreshJournal()
+    // closing/deleting a tracked trade elsewhere must clear the "✓ Tracking" badge
+    const h = () => void refreshJournal()
+    window.addEventListener('t2w:trades-changed', h)
+    return () => window.removeEventListener('t2w:trades-changed', h)
   }, [])
 
   const pickPreset = (key: string) => {
@@ -190,10 +197,10 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
         body: JSON.stringify({ market, spec }),
       })
       setRes(data)
-      const signals = data.result.rows.reduce((n, r) => n + (r.longPlan ? 1 : 0) + (r.shortPlan ? 1 : 0), 0)
+      const signals = data.result.rows.filter((r) => r.plan).length
       toast({
         title: `${data.result.passed} assets · ${signals} signals (${data.result.name})`,
-        description: 'Every asset carries a long AND a short setup — take either one to start tracking it.',
+        description: 'One directional signal per asset — long or short, picked by the analysis. Take one to start tracking it.',
       })
     } catch (e) {
       const msg = e instanceof SyntaxError ? 'Rules are not valid JSON.' : (e as Error).message
@@ -203,14 +210,15 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
     }
   }
 
-  const startTake = (r: ScreenRowView, side: Side) => {
-    if (!(side === 'long' ? r.longPlan : r.shortPlan)) return
-    setTaking(`${r.symbol}:${side}`)
+  const startTake = (r: ScreenRowView) => {
+    if (!r.plan) return
+    setTaking(r.symbol)
     setEntryInput(String(r.metrics.price))
   }
 
-  const confirmTake = async (r: ScreenRowView, side: Side) => {
-    if (!(side === 'long' ? r.longPlan : r.shortPlan)) return
+  const confirmTake = async (r: ScreenRowView) => {
+    if (!r.plan || !r.side) return
+    const side = r.side.toLowerCase() as Side
     const entryFill = Number(entryInput)
     if (!Number.isFinite(entryFill) || entryFill <= 0) {
       toast({ title: 'Entry price looks wrong', description: 'Enter the price you actually filled at.', variant: 'destructive' })
@@ -219,8 +227,8 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
     setSaving(true)
     try {
       const list = await fetchMyTrades()
-      if (list.some((t) => t.key === deskKey(r.symbol, side) && t.status === 'OPEN')) {
-        toast({ title: `Already tracking ${r.symbol} ${side}`, description: 'Close the open desk trade first.' })
+      if (list.some((t) => t.tag === 'DESK' && t.status === 'OPEN' && t.symbol === r.symbol)) {
+        toast({ title: `Already tracking ${r.symbol}`, description: 'Close the open desk trade first — one position per asset.' })
         setTaking(null)
         return
       }
@@ -228,7 +236,7 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
       const next = [t, ...list]
       saveMyTrades(next)
       window.dispatchEvent(new Event('t2w:trades-changed'))
-      openDeskKeys.current.add(t.key)
+      openDeskSymbols.current.add(t.symbol)
       setTaking(null)
       onTaken?.()
       toast({
@@ -242,12 +250,11 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
     }
   }
 
-  // flatten: every asset yields up to two signals (long + short)
+  // one signal per asset — the analysis already picked the side
   const signals: Signal[] = []
   if (res) {
     for (const r of res.result.rows) {
-      if (r.longPlan) signals.push({ r, side: 'long', plan: r.longPlan })
-      if (r.shortPlan) signals.push({ r, side: 'short', plan: r.shortPlan })
+      if (r.plan && r.side) signals.push({ r, side: r.side.toLowerCase() as Side, plan: r.plan })
     }
   }
 
@@ -338,13 +345,13 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
                   r={s.r}
                   side={s.side}
                   index={i + 1}
-                  taking={taking === `${s.r.symbol}:${s.side}`}
+                  taking={taking === s.r.symbol}
                   entryInput={entryInput}
                   setEntryInput={setEntryInput}
                   saving={saving}
-                  tracked={openDeskKeys.current.has(deskKey(s.r.symbol, s.side))}
-                  onStart={() => startTake(s.r, s.side)}
-                  onConfirm={() => void confirmTake(s.r, s.side)}
+                  tracked={openDeskSymbols.current.has(s.r.symbol)}
+                  onStart={() => startTake(s.r)}
+                  onConfirm={() => void confirmTake(s.r)}
                   onCancel={() => setTaking(null)}
                 />
               ))}
@@ -362,16 +369,17 @@ export function ScreenerPanel({ onTaken, disabled }: { onTaken?: () => void; dis
 
       {res && signals.length > 0 && (
         <p className="text-[10.5px] leading-relaxed text-tv-muted2">
-          Every asset carries a LONG and a SHORT plan built from the same technical math as the AI Signals desk (4h
-          crypto · 1d stocks). Taking a signal freezes the plan — after TP1 the tracker moves the stop to entry; TP2
-          closes the trade as a full win; the stop closes it as a loss.
+          One directional signal per asset — the technical read (trend regime, EMAs, slope, MACD, RSI, momentum) picks
+          LONG or SHORT, never both (hover the Dir badge for the evidence). Levels come from the same math as the AI
+          Signals desk (4h crypto · 1d stocks). Taking a signal freezes the plan — after TP1 the tracker moves the stop
+          to entry; TP2 closes the trade as a full win; the stop closes it as a loss.
         </p>
       )}
 
       {res === null && (
         <div className="flex items-center gap-1.5 rounded-lg border border-tv-line bg-tv-panel2 px-3 py-2 text-[11.5px] text-tv-muted">
-          <XCircle className="h-3.5 w-3.5" /> Press “Get signals” for long & short setups on crypto majors and top US
-          stocks.
+          <XCircle className="h-3.5 w-3.5" /> Press “Get signals” for one directional setup (long or short) per asset on
+          crypto majors and top US stocks.
         </div>
       )}
     </div>
@@ -405,12 +413,12 @@ function TakeRow({
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const p = side === 'long' ? r.longPlan : r.shortPlan
+  const p = r.plan
   const isLong = side === 'long'
   return (
     <>
       <tr
-        title={r.passes.join(' · ') || r.fails.join(' · ')}
+        title={[r.sideReason, r.passes.join(' · ') || r.fails.join(' · ')].filter(Boolean).join(' — ') || undefined}
         className="border-t border-tv-line/60 hover:bg-tv-panel2/60"
       >
         <td className="px-2.5 py-1.5 text-tv-muted">{index}</td>
@@ -429,6 +437,7 @@ function TakeRow({
         <td className="px-2 py-1.5 text-right tabular-nums">{usd(r.metrics.price)}</td>
         <td className="px-2 py-1.5">
           <span
+            title={r.sideReason ?? undefined}
             className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase ${
               isLong ? 'border-bull/40 bg-bull/10 text-bull' : 'border-bear/40 bg-bear/10 text-bear'
             }`}
