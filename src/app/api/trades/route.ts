@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { SESSION_COOKIE, verifyToken } from '@/lib/auth'
-import { ensureSmcTables } from '@/lib/smc/ensure-tables'
+import { ensureUserTradeTable } from '@/lib/ensure-tables'
 import type { MyTrade } from '@/lib/mytrades'
 
 export const dynamic = 'force-dynamic'
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   if (!uid) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
 
   try {
-    await ensureSmcTables() // self-heal on ephemeral prod SQLite
+    await ensureUserTradeTable() // self-heal on ephemeral prod SQLite
     const row = await db.userTradeStore.findUnique({ where: { userId: uid } })
     if (!row) {
       // exists:false → the client may migrate this browser's local journal up
@@ -64,7 +64,7 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
-    await ensureSmcTables()
+    await ensureUserTradeTable()
     await db.userTradeStore.upsert({
       where: { userId: uid },
       create: { userId: uid, trades: JSON.stringify(trades), updatedAt: Date.now() },

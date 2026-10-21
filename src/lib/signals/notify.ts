@@ -3,10 +3,10 @@
  *
  * When the auto desk completes a directional analysis (LONG/SHORT with a real
  * plan), this module pushes the entry/stop/target levels to the user:
- *   - Telegram (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID) — same bot as SMC alerts
+ *   - Telegram (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)
  *   - generic JSON webhook (SIGNALS_WEBHOOK_URL)
  *
- * Delivery rules (mirrors src/lib/smc/alerts.ts):
+ * Delivery rules:
  *   - OFF unless SIGNALS_ALERTS_ENABLED=1 AND at least one destination is set.
  *   - READ-ONLY credentials: alerting only ever SENDS messages — no trading
  *     capability and no exchange access of any kind.
