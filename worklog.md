@@ -1058,3 +1058,20 @@ Work Log:
 
 Stage Summary:
 - Entry/targets/stop now visible at every stage: stage-1 screener rows carry plan previews, stage-3 tickets carry the authoritative plan, stage-4 portfolio shows Stop/T1/T2 with auto alert wiring. GitHub main = af68b61. BLOCKED ON USER: Vercel production must be Redeployed/Promoted — production still serves the pre-99f0cbb build (verified plan absent on live API).
+
+---
+Task ID: 48
+Agent: Z.ai Code (main)
+Task: "i just need entry stop signals, once i get the signals provide me the option i took trade, so once i confirmed just track the positions and update the status. Thats it remove all those things Budget ticket and all"
+
+Work Log:
+- Rebuilt the Trader Desk as signals → take → track, reusing the app's proven frozen-plan journal (src/lib/mytrades.ts + UserTradeStore) instead of new models — the same engine the Trade Setups tab uses: TP1 hit → half banked + stop to entry, TP2 → full win, SL before TP1 → stopped out, pessimistic same-candle resolution.
+- REMOVED: 4-stage pipeline (budget & rules, tickets with approve/reject, portfolio/drift/rebalance, price alerts), account chips + Reset, Copy-an-investor panel (CopycatPanel.tsx deleted), routes /api/trader/{account,plan,tickets,tickets/[id],rebalance,alerts}, the 5 Prisma models (TraderAccount/Ticket/Position/Target/Alert — db:push dropped the tables), weightsFromScreen + the weights field on the screen response. Kept: /api/trader/screen (session-gated) and the copycat backend lib/routes (invisible, separate feature).
+- KEPT/REUSED: desk.ts stripped to planLevels() + TicketPlan (the level engine); screener rows still carry plan previews (entry zone/stop/T1/T2/R:R).
+- NEW FLOW: ScreenerPanel rows gain a Take column → inline confirm (entry fill prefilled with live price, editable; plan levels shown frozen) → buildDeskTrade() freezes a MyTrade tagged 'DESK' (key DESK:SYMBOL:long) into the journal; duplicate-open guard; "✓ Tracking" badge on rows already taken.
+- TraderDesk.tsx rewritten: "Your taken trades" section (open cards with live price + R-now from /api/candles, level chips, Close trade = MANUAL outcome at live price; History rows with outcome badge + netR + hard-delete ✕) + "Signals — crypto screener" section; 45s candle-tracking effect with transition toasts (tp1/tp2/sl/be), 't2w:trades-changed' event sync so Setups tab and desk stay consistent; shared-journal integration verified (desk trade also appears in Setups tracker, removable from either side).
+- types.ts slimmed to TicketPlanView/ScreenRowView/ScreenResponse + jfetch/usd/pctS.
+- Verified: lint clean; API — screen 200 with plans, deleted routes 404, /api/trades 200; browser E2E — new single-view desk renders, Run screen → Take INJ → confirm (fill 8.656) → open card "INJ/USD LONG OPEN · $8.66 · 0.00R now · ENTRY/STOP/T1/T2 chips · R:R 1:2.0" + "● 1 open" chip → Close trade → "✋ Closed manually" history → ✕ delete → empty state; NEAR take → appears in Trade Setups tracker too → removed; mobile 390px clean (no page overflow), zero console errors (screenshots /tmp/desk-new-top.png, /tmp/desk-taken-card.png, /tmp/desk-new-mobile.png).
+
+Stage Summary:
+- Trader Desk is now exactly: signals (entry/stop/T1/T2) → "I took this trade" (editable fill) → automatic status tracking (OPEN → TP1 → TP2/SL, live price + R, manual close, history). All budget/ticket/portfolio machinery deleted from UI, API, schema. Status engine shared with the Setups tab journal — one source of truth per account. Needs Vercel Redeploy to go live.

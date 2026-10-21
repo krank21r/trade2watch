@@ -6,7 +6,6 @@ import {
   ScreenError,
   runScreen,
   validateSpec,
-  weightsFromScreen,
   type ScreenerSpec,
 } from '@/lib/trader/screener'
 
@@ -70,8 +69,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       result,
-      weights: weightsFromScreen(result),
-      note: 'A screen is a filter, not a recommendation. Weights are score-proportional over the ranked passers.',
+      note: 'A screen is a filter, not a recommendation — signals come with entry, stop and targets; taking one freezes the plan into your trade tracker.',
     })
   } catch (e) {
     if (e instanceof ScreenError) return NextResponse.json({ ok: false, error: e.message }, { status: 400 })

@@ -319,20 +319,3 @@ export async function runScreen(spec: ScreenerSpec): Promise<ScreenResult> {
     failedRows,
   }
 }
-
-/**
- * Turn a screen into target weights: score-proportional over the ranked
- * passers (fallback: equal weight when scores are missing), renormalised to
- * 100 — the shape trader-budget's size() expects.
- */
-export function weightsFromScreen(result: ScreenResult): Array<{ ticker: string; name: string; weight: number }> {
-  const scored = result.rows.filter((r) => r.score !== null && r.score > 0)
-  const pool = scored.length ? scored : result.rows
-  if (!pool.length) return []
-  const tot = pool.reduce((s, r) => s + (r.score ?? 1), 0) || pool.length
-  return pool.map((r) => ({
-    ticker: r.symbol,
-    name: r.name,
-    weight: Math.round(((r.score ?? 1) / tot) * 10000) / 100,
-  }))
-}
