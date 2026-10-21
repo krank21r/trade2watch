@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SESSION_COOKIE, verifyToken } from '@/lib/auth'
-import { checkAlerts, expireStaleTickets, portfolio, resetDesk } from '@/lib/trader/desk'
+import {
+  checkAlerts,
+  expireStaleTickets,
+  monitorArmedTickets,
+  portfolio,
+  resetDesk,
+} from '@/lib/trader/desk'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,14 +16,21 @@ async function userId(req: NextRequest): Promise<string | null> {
   return session?.id ?? null
 }
 
-/** GET /api/trader/account — paper account, live-marked positions, drift, alerts (checked here; each rings once). */
+/** GET /api/trader/account — paper account, live-marked positions, drift, alerts (checked here; each rings once). Also fills armed tickets whose entry zone was reached. */
 export async function GET(req: NextRequest) {
   const uid = await userId(req)
   if (!uid) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
   try {
     await expireStaleTickets(uid)
+    const armedFilled = await monitorArmedTickets(uid)
     const [pf, alerts] = await Promise.all([portfolio(uid), checkAlerts(uid)])
-    return NextResponse.json({ ok: true, ...pf, alerts: alerts.alerts, alertsRang: alerts.rang })
+    return NextResponse.json({
+      ok: true,
+      ...pf,
+      alerts: alerts.alerts,
+      alertsRang: alerts.rang,
+      armedFilled,
+    })
   } catch (e) {
     console.error('[api/trader/account] error:', e)
     return NextResponse.json({ ok: false, error: 'could not load the desk' }, { status: 500 })

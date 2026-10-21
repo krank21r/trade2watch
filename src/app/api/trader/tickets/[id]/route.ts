@@ -37,9 +37,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       ok: true,
       ticket: result.ticket,
       note:
-        action === 'approve'
+        result.note ??
+        (action === 'approve'
           ? `Filled on the paper account at the live price (${result.ticket.fillPrice}).`
-          : 'Ticket rejected — it stays on record with your no.',
+          : 'Ticket rejected — it stays on record with your no.'),
     })
   } catch (e) {
     if (e instanceof DeskError) return NextResponse.json({ ok: false, error: e.message }, { status: 400 })

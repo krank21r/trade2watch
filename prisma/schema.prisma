@@ -84,7 +84,9 @@ model TraderTicket {
   why        String?
   verdict    String // 'PASS' | 'BLOCK'
   reasons    Json? // BLOCK reasons
-  status     String    @default("proposed") // proposed | approved | rejected | expired
+  status     String    @default("proposed") // proposed | armed | approved | rejected | expired
+  armedAt    DateTime? // set when approval armed the ticket at its entry zone
+  plan       Json? // trade plan attached at build time: entry zone, stop, targets, R:R
   fillPrice  Float?
   filledQty  Float?
   createdAt  DateTime  @default(now())

@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Loader2, RotateCcw, Check, X, BellRing, Bell, Scale, Wallet, Trash2,
+  Loader2, RotateCcw, Check, X, BellRing, Bell, Scale, Wallet, Trash2, Crosshair,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -75,16 +75,19 @@ function TicketCard({
 }) {
   const done = t.status !== 'proposed'
   const pass = t.verdict === 'PASS'
+  const p = t.plan
   return (
     <div
       className={`rounded-xl border p-3 ${
         t.status === 'approved'
           ? 'border-bull-line bg-bull-soft/60'
-          : t.status === 'rejected' || t.status === 'expired'
-            ? 'border-tv-line bg-tv-panel2 opacity-70'
-            : pass
-              ? 'border-bull-line bg-tv-panel'
-              : 'border-warn-line bg-warn-soft/50'
+          : t.status === 'armed'
+            ? 'border-amber-300 bg-amber-50/60'
+            : t.status === 'rejected' || t.status === 'expired'
+              ? 'border-tv-line bg-tv-panel2 opacity-70'
+              : pass
+                ? 'border-bull-line bg-tv-panel'
+                : 'border-warn-line bg-warn-soft/50'
       }`}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -103,6 +106,24 @@ function TicketCard({
         <span className="ml-auto text-[10.5px] uppercase tracking-wide text-tv-muted2">{t.status}</span>
       </div>
       {t.why && <p className="mt-1 text-[11px] leading-snug text-tv-muted">{t.why}</p>}
+      {p && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-tv-line/70 bg-tv-panel2/70 px-2.5 py-1.5 text-[11px]">
+          <span className="flex items-center gap-1 font-semibold text-tv-ink">
+            <Crosshair className="h-3 w-3 text-tv-muted2" /> Entry
+            <span className="tabular-nums">{usd(p.entryLow)}–{usd(p.entryHigh)}</span>
+          </span>
+          <span className="font-semibold text-bear">
+            Stop <span className="tabular-nums">{usd(p.stop)}</span>
+          </span>
+          <span className="font-semibold text-bull">
+            T1 <span className="tabular-nums">{usd(p.target1)}</span>
+          </span>
+          <span className="font-semibold text-bull">
+            T2 <span className="tabular-nums">{usd(p.target2)}</span>
+          </span>
+          <span className="ml-auto tabular-nums text-tv-muted">R:R {p.riskReward.split(' · ')[0]}</span>
+        </div>
+      )}
       {t.reasons.length > 0 && (
         <ul className="mt-1 space-y-0.5">
           {t.reasons.map((r, i) => (
@@ -110,13 +131,20 @@ function TicketCard({
           ))}
         </ul>
       )}
+      {t.status === 'armed' && (
+        <p className="mt-1 text-[11px] font-semibold text-amber-700">
+          Armed at the entry zone — it fills automatically when price enters{' '}
+          {p ? `${usd(p.entryLow)}–${usd(p.entryHigh)}` : 'the zone'} (48h window), never above it.
+        </p>
+      )}
       {t.status === 'approved' && t.fillPrice ? (
         <p className="mt-1 text-[11px] font-semibold text-bull-ink">
           Filled {qtyS(t.filledQty ?? 0)} @ {usd(t.fillPrice)} on the paper account
+          {p ? ` — stop ${usd(p.stop)} · T1 ${usd(p.target1)} · T2 ${usd(p.target2)} (alerts set)` : ''}
         </p>
       ) : null}
       {!done && (
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             disabled={busy || !pass}
@@ -134,6 +162,11 @@ function TicketCard({
           >
             <X className="h-3.5 w-3.5" /> No
           </Button>
+          {pass && p && t.side === 'buy' ? (
+            <span className="text-[10.5px] text-tv-muted2">
+              Fills now while price is in the entry zone; above it, your yes arms the ticket until price pulls back.
+            </span>
+          ) : null}
         </div>
       )}
     </div>
@@ -187,10 +220,19 @@ export function TraderDesk() {
           description: `Last price ${usd(r.lastPrice ?? undefined)} — alert rings once.`,
         })
       }
+      for (const t of d.armedFilled ?? []) {
+        toast({
+          title: `🎯 Armed order filled: BUY ${t.symbol} ${usd(t.notional)}`,
+          description: t.plan
+            ? `Price entered the entry zone ${usd(t.plan.entryLow)}–${usd(t.plan.entryHigh)} — filled @ ${usd(t.fillPrice)}. Stop ${usd(t.plan.stop)} · T1 ${usd(t.plan.target1)} · T2 ${usd(t.plan.target2)}.`
+            : `Filled @ ${usd(t.fillPrice)}.`,
+        })
+      }
+      if ((d.armedFilled?.length ?? 0) > 0) refreshTickets()
     } catch {
       /* desk may not exist yet */
     }
-  }, [toast])
+  }, [toast, refreshTickets])
 
   useEffect(() => {
     refreshAccount()
@@ -324,6 +366,7 @@ export function TraderDesk() {
   }
 
   const proposed = tickets.filter((t) => t.status === 'proposed')
+  const armed = tickets.filter((t) => t.status === 'armed')
   const selectedWeights = plan?.sizing.positions ?? []
 
   return (
@@ -513,6 +556,11 @@ export function TraderDesk() {
             <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[11px] font-bold text-tv-muted">
               {proposed.length} awaiting decision
             </span>
+            {armed.length > 0 && (
+              <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                {armed.length} armed at entry zone
+              </span>
+            )}
           </div>
           {tickets.length === 0 ? (
             <p className="rounded-lg border border-warn-line bg-warn-soft px-3 py-2 text-[12px] text-warn">
@@ -558,6 +606,7 @@ export function TraderDesk() {
                       <th className="px-2 py-1.5 text-right font-semibold">Last</th>
                       <th className="px-2 py-1.5 text-right font-semibold">Value</th>
                       <th className="px-2 py-1.5 text-right font-semibold">P&amp;L</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Stop / T1 / T2</th>
                       <th className="px-2 py-1.5 text-right font-semibold">Now %</th>
                       <th className="px-2 py-1.5 text-right font-semibold">Target %</th>
                       <th className="px-2 py-1.5 text-right font-semibold">Drift</th>
@@ -573,6 +622,19 @@ export function TraderDesk() {
                         <td className="px-2 py-1.5 text-right font-bold tabular-nums text-tv-ink">{usd(r.value)}</td>
                         <td className={`px-2 py-1.5 text-right tabular-nums ${r.pnlPct >= 0 ? 'text-bull' : 'text-bear'}`}>
                           {pctS(r.pnlPct, 1)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-[10.5px]">
+                          {r.levels ? (
+                            <>
+                              <span className="text-bear">{usd(r.levels.stop)}</span>
+                              {' / '}
+                              <span className="text-bull">{usd(r.levels.target1)}</span>
+                              {' / '}
+                              <span className="text-bull">{usd(r.levels.target2)}</span>
+                            </>
+                          ) : (
+                            <span className="text-tv-muted2">—</span>
+                          )}
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{r.currentPct.toFixed(1)}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums text-tv-muted">

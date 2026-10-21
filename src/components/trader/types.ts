@@ -8,6 +8,18 @@ export interface WeightRow {
   weight: number
 }
 
+export interface TicketPlanView {
+  entryLow: number
+  entryHigh: number
+  stop: number
+  target1: number
+  target2: number
+  riskReward: string
+  atr: number | null
+  regime: string
+  timeframe: string
+}
+
 export interface DeskTicket {
   id: string
   batchId: string
@@ -18,7 +30,9 @@ export interface DeskTicket {
   why: string | null
   verdict: 'PASS' | 'BLOCK'
   reasons: string[]
-  status: 'proposed' | 'approved' | 'rejected' | 'expired'
+  status: 'proposed' | 'armed' | 'approved' | 'rejected' | 'expired'
+  armedAt: string | null
+  plan: TicketPlanView | null
   fillPrice: number | null
   filledQty: number | null
   createdAt: string
@@ -69,6 +83,14 @@ export interface PortfolioRowView {
   targetPct: number
   drift: number
   tracked: boolean
+  levels: {
+    entryLow: number
+    entryHigh: number
+    stop: number
+    target1: number
+    target2: number
+    riskReward: string
+  } | null
 }
 
 export interface AlertView {
@@ -95,6 +117,7 @@ export interface AccountResponse {
   targetSource: string | null
   alerts: AlertView[]
   alertsRang: AlertView[]
+  armedFilled: DeskTicket[]
 }
 
 export interface ScreenRowView {

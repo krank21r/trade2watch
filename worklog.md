@@ -1023,3 +1023,22 @@ Work Log:
 
 Stage Summary:
 - Trader-skill implementation confirmed complete, healthy and pushed. No code changes this session — pure re-verification. Remaining user action: Vercel production still serves the old build until Redeploy/Promote to Production.
+
+---
+Task ID: 46
+Agent: Z.ai Code (main)
+Task: Trader Desk tickets need entry, targets and stop loss ("i also need entry, targets and stop loss").
+
+Work Log:
+- Wired the AI Signals deterministic plan engineer (buildTradePlan) into the desk: planLevels() fetches ticker + 4h/1d candles per PASS ticket symbol, builds a technical snapshot and computes a LONG plan (entry zone, structural stop, R:R-floored T1/T2) — stored on TraderTicket.plan Json (graceful null when data is thin; BLOCKed and rebalance tickets carry no plan).
+- Schema (db:push): TraderTicket + armedAt DateTime? + plan Json?; status enum extended with 'armed'.
+- Approval discipline (decideTicket gate 3): a planned buy fills at market only while live price is inside the entry zone (+0.5% grace); above it, the yes ARMS the ticket (status armed, armedAt) — "the desk never chases". No plan / sells = plain market order (rebalance unchanged).
+- monitorArmedTickets(): runs on every /api/trader/account poll — armed tickets fill automatically when price enters the zone (cash-checked inside the transaction; cash-short stays armed), 48h expiry via expireStaleTickets now also covers armed.
+- Shared fillInTx() extracted (approval + monitor fill identically); createPlanAlerts() auto-creates stop + T1 + T2 ring-once alerts on every planned fill.
+- portfolio() joins each position to its latest approved planned ticket → PortfolioRow.levels (entry/stop/T1/T2/R:R); account GET returns armedFilled for UI toasts.
+- Prisma quirks fixed: createMany plan uses (… as InputJsonValue | null) ?? Prisma.DbNull; Json null FILTER not supported in this client version → portfolio filters plan presence in JS.
+- UI (TraderDesk.tsx + types.ts): TicketCard shows Entry zone / Stop / T1 / T2 / R:R chips (amber armed card + explainer line), "armed at entry zone" badge in stage 3, armed-filled toasts (🎯), portfolio table gains a Stop/T1/T2 column (bear/bull colored).
+- Verified: lint clean; API E2E — plan → both tickets carry full levels (INJ entry 8.4–8.64/stop 8.14/T1 9.27/T2 9.83; NEAR 5.17–5.36/5.02/5.76/6.12, R:R 2.0/3.5); approve in-zone → filled + 6 alerts + portfolio levels; approve with zone shrunk below price → ARMED ("never chases", armedAt set); zone widened to cover price → account poll auto-filled @5.372, position + cash updated, 3 alerts created; agent-browser — ticket cards render level chips, portfolio shows Stop/T1/T2 column, mobile 390px clean, zero console errors (screenshots /tmp/desk-tickets-levels.png, /tmp/desk-portfolio-levels.png, /tmp/desk-mobile.png).
+
+Stage Summary:
+- Desk tickets are now full trade plans: every PASS buy carries an entry zone, stop loss and two targets from the same deterministic level math as AI Signals; approval above the zone arms instead of chasing, the poll fills armed tickets at the zone, and every planned fill arms stop/T1/T2 alerts and shows levels in the portfolio.

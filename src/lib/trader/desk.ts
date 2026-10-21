@@ -16,8 +16,11 @@
  */
 
 import { createHash } from 'crypto'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
-import { getTicker } from '@/lib/market/providers'
+import { getCandles, getTicker } from '@/lib/market/providers'
+import { buildSnapshot } from '@/lib/market/snapshot'
+import { buildTradePlan } from '@/lib/signals/engine'
 import {
   SizeError,
   size,
@@ -33,6 +36,26 @@ import {
 
 export const EPS = 1e-9
 const CENT = 0.005
+
+/**
+ * Grace factor for entry-zone discipline: a buy fills immediately while the
+ * live price sits inside the plan's entry zone (or within this much ABOVE its
+ * top, so a tick of drift never blocks an execution). Beyond that, approving
+ * ARMS the ticket instead — the desk never chases.
+ */
+const ENTRY_GRACE = 0.005
+
+export interface TicketPlan {
+  entryLow: number
+  entryHigh: number
+  stop: number
+  target1: number
+  target2: number
+  riskReward: string
+  atr: number | null
+  regime: string
+  timeframe: string
+}
 
 export interface DeskRules {
   budget: number
@@ -86,6 +109,52 @@ async function livePrice(symbol: string, market: 'crypto' | 'stock'): Promise<nu
   return t.price
 }
 
+/**
+ * Deterministic trade plan for a desk target — the same level math the AI
+ * Signals desk uses (buildTradePlan on a fresh technical snapshot): an entry
+ * zone at/below price, a structural stop beneath it and R:R-floored targets
+ * above. Desk targets are always buys, so direction is LONG. Returns null
+ * when the market data cannot support a plan — the ticket then falls back to
+ * today's behavior (fill at the live price on approval).
+ */
+async function planLevels(symbol: string, market: 'crypto' | 'stock'): Promise<TicketPlan | null> {
+  try {
+    const timeframe = market === 'crypto' ? '4h' : '1d'
+    const [ticker, candles] = await Promise.all([getTicker(symbol, market), getCandles(symbol, market, timeframe)])
+    if (!ticker || !(ticker.price > 0) || candles.length < 30) return null
+    const snapshot = buildSnapshot(candles, {
+      symbol: ticker.symbol,
+      market,
+      displayName: ticker.displayName,
+      currency: ticker.currency,
+      price: ticker.price,
+      change24h: ticker.change24h,
+      timeframe,
+    })
+    const plan = buildTradePlan('LONG', snapshot)
+    if (!plan || !(plan.stop > 0) || !(plan.target1 > plan.stop)) return null
+    return {
+      entryLow: round2(plan.entryLow),
+      entryHigh: round2(plan.entryHigh),
+      stop: round2(plan.stop),
+      target1: round2(plan.target1),
+      target2: round2(plan.target2),
+      riskReward: plan.riskReward,
+      atr: snapshot.atr && snapshot.atr > 0 ? round2(snapshot.atr) : null,
+      regime: snapshot.regime,
+      timeframe,
+    }
+  } catch {
+    return null // plan is an enhancement, never a blocker
+  }
+}
+
+/** True while the live price is marketable against the plan's entry zone. */
+function inEntryZone(price: number, plan: TicketPlan | null): boolean {
+  if (!plan) return true // no plan = plain market order, always fillable
+  return price <= plan.entryHigh * (1 + ENTRY_GRACE)
+}
+
 /** The paper account (positions valued by the caller), created on first plan. */
 async function ensureAccount(uid: string, budget: number) {
   const existing = await db.traderAccount.findUnique({ where: { userId: uid } })
@@ -131,7 +200,9 @@ export interface DeskTicketView {
   why: string | null
   verdict: 'PASS' | 'BLOCK'
   reasons: string[]
-  status: 'proposed' | 'approved' | 'rejected' | 'expired'
+  status: 'proposed' | 'armed' | 'approved' | 'rejected' | 'expired'
+  armedAt: string | null
+  plan: TicketPlan | null
   fillPrice: number | null
   filledQty: number | null
   createdAt: string
@@ -249,6 +320,13 @@ export async function buildPlan(uid: string, params: PlanParams): Promise<PlanRe
   }
   if (!rows.length) notes.push('the sizing produced no orders — every slice was dropped (raise the budget or the caps)')
 
+  // attach deterministic trade plans (entry zone / stop / targets) to the
+  // tickets that can actually fill — BLOCKed orders never reach the market
+  const planSymbols = [...new Set(rows.filter((r) => r.verdict === 'PASS').map((r) => r.symbol))]
+  const planMap = new Map<string, TicketPlan | null>(
+    (await Promise.all(planSymbols.map(async (s) => [s, await planLevels(s, market)] as const))),
+  )
+
   await ensureAccount(uid, rules.budget)
   await db.traderTicket.createMany({
     data: rows.map((r) => ({
@@ -264,6 +342,7 @@ export async function buildPlan(uid: string, params: PlanParams): Promise<PlanRe
       why: r.why,
       verdict: r.verdict,
       reasons: r.reasons,
+      plan: (r.verdict === 'PASS' ? (planMap.get(r.symbol) ?? null) : null) as Prisma.InputJsonValue | null ?? Prisma.DbNull,
     })),
   })
 
@@ -295,10 +374,26 @@ function toTicketView(t: {
   verdict: string
   reasons: unknown
   status: string
+  armedAt?: Date | null
+  plan?: unknown
   fillPrice: number | null
   filledQty: number | null
   createdAt: Date
 }): DeskTicketView {
+  const plan =
+    t.plan && typeof t.plan === 'object'
+      ? (t.plan as {
+          entryLow: number
+          entryHigh: number
+          stop: number
+          target1: number
+          target2: number
+          riskReward: string
+          atr: number | null
+          regime: string
+          timeframe: string
+        })
+      : null
   return {
     id: t.id,
     batchId: t.batchId,
@@ -309,9 +404,11 @@ function toTicketView(t: {
     why: t.why,
     verdict: t.verdict === 'BLOCK' ? 'BLOCK' : 'PASS',
     reasons: Array.isArray(t.reasons) ? (t.reasons as string[]) : [],
-    status: (['proposed', 'approved', 'rejected', 'expired'].includes(t.status)
+    status: (['proposed', 'armed', 'approved', 'rejected', 'expired'].includes(t.status)
       ? t.status
       : 'proposed') as DeskTicketView['status'],
+    armedAt: t.armedAt?.toISOString() ?? null,
+    plan,
     fillPrice: t.fillPrice,
     filledQty: t.filledQty,
     createdAt: t.createdAt.toISOString(),
@@ -328,16 +425,84 @@ export async function listTickets(uid: string, batchId?: string): Promise<DeskTi
 }
 
 /**
- * The only path from proposal to fill. Two gates, exactly like the repo:
- * the exact order (fingerprint) must have passed risk, and the user must
- * have said yes to THIS ticket. Then the fill happens at the live price on
- * the paper account.
+ * Apply a buy/sell fill to the paper account inside a transaction. Shared by
+ * the approval path and the armed-tickets monitor so both fill identically.
+ */
+async function fillInTx(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  uid: string,
+  t: { id: string; symbol: string; side: string; notional: number },
+  cash: number,
+  price: number,
+) {
+  const filledQty = Math.round((t.notional / price) * 10_000) / 10_000
+  const cashAfter = t.side === 'buy' ? round2(cash - t.notional) : round2(cash + t.notional)
+  if (t.side === 'buy' && cashAfter < -CENT)
+    throw new DeskError(`not enough cash on the paper account (${money(cash)} left)`)
+  await tx.traderAccount.update({ where: { userId: uid }, data: { cash: Math.max(cashAfter, 0) } })
+
+  const existing = await tx.traderPosition.findUnique({
+    where: { userId_symbol: { userId: uid, symbol: t.symbol } },
+  })
+  if (t.side === 'buy') {
+    if (existing) {
+      const qty = existing.qty + filledQty
+      const avg = qty > EPS ? (existing.avgPrice * existing.qty + price * filledQty) / qty : price
+      await tx.traderPosition.update({ where: { id: existing.id }, data: { qty, avgPrice: avg } })
+    } else {
+      await tx.traderPosition.create({
+        data: { userId: uid, symbol: t.symbol, qty: filledQty, avgPrice: price },
+      })
+    }
+  } else {
+    const qty = (existing?.qty ?? 0) - filledQty
+    if (!existing || qty <= 0.00001) {
+      if (existing) await tx.traderPosition.delete({ where: { id: existing.id } })
+    } else {
+      await tx.traderPosition.update({ where: { id: existing.id }, data: { qty } })
+    }
+  }
+  return tx.traderTicket.update({
+    where: { id: t.id },
+    data: { status: 'approved', decidedAt: new Date(), fillPrice: price, filledQty },
+  })
+}
+
+/** After a planned fill, ring the plan's levels: stop + both targets. */
+async function createPlanAlerts(uid: string, symbol: string, plan: TicketPlan | null): Promise<void> {
+  if (!plan) return
+  const rows = [
+    { kind: 'stop' as const, price: plan.stop, note: `stop loss — exit the position (${plan.riskReward.split(' ')[0]} risk per unit)` },
+    { kind: 'above' as const, price: plan.target1, note: 'target 1 — consider scaling out part of the position' },
+    { kind: 'above' as const, price: plan.target2, note: 'target 2 — final target from the plan' },
+  ]
+  await db.traderAlert
+    .createMany({
+      data: rows.map((r) => ({
+        userId: uid,
+        symbol,
+        market: 'crypto',
+        kind: r.kind,
+        price: r.price,
+        note: r.note,
+      })),
+    })
+    .catch(() => {}) // alerts are informational, never a fill blocker
+}
+
+/**
+ * The only path from proposal to fill or arm. Three gates, exactly like the
+ * repo plus entry discipline: the exact order (fingerprint) must have passed
+ * risk, the user must have said yes to THIS ticket, and a planned buy fills
+ * at the market only while price is in its entry zone — approving above the
+ * zone ARMS the ticket instead (the desk never chases). Armed tickets fill
+ * automatically when price enters the zone (monitorArmedTickets).
  */
 export async function decideTicket(
   uid: string,
   ticketId: string,
   action: 'approve' | 'reject',
-): Promise<{ ticket: DeskTicketView; rangNote?: string }> {
+): Promise<{ ticket: DeskTicketView; note?: string }> {
   const t = await db.traderTicket.findUnique({ where: { id: ticketId } })
   if (!t || t.userId !== uid) throw new DeskError('ticket not found')
   if (t.status !== 'proposed') throw new DeskError(`this ticket was already ${t.status}`)
@@ -356,57 +521,80 @@ export async function decideTicket(
   if (fp !== t.fingerprint) throw new DeskError('this exact order was not the one risk passed')
 
   const market = t.market === 'stock' ? 'stock' : 'crypto'
+  const plan = (t.plan && typeof t.plan === 'object' ? (t.plan as TicketPlan) : null) as TicketPlan | null
   const price = await livePrice(t.symbol, market)
-  const filledQty = Math.round((t.notional / price) * 10_000) / 10_000
+
+  // gate 3 — entry discipline: planned buys above the entry zone get armed,
+  // not filled. No plan (rebalance tickets) or a sell = plain market order.
+  if (t.side === 'buy' && !inEntryZone(price, plan)) {
+    const updated = await db.traderTicket.update({
+      where: { id: t.id },
+      data: { status: 'armed', armedAt: new Date() },
+    })
+    return {
+      ticket: toTicketView(updated),
+      note: plan
+        ? `Armed — live price ${money(price)} is above the entry zone ${money(plan.entryLow)}–${money(plan.entryHigh)}. It fills automatically when price enters the zone (48h), never chases.`
+        : 'Armed — waiting for the entry zone.',
+    }
+  }
 
   const account = await ensureAccount(uid, DEFAULT_RULES.budget)
+  const result = await db.$transaction((tx) => fillInTx(tx, uid, t, account.cash, price))
+  await createPlanAlerts(uid, t.symbol, plan)
 
-  // apply the fill to the paper account (buy: cash out, position in)
-  const result = await db.$transaction(async (tx) => {
-    const cashAfter =
-      t.side === 'buy' ? round2(account.cash - t.notional) : round2(account.cash + t.notional)
-    if (t.side === 'buy' && cashAfter < -CENT)
-      throw new DeskError(`not enough cash on the paper account (${money(account.cash)} left)`)
-    await tx.traderAccount.update({ where: { userId: uid }, data: { cash: Math.max(cashAfter, 0) } })
-
-    const existing = await tx.traderPosition.findUnique({
-      where: { userId_symbol: { userId: uid, symbol: t.symbol } },
-    })
-    if (t.side === 'buy') {
-      if (existing) {
-        const qty = existing.qty + filledQty
-        const avg = qty > EPS ? (existing.avgPrice * existing.qty + price * filledQty) / qty : price
-        await tx.traderPosition.update({
-          where: { id: existing.id },
-          data: { qty, avgPrice: avg },
-        })
-      } else {
-        await tx.traderPosition.create({
-          data: { userId: uid, symbol: t.symbol, qty: filledQty, avgPrice: price },
-        })
-      }
-    } else {
-      const qty = (existing?.qty ?? 0) - filledQty
-      if (!existing || qty <= 0.00001) {
-        if (existing) await tx.traderPosition.delete({ where: { id: existing.id } })
-      } else {
-        await tx.traderPosition.update({ where: { id: existing.id }, data: { qty } })
-      }
-    }
-    return tx.traderTicket.update({
-      where: { id: t.id },
-      data: { status: 'approved', decidedAt: new Date(), fillPrice: price, filledQty },
-    })
-  })
-
-  return { ticket: toTicketView(result) }
+  return {
+    ticket: toTicketView(result),
+    note: plan
+      ? `Filled ${result.filledQty ?? ''} @ ${money(price)}. Stop ${money(plan.stop)} · T1 ${money(plan.target1)} · T2 ${money(plan.target2)} — alerts set for all three.`
+      : `Filled on the paper account at the live price (${money(price)}).`,
+  }
 }
 
-/** Expire stale proposals (older than 48h) so the ticket list stays honest. */
+/**
+ * Armed tickets: approved buys waiting for their entry zone. Checked on every
+ * desk poll — when the live price enters the zone (within the grace) and the
+ * cash is there, the fill happens exactly like an approved ticket. Cash-short
+ * armed tickets stay armed (cash may free up); 48h expiry keeps it honest.
+ */
+export async function monitorArmedTickets(uid: string): Promise<DeskTicketView[]> {
+  const armed = await db.traderTicket.findMany({ where: { userId: uid, status: 'armed' } })
+  if (!armed.length) return []
+  const filled: DeskTicketView[] = []
+  const account = await db.traderAccount.findUnique({ where: { userId: uid } })
+  let cash = account?.cash ?? 0
+  for (const t of armed) {
+    const plan = (t.plan && typeof t.plan === 'object' ? (t.plan as TicketPlan) : null) as TicketPlan | null
+    if (!plan) {
+      // armed tickets always carry a plan; a corrupted one just expires
+      await db.traderTicket.update({ where: { id: t.id }, data: { status: 'expired' } }).catch(() => {})
+      continue
+    }
+    try {
+      const price = await livePrice(t.symbol, t.market === 'stock' ? 'stock' : 'crypto')
+      if (!inEntryZone(price, plan)) continue
+      if (t.side === 'buy' && cash < t.notional - CENT) continue // wait for cash
+      const result = await db.$transaction((tx) => fillInTx(tx, uid, t, cash, price))
+      cash = round2(cash - t.notional)
+      await createPlanAlerts(uid, t.symbol, plan)
+      filled.push(toTicketView(result))
+    } catch {
+      /* price feed hiccup: stays armed, next poll retries */
+    }
+  }
+  return filled
+}
+
+
+/** Expire stale proposals and armed tickets (older than 48h) so the ticket list stays honest. */
 export async function expireStaleTickets(uid: string): Promise<void> {
   const cutoff = new Date(Date.now() - 48 * 3600 * 1000)
   await db.traderTicket.updateMany({
     where: { userId: uid, status: 'proposed', createdAt: { lt: cutoff } },
+    data: { status: 'expired' },
+  })
+  await db.traderTicket.updateMany({
+    where: { userId: uid, status: 'armed', armedAt: { lt: cutoff } },
     data: { status: 'expired' },
   })
 }
@@ -424,6 +612,14 @@ export interface PortfolioRow {
   targetPct: number
   drift: number
   tracked: boolean
+  levels: {
+    entryLow: number
+    entryHigh: number
+    stop: number
+    target1: number
+    target2: number
+    riskReward: string
+  } | null
 }
 
 export interface PortfolioResult {
@@ -442,6 +638,29 @@ export async function portfolio(uid: string): Promise<PortfolioResult> {
   const targets = targetRow
     ? (JSON.parse(targetRow.weights) as Array<{ symbol: string; name: string; weight: number }>)
     : null
+
+  // latest approved ticket with a plan per symbol → the position's working
+  // levels (entry zone / stop / targets) shown next to the live marks
+  const approvedTickets = await db.traderTicket.findMany({
+    where: { userId: uid, status: 'approved' },
+    orderBy: { decidedAt: 'desc' },
+    take: 200,
+    select: { symbol: true, plan: true },
+  })
+  const levelMap = new Map<string, NonNullable<PortfolioRow['levels']>>()
+  for (const t of approvedTickets) {
+    if (levelMap.has(t.symbol)) continue
+    const p = t.plan as TicketPlan | null
+    if (!p || typeof p !== 'object' || !(p.stop > 0)) continue
+    levelMap.set(t.symbol, {
+      entryLow: p.entryLow,
+      entryHigh: p.entryHigh,
+      stop: p.stop,
+      target1: p.target1,
+      target2: p.target2,
+      riskReward: p.riskReward,
+    })
+  }
 
   const rows: PortfolioRow[] = []
   let invested = 0
@@ -479,6 +698,7 @@ export async function portfolio(uid: string): Promise<PortfolioResult> {
       targetPct: 0, // filled below when targets exist
       drift: 0,
       tracked: !!tw,
+      levels: levelMap.get(p.symbol) ?? null,
     })
   }
 
