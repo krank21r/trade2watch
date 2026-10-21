@@ -496,7 +496,7 @@ export async function runSignalPipeline(runId: string, symbol: string, market: '
     await stageDecision(ctx, plan)
 
     // persist artifacts
-    await db.signalRun.update({ where: { id: runId }, data: { artifacts: ctx.artifacts as unknown as Record<string, unknown> } })
+    await db.signalRun.update({ where: { id: runId }, data: { artifacts: JSON.parse(JSON.stringify(ctx.artifacts)) } })
   } catch (e) {
     console.error('[signal-engine] run failed:', e)
     await db.signalRun

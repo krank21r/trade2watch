@@ -53,6 +53,16 @@ export interface RiskResult {
   cashAfter: number
 }
 
+/**
+ * A starting account state (the paper desk). When omitted, checkOrders keeps
+ * its original behaviour: a fresh account funded with the budget.
+ */
+export interface StartAccount {
+  cash: number
+  /** symbol → current position value in USD */
+  positions: Record<string, number>
+}
+
 export function riskLimitsFrom(sizing: SizeResult, maxOrderUsd = 2000, maxOrdersPerDay = 10): RiskLimits {
   return {
     budget: sizing.budget,
@@ -71,15 +81,21 @@ function money(x: number): string {
 
 /**
  * Check proposed buy orders against the limits. Starts from a fresh account
- * funded with the budget; each PASS deducts cash as if it filled.
+ * funded with the budget (or from `start` — the paper desk's cash and
+ * positions); each PASS deducts cash as if it filled.
  */
-export function checkOrders(orders: RiskOrder[], limits: RiskLimits): RiskResult {
+export function checkOrders(orders: RiskOrder[], limits: RiskLimits, start?: StartAccount): RiskResult {
   const verdicts: RiskVerdict[] = []
-  const buffer = (limits.budget * limits.cashBufferPct) / 100
-  const capValue = (limits.budget * limits.maxPositionPct) / 100
-  const held = new Map<string, number>() // symbol → value bought so far in this batch
+  const startCash = start ? start.cash : limits.budget
+  const startPositions = start ? start.positions : {}
+  const startTotal = startCash + Object.values(startPositions).reduce((s, v) => s + v, 0)
+  const buffer = (startTotal * limits.cashBufferPct) / 100
+  const capValue = (startTotal * limits.maxPositionPct) / 100
+  const held = new Map<string, number>(
+    Object.entries(startPositions).map(([s, v]) => [s.toUpperCase(), v]),
+  ) // symbol → value held (existing + bought so far in this batch)
   const seen = new Set<string>()
-  let cash = limits.budget
+  let cash = startCash
 
   for (const o of orders) {
     const reasons: string[] = []
@@ -129,6 +145,64 @@ export function checkOrders(orders: RiskOrder[], limits: RiskLimits): RiskResult
     if (status === 'PASS') {
       cash -= notional
       if (symbol) held.set(symbol, (held.get(symbol) ?? 0) + notional)
+    }
+    verdicts.push({ symbol, notional, status, reasons })
+  }
+
+  return { verdicts, allPass: verdicts.every((v) => v.status === 'PASS'), cashAfter: cash }
+}
+
+export interface SellOrder {
+  symbol: string
+  notional: number // dollar value of the proposed sell
+}
+
+/**
+ * Check proposed SELL orders (the rebalancer's trims). Selling is only ever a
+ * reduction of what the paper desk already holds — short selling is off,
+ * exactly as in check.py's "short" rule. Each PASS adds the proceeds to cash
+ * so later sells in the same batch see the updated holdings.
+ */
+export function checkSellOrders(
+  orders: SellOrder[],
+  limits: Pick<RiskLimits, 'minOrderUsd' | 'maxOrderUsd'>,
+  start: StartAccount,
+): RiskResult {
+  const verdicts: RiskVerdict[] = []
+  const heldValue = new Map<string, number>(
+    Object.entries(start.positions).map(([s, v]) => [s.toUpperCase(), v]),
+  )
+  const seen = new Set<string>()
+  let cash = start.cash
+
+  for (const o of orders) {
+    const reasons: string[] = []
+    const symbol = String(o.symbol ?? '').trim().toUpperCase()
+    const notional = Number(o.notional ?? 0)
+
+    if (!symbol) reasons.push('order has no symbol')
+    if (!(notional > 0)) reasons.push('order has no dollar amount')
+
+    // size
+    if (notional > 0 && notional < limits.minOrderUsd - CENT)
+      reasons.push(`order ${money(notional)} is under your ${money(limits.minOrderUsd)} minimum`)
+    if (notional > 0 && notional > limits.maxOrderUsd + CENT)
+      reasons.push(`order ${money(notional)} is over your ${money(limits.maxOrderUsd)} maximum order size`)
+
+    // short selling is off: no selling more than you hold
+    const held = heldValue.get(symbol) ?? 0
+    if (symbol && notional > held + CENT)
+      reasons.push(
+        `selling ${money(notional)} of ${symbol} but you only hold ${money(held)}; short selling is off`,
+      )
+
+    if (seen.has(symbol)) reasons.push(`second order for ${symbol} in this batch`)
+    seen.add(symbol)
+
+    const status: RiskVerdict['status'] = reasons.length ? 'BLOCK' : 'PASS'
+    if (status === 'PASS') {
+      cash += notional
+      heldValue.set(symbol, Math.max(held - notional, 0))
     }
     verdicts.push({ symbol, notional, status, reasons })
   }

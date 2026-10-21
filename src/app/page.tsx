@@ -5,14 +5,16 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { TrendingUp } from 'lucide-react'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
 import { SetupBoard } from '@/components/setups/SetupBoard'
+import { TraderDesk } from '@/components/trader/TraderDesk'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { UserMenu } from '@/components/user-menu'
 
-type Tab = 'setups' | 'signals'
+type Tab = 'setups' | 'signals' | 'trader'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'setups', label: 'Trade Setups' },
   { key: 'signals', label: '⚡ AI Signals' },
+  { key: 'trader', label: '🧢 Trader Desk' },
 ]
 
 export default function Home() {
@@ -75,7 +77,7 @@ export default function Home() {
               className="inline-block w-2 h-2 rounded-full animate-pulse"
               style={{ background: 'var(--bull)' }}
             />
-            {tab === 'setups' ? 'Live setups + confirmations' : 'AI desk ready'}
+            {tab === 'setups' ? 'Live setups + confirmations' : tab === 'signals' ? 'AI desk ready' : 'Paper trading desk ready'}
           </span>
           <UserMenu />
           <ThemeToggle />
@@ -93,7 +95,7 @@ export default function Home() {
             transition={{ duration: 0.22, ease: 'easeOut' }}
             className="absolute inset-0 overflow-y-auto"
           >
-            {tab === 'setups' ? <SetupBoard /> : <SignalDashboard />}
+            {tab === 'setups' ? <SetupBoard /> : tab === 'signals' ? <SignalDashboard /> : <TraderDesk />}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -101,7 +103,7 @@ export default function Home() {
       {/* status footer — always pinned to the bottom of the shell */}
       <footer className="relative z-10 shrink-0 flex items-center justify-between gap-3 px-3 sm:px-5 py-2 border-t border-tv-line bg-tv-panel/90 backdrop-blur-xl text-[11px] text-tv-muted">
         <span className="hidden sm:block truncate">
-          Live data · Bybit · Binance · Yahoo Finance · setups refresh every 45s
+          Live data · Bybit · Binance · Yahoo Finance · setups refresh every 45s · paper desk never places real orders
         </span>
         <span className="sm:hidden truncate">Trade2watch</span>
         <span className="shrink-0">Research tool — not financial advice</span>

@@ -123,7 +123,7 @@ export async function list13fFilings(cik: string): Promise<FilingRow[]> {
       accession: acc[i] ?? '',
       filed: filed[i] ?? '',
       period: period[i] ?? '',
-      primary: primary[i] ?? '',
+      primary: rec.primaryDocument?.[i] ?? '',
     })
   }
   out.sort((a, b) => (b.filed + b.accession).localeCompare(a.filed + a.accession))

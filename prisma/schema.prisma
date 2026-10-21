@@ -55,6 +55,86 @@ model SignalRun {
   @@index([createdAt])
 }
 
+// ─── Trader Desk (trader-skill pipeline: size → risk → tickets → portfolio) ──
+
+// Paper trading account per signed-in user. Cash is the source of truth for
+// what the desk can still deploy; every approved ticket updates it.
+model TraderAccount {
+  userId      String   @id
+  budget      Float // the budget the desk was funded with
+  cash        Float // uninvested cash right now
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// One proposed order (a "ticket" in trader-broker terms). Proposals are
+// stored with their risk verdict; only PASS tickets whose fingerprint still
+// matches can be approved — no trade goes through without an explicit yes.
+model TraderTicket {
+  id         String    @id @default(cuid())
+  userId     String
+  batchId    String // groups one plan/rebalance run together
+  source     String // e.g. "crypto screener" or the copied filer name
+  market     String // 'crypto' | 'stock' — decides the live price feed
+  symbol     String
+  side       String // 'buy' | 'sell'
+  notional   Float // dollar value of the order
+  refPrice   Float? // price seen when the order was proposed
+  fingerprint String // sha256-16 of the order core; approve verifies it
+  why        String?
+  verdict    String // 'PASS' | 'BLOCK'
+  reasons    Json? // BLOCK reasons
+  status     String    @default("proposed") // proposed | approved | rejected | expired
+  fillPrice  Float?
+  filledQty  Float?
+  createdAt  DateTime  @default(now())
+  decidedAt  DateTime?
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@index([batchId])
+}
+
+// Paper portfolio position, updated when a ticket is approved and filled.
+model TraderPosition {
+  id        String   @id @default(cuid())
+  userId    String
+  symbol    String
+  qty       Float
+  avgPrice  Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, symbol])
+}
+
+// Target weights the desk currently aims at (from the screener or a copied
+// 13F). Rebalance compares live positions against these.
+model TraderTarget {
+  userId    String   @id
+  source    String
+  weights   String // JSON [{symbol, name, weight}]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Price alerts (above / below / stop) — information only, nothing is sold.
+// Each alert rings at most once, then stays flagged.
+model TraderAlert {
+  id          String    @id @default(cuid())
+  userId      String
+  symbol      String
+  market      String    @default("crypto")
+  kind        String // 'above' | 'below' | 'stop'
+  price       Float
+  note        String?
+  triggered   Boolean   @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, triggered])
+}
+
 // ─── Per-user personal trade journal (server-synced across devices) ─────────
 // "I took this trade" entries live here keyed by the signed-in user id, so the
 // same account sees identical open/closed trades on every device. The whole
