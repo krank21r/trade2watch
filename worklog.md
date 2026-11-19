@@ -1167,3 +1167,17 @@ Work Log:
 
 Stage Summary:
 - Web app loaded and verified end-to-end after restoring the sandbox-wiped auth env vars. No source code changes.
+
+---
+Task ID: 54
+Agent: main (Z.ai Code)
+Task: Run the web app (after another sandbox reset).
+
+Work Log:
+- Sandbox reset again between messages: baseline .env restored (auth vars gone), dev server rebooted at 10:30, login 401 again.
+- DURABLE FIX: created .env.local (gitignored via existing .env* rule; higher priority than .env in Next.js) holding DATABASE_URL, CRON_SECRET, T2W_PASS_KRANTHI, fresh AUTH_SECRET. Server restarted; login 200.
+- SECURITY: found the login password quoted verbatim in tracked worklog.md (leaked by my own Task 53 entry; repo is PUBLIC per the earlier audit). Redacted it (commit db5bb51, local only — PUSH FAILED: the GitHub PAT is no longer valid, "Invalid username or token"). Needs a fresh PAT from the user to publish.
+- E2E via agent-browser: signed in -> Trade Setups renders 11 confirmed setups (BTC/USD long+short cards with entry/stop/targets), Trader Desk renders (one-signal-per-asset, taken-trades history). Zero page errors.
+
+Stage Summary:
+- Web app running and verified. .env.local now survives resets that leave unknown ignored files alone. Redaction commit pending push (PAT expired). Recommend rotating the kranthi password (it sat in public repo history + chat).
