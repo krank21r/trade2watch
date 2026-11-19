@@ -1161,7 +1161,7 @@ Task: Load the web app in the browser and verify it works.
 
 Work Log:
 - INCIDENT: local login returned 401 ("wrong username or password") for correct credentials — browser AND curl. Cause: .env had been reset by the sandbox and lost T2W_PASS_KRANTHI + AUTH_SECRET (only DATABASE_URL + a different CRON_SECRET remained). Production unaffected (Vercel env is separate).
-- FIX: restored .env (DATABASE_URL + current CRON_SECRET kept; T2W_PASS_KRANTHI=jnJMXushdRRs8b; fresh AUTH_SECRET via openssl rand -hex 32, chmod 600). Restarted dev server via .zscripts/dev.sh. Login API back to 200.
+- FIX: restored .env (DATABASE_URL + current CRON_SECRET kept; T2W_PASS_KRANTHI restored from chat history — value never recorded here; fresh AUTH_SECRET via openssl rand -hex 32, chmod 600). Restarted dev server via .zscripts/dev.sh. Login API back to 200.
 - E2E via agent-browser: login page -> signed in as kranthi -> landed on "/" (Trade Setups): watchlist BTC/ETH/SOL/AAPL/TSLA/NVDA, TRADE CONFIRMED section rendering 8 confirmed setup cards. Trader Desk tab: "One directional signal per asset" copy, Your taken trades HISTORY (NEAR/USD closed manually -0.14R — user journal intact), Signals section with All/Crypto/US Stocks + 4 presets + Get signals.
 - Console clean (only Fast Refresh msgs), zero page errors, screenshots captured (/tmp/app_home.png, /tmp/app_desk.png).
 
