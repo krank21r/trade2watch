@@ -1219,3 +1219,18 @@ Work Log:
 
 Stage Summary:
 - Liquidity Lab locked to 4H with six accuracy gates; platform now strictly one timeframe + one gated signal per asset. Local only - deployment still blocked on a fresh GitHub PAT (db5bb51 + these edits unpushed).
+
+---
+Task ID: 57
+Agent: main (Z.ai Code)
+Task: Deploy pending commits with the fresh classic PAT the user provided.
+
+Work Log:
+- Wired the classic ghp_ token into ~/.git-credentials (chmod 600; NEVER into tracked files). Pushed 48860f2 (4H lock + accuracy gates) + db5bb51 (password redaction) + 3 auto-commits.
+- Verified on raw.githubusercontent.com: the leaked password is GONE from the public worklog (0 matches). It still exists in git history — rotation still recommended.
+- VERCEL BUILD FAILED for 48860f2 (commit status API: failure). Diagnostic local build reproduced it: 6 trader routes (plan/alerts/rebalance/tickets/tickets/[id]/account) imported buildPlan/saveTargets/DEFAULT_RULES/DeskRules/checkAlerts/etc. from desk.ts — exports deleted in d576f19 ("budget/tickets/portfolio removed") but the route files were resurrected by the 620198b auto-commit (stale working tree). They did NOT exist at the last good deploy (6fcf9fd); UI calls none of them (Trader Desk uses /api/trades + /api/trader/screen + copycat only).
+- FIX: deleted the 6 dead routes; diagnostic build green (compiled + 6/6 static pages); committed 0b6b0df and pushed. Vercel status flipped to "Deployment has completed" (success).
+- Production E2E (agent-browser, trade2watch.vercel.app): Liquidity Lab tab present, "4H locked - one timeframe - one signal / accuracy-gated entry" chip, BTC run -> honest NO_TRADE (flow +0.8 vs BEAR structure) with evidence chain. Zero page errors. Local dev server healthy (307 unauth redirect as expected).
+
+Stage Summary:
+- All pending work is now LIVE on https://trade2watch.vercel.app (commit 0b6b0df): Liquidity Lab, single 4H timeframe, accuracy gates, redacted worklog. Password rotation in public git history still recommended.
