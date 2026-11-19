@@ -516,8 +516,9 @@ function buildEntry(
     `STRUCTURE: ${structure.trend} ${structure.zone.toLowerCase()} (${structure.positionPct}% of range)${structure.bos ? `, ${structure.bos.direction} ${structure.bos.type} ${structure.bos.barAgo} bars ago` : ''}`,
   ]
 
-  const flowBull = flow.verdict === 'AGGRESSIVE_BUYING' || (flow.verdict === 'BALANCED' && flow.score >= 1)
-  const flowBear = flow.verdict === 'AGGRESSIVE_SELLING' || (flow.verdict === 'BALANCED' && flow.score <= -1)
+  // ── accuracy gates (single-timeframe policy: fewer, better signals) ────────
+  const flowBull = flow.verdict === 'AGGRESSIVE_BUYING' || (flow.verdict === 'BALANCED' && flow.score >= 2)
+  const flowBear = flow.verdict === 'AGGRESSIVE_SELLING' || (flow.verdict === 'BALANCED' && flow.score <= -2)
   const structured = structure.trend !== 'RANGE'
   const flowDecisive = Math.abs(flow.score) >= 5
 
@@ -527,15 +528,19 @@ function buildEntry(
   else if (flowDecisive && structured && ((structure.trend === 'BULL' && flow.score > 0) || (structure.trend === 'BEAR' && flow.score < 0))) {
     // structure direction confirmed by decisive flow even if the flow verdict chip is BALANCED
     direction = structure.trend === 'BULL' ? 'LONG' : 'SHORT'
-  } else if (flowDecisive && !structured && Math.abs(flow.score) >= 6) {
-    direction = flow.score > 0 ? 'LONG' : 'SHORT'
   } else {
-    if (!structured) blockers.push('market structure is ranging — no directional edge')
+    if (!structured) blockers.push('market structure is ranging — the accuracy gate requires a trending structure, no range trades')
     if (!flowBull && !flowBear) blockers.push('order flow is balanced — no aggression to follow')
     if (structured && flowBull && structure.trend === 'BEAR') blockers.push('structure is bearish but flow is buying — wait for alignment')
     if (structured && flowBear && structure.trend === 'BULL') blockers.push('structure is bullish but flow is selling — wait for alignment')
     if (movement.verdict === 'SQUEEZE') blockers.push('volatility squeezed — breakouts prone to failure')
     if (blockers.length === 0) blockers.push('no confluence: liquidity, flow and structure do not agree')
+  }
+
+  // hard gate: compressed volatility kills follow-through — never fire inside a squeeze
+  if (direction !== 'NO_TRADE' && movement.verdict === 'SQUEEZE') {
+    direction = 'NO_TRADE'
+    blockers.push('volatility squeezed — the accuracy gate blocks entries until expansion returns')
   }
 
   if (direction === 'NO_TRADE') {
@@ -655,7 +660,35 @@ function buildEntry(
     }
   }
 
-  // targets = the OPPOSING liquidity pools
+  // hard gate: buy in discount, sell in premium — entry location must carry edge
+  const rangeSpan = structure.rangeHigh - structure.rangeLow
+  if (rangeSpan > 0) {
+    const entryPct = ((entryMidOf(entryLow, entryHigh) - structure.rangeLow) / rangeSpan) * 100
+    if ((long && entryPct > 60) || (!long && entryPct < 40)) {
+      blockers.push(
+        long
+          ? `entry zone sits in PREMIUM (${entryPct.toFixed(0)}% of the dealing range) — the accuracy gate only buys in discount/equilibrium; wait for a deeper pullback`
+          : `entry zone sits in DISCOUNT (${entryPct.toFixed(0)}% of the dealing range) — the accuracy gate only sells in premium/equilibrium; wait for a higher retest`,
+      )
+      return {
+        direction: 'NO_TRADE',
+        model: 'NONE',
+        entryLow: roundPx(entryLow),
+        entryHigh: roundPx(entryHigh),
+        stop: roundPx(stop),
+        target1: roundPx(spot),
+        target2: roundPx(spot),
+        riskReward: '—',
+        trigger: 'none — stand aside',
+        invalidation: 're-evaluate on the next refresh',
+        evidence,
+        confidence: 0,
+        blockers,
+      }
+    }
+  }
+
+  // targets = the OPPOSING liquidity pools (accuracy floor: T1 ≥ 2R, T2 ≥ 3.5R)
   const entryMid = entryMidOf(entryLow, entryHigh)
   const risk = Math.abs(entryMid - stop)
   const opposing = pools
@@ -665,32 +698,44 @@ function buildEntry(
     .filter((c) => (long ? c.side === 'ask' && c.priceFrom > entryHigh : c.side === 'bid' && c.priceTo < entryLow))
     .map((c) => (c.priceFrom + c.priceTo) / 2)
 
+  // T1 — closest opposing pool ≥ 2R out, capped at 4R: beyond that the plan
+  // stops being actionable (post-crash tapes put real liquidity miles away),
+  // so fall back to the house 2R target.
   let t1 = 0
   for (const p of opposing) {
-    if ((Math.abs(p.price - entryMid) / risk) >= 1.2) {
-      t1 = p.price
+    const r = Math.abs(p.price - entryMid) / risk
+    if (r >= 2) {
+      if (r <= 4) t1 = p.price
       break
     }
   }
   if (!t1) for (const c of clusterTargets) {
-    if ((Math.abs(c - entryMid) / risk) >= 1.2) {
-      t1 = c
+    const r = Math.abs(c - entryMid) / risk
+    if (r >= 2) {
+      if (r <= 4) t1 = c
       break
     }
   }
-  if (!t1) t1 = long ? entryMid + 1.6 * risk : entryMid - 1.6 * risk
+  if (!t1) t1 = long ? entryMid + 2 * risk : entryMid - 2 * risk
 
+  // T2 — closest opposing pool ≥ 3.5R within 8R, else the structural range
+  // extreme (same band), else the house 3.5R target.
   let t2 = 0
   for (const p of opposing) {
-    if (p.price !== t1 && (Math.abs(p.price - entryMid) / risk) >= 2.6) {
-      t2 = p.price
+    if (p.price === t1) continue
+    const r = Math.abs(p.price - entryMid) / risk
+    if (r >= 3.5) {
+      if (r <= 8) t2 = p.price
       break
     }
   }
-  const structuralT2 = long ? Math.max(structure.rangeHigh, entryMid + 3 * risk) : Math.min(structure.rangeLow, entryMid - 3 * risk)
-  t2 = t2 || structuralT2
-  if (long && t2 <= t1) t2 = Math.max(t1 + 1.5 * risk, structuralT2)
-  if (!long && t2 >= t1) t2 = Math.min(t1 - 1.5 * risk, structuralT2)
+  const structRaw = long ? structure.rangeHigh : structure.rangeLow
+  const structR = Math.abs(structRaw - entryMid) / risk
+  const t2Floor = long ? entryMid + 3.5 * risk : entryMid - 3.5 * risk
+  if (!t2 && structR >= 3.5 && structR <= 8) t2 = structRaw
+  if (!t2) t2 = t2Floor
+  if (long && t2 <= t1) t2 = Math.max(t1 + 1.5 * risk, t2Floor)
+  if (!long && t2 >= t1) t2 = Math.min(t1 - 1.5 * risk, t2Floor)
 
   // geometry gate
   const valid = long ? entryHigh > entryLow && stop < entryLow && t1 > entryHigh && t2 > t1 : entryHigh > entryLow && stop > entryHigh && t1 < entryLow && t2 < t1
@@ -725,6 +770,30 @@ function buildEntry(
   if (Math.abs(flow.score) >= 4) confidence += 7
   if (movement.atrPctile >= 25 && movement.atrPctile <= 80) confidence += 5
   if (sweepPool && sweepPool.weight >= 7) confidence += 3
+
+  // hard gate: minimum confluence confidence for a tradeable signal
+  if (confidence < 70) {
+    blockers.push(`confluence confidence ${confidence}% is below the 70% accuracy gate — stand aside until more stages align`)
+    return {
+      direction: 'NO_TRADE',
+      model: 'NONE',
+      entryLow: roundPx(entryLow),
+      entryHigh: roundPx(entryHigh),
+      stop: roundPx(stop),
+      target1: roundPx(t1),
+      target2: roundPx(t2),
+      riskReward: '—',
+      trigger: 'none — stand aside',
+      invalidation: 're-evaluate on the next refresh',
+      evidence,
+      confidence: 0,
+      blockers,
+    }
+  }
+
+  evidence.push(
+    `ENTRY: ${model.replace(/_/g, ' ').toLowerCase()} — accuracy gates cleared: structure + flow aligned, entry ${long ? 'in discount/equilibrium' : 'in premium/equilibrium'}, R:R 1:${rr1} ≥ 2.0, confidence ${confidence}% ≥ 70`,
+  )
 
   const invalidation = long
     ? `a ${tf} candle close below ${roundPx(stop)} voids the long${movement.ema50 ? `; close below EMA50 ${roundPx(movement.ema50)} breaks the trend thesis` : ''}`

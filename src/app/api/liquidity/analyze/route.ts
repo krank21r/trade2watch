@@ -1,10 +1,12 @@
 /**
- * GET /api/liquidity/analyze?symbol=BTC&tf=4h — the Liquidity Lab pipeline.
+ * GET /api/liquidity/analyze?symbol=BTC — the Liquidity Lab pipeline.
  *
  * Runs the 5-stage analysis (liquidity → order flow → price movement →
  * market structure → trade entry) for one crypto symbol and returns the
- * full LiquidityReport. Reports are cached in memory for 45s so the UI's
- * 60s auto-refresh and quick pill-switching stay polite to the vendors.
+ * full LiquidityReport. The timeframe is LOCKED to 4H (single-timeframe
+ * policy — one timeframe, one signal; any tf query param is ignored).
+ * Reports are cached in memory for 45s so the UI's 60s auto-refresh and
+ * quick pill-switching stay polite to the vendors.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -15,7 +17,9 @@ import type { LiquidityReport, LiqTimeframe } from '@/lib/liquidity/types'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const TFS: LiqTimeframe[] = ['15m', '1h', '4h']
+// single-timeframe policy: one timeframe (4H), one signal per asset.
+// A legacy tf query param is still accepted but always coerced to 4h.
+const tf: LiqTimeframe = '4h'
 
 // 45s in-memory report cache per symbol+timeframe
 const reportCache = new Map<string, { at: number; report: LiquidityReport }>()
@@ -31,14 +35,9 @@ export async function GET(req: NextRequest) {
   if (!uid) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
 
   const symbol = (req.nextUrl.searchParams.get('symbol') ?? 'BTC').trim().toUpperCase()
-  const tfParam = req.nextUrl.searchParams.get('tf') ?? '4h'
   if (!/^[A-Z0-9]{2,12}$/.test(symbol)) {
     return NextResponse.json({ ok: false, error: 'invalid symbol' }, { status: 400 })
   }
-  if (!TFS.includes(tfParam as LiqTimeframe)) {
-    return NextResponse.json({ ok: false, error: 'tf must be 15m, 1h or 4h' }, { status: 400 })
-  }
-  const tf = tfParam as LiqTimeframe
 
   const key = `${symbol}:${tf}`
   const hit = reportCache.get(key)

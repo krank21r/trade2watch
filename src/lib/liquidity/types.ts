@@ -2,12 +2,18 @@
  * Liquidity Lab — the 5-stage signal pipeline contract.
  *
  * Trading order: LIQUIDITY → ORDER FLOW → PRICE MOVEMENT → MARKET STRUCTURE → TRADE ENTRY.
- * The API (GET /api/liquidity/analyze?symbol=BTC&tf=4h) returns a LiquidityReport:
+ * The API (GET /api/liquidity/analyze?symbol=BTC — timeframe locked to 4H) returns a LiquidityReport:
  * one JSON object with all five stages, each independently renderable.
  * Crypto only — order books are crypto-specific. Used by src/components/liquidity/LiquidityLab.tsx.
  */
 
-export type LiqTimeframe = '15m' | '1h' | '4h'
+/**
+ * Single-timeframe policy: the whole platform reads 4H candles for crypto
+ * (1D for stocks) — one timeframe, one signal per asset. The Liquidity Lab
+ * used to offer 15m/1h/4h toggles, but multi-timeframe setups produced
+ * conflicting entries, so the timeframe is locked to 4H for accuracy.
+ */
+export type LiqTimeframe = '4h'
 
 // ─── stage 1: liquidity ──────────────────────────────────────────────────────
 

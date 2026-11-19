@@ -1198,3 +1198,24 @@ Work Log:
 
 Stage Summary:
 - Liquidity Lab shipped locally: 5-stage smart-money pipeline on live Binance+Bybit microstructure. NOT deployed (GitHub PAT invalid — push pending fresh token from user).
+
+---
+Task ID: 56
+Agent: main (Z.ai Code)
+Task: One timeframe, one signal — user asked "why we have 1h, 4h setup, i need only one timeframe and accurate signal".
+
+Work Log:
+- Root cause: the Liquidity Lab exposed 15m/1h/4h timeframe pills, so the same asset could get conflicting setups at different TFs (SetupBoard / AI Signals / Trader Desk were already single-TF: 4h crypto / 1d stocks).
+- SINGLE-TF LOCK: LiqTimeframe narrowed to '4h' (types.ts), /api/liquidity/analyze coerces any legacy tf param to 4h, UI pills replaced with a non-interactive "4H locked - one timeframe, one signal / accuracy-gated entry" chip. Whole platform now emits exactly one setup per asset.
+- ACCURACY GATES in liquidity buildEntry (engine.ts):
+  (1) alignment: BALANCED flow now needs |score| >= 2 (was >= 1) to confirm a trend side; removed the range-trade fallback (decisive flow + no structure) - no more signals inside ranging structure;
+  (2) squeeze hard-block: SQUEEZE movement verdict always voids a direction until expansion returns;
+  (3) location gate: long entry must sit in discount/equilibrium (<60% of dealing range), short in premium/equilibrium (>40%) - smart-money buy-low/sell-high enforcement;
+  (4) R:R house floors: T1 >= 2.0R (was 1.2R), T2 >= 3.5R (was 2.6R), matching SetupBoard/AI-signal geometry;
+  (5) target realism caps: pool-anchored T1 capped at 4R, T2 at 8R (post-crash tapes put real liquidity miles away -> SOL showed T1 7R/T2 21R; now falls back to house 2R/3.5R floors or structural extreme within band);
+  (6) confidence gate: tradeable signals require confidence >= 70% else NO_TRADE with the shortfall named in blockers;
+  (7) evidence chain now ends with an ENTRY step documenting each cleared gate; UI entry card shows an "accuracy gate passed" chip when tradeable.
+- E2E (agent-browser, signed-in): BTC NO_TRADE (flow +0.5 vs BEAR structure - gate refuses weak flow), ETH NO_TRADE (flow +1.3 < 2 - old code would have fired), SOL LONG FVG_RETEST conf 92% gate-passed chip, entry 73.98-74.23, stop 72.70, T1 78.01 (1:2.8) / T2 83.92 (1:7.0) - actionable pool/structure targets after the cap fix. Zero page errors; Trade Setups tab unaffected. Lint clean.
+
+Stage Summary:
+- Liquidity Lab locked to 4H with six accuracy gates; platform now strictly one timeframe + one gated signal per asset. Local only - deployment still blocked on a fresh GitHub PAT (db5bb51 + these edits unpushed).

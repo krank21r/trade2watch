@@ -7,9 +7,12 @@
  *
  * Combined Binance spot + Bybit perp order books, open interest, taker flow,
  * swing-level liquidity pools and estimated liquidation zones. One "Run
- * analysis" press hits GET /api/liquidity/analyze?symbol=&tf= and the whole
+ * analysis" press hits GET /api/liquidity/analyze?symbol= and the whole
  * report comes back as one LiquidityReport (src/lib/liquidity/types.ts) —
  * each stage renders independently, auto-refreshes every 60s once loaded.
+ * Timeframe is LOCKED to 4H (one timeframe, one signal) and every entry
+ * must clear the accuracy gates: structure+flow alignment, discount/premium
+ * location, R:R ≥ 2.0 and confidence ≥ 70.
  * Research tool — not financial advice.
  */
 
@@ -19,6 +22,7 @@ import {
   ArrowUpRight,
   ListOrdered,
   Loader2,
+  Lock,
   RefreshCw,
   Shield,
   Target,
@@ -41,7 +45,8 @@ import type {
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const PINNED_SYMBOLS = ['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'LINK'] as const
-const TIMEFRAMES: LiqTimeframe[] = ['15m', '1h', '4h']
+/** single-timeframe policy — one timeframe, one signal. Locked, not user-selectable. */
+const TF: LiqTimeframe = '4h'
 const REFRESH_MS = 60_000
 const MAX_LADDER = 6
 const SYMBOL_RE = /^[A-Z0-9]{2,12}$/
@@ -165,7 +170,6 @@ function StageCard({
 
 export default function LiquidityLab() {
   const [symbol, setSymbol] = useState('BTC')
-  const [tf, setTf] = useState<LiqTimeframe>('4h')
   const [custom, setCustom] = useState('')
   const [customErr, setCustomErr] = useState<string | null>(null)
   const [extras, setExtras] = useState<string[]>([])
@@ -179,9 +183,7 @@ export default function LiquidityLab() {
   const reportRef = useRef<LiquidityReport | null>(null)
   const busyRef = useRef(false)
   const symRef = useRef(symbol)
-  const tfRef = useRef(tf)
   symRef.current = symbol
-  tfRef.current = tf
 
   useEffect(() => {
     mounted.current = true
@@ -191,7 +193,7 @@ export default function LiquidityLab() {
     }
   }, [])
 
-  const run = useCallback(async (sym: string, tfv: LiqTimeframe) => {
+  const run = useCallback(async (sym: string) => {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
@@ -199,7 +201,7 @@ export default function LiquidityLab() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/liquidity/analyze?symbol=${encodeURIComponent(sym)}&tf=${tfv}`, {
+      const res = await fetch(`/api/liquidity/analyze?symbol=${encodeURIComponent(sym)}&tf=${TF}`, {
         cache: 'no-store',
         signal: ac.signal,
       })
@@ -221,16 +223,16 @@ export default function LiquidityLab() {
     }
   }, [])
 
-  // switching symbol/tf after a report exists re-reads immediately — the pills
+  // switching symbol after a report exists re-reads immediately — the pills
   // and the report should never disagree; before the first run nothing fires
   useEffect(() => {
-    if (reportRef.current) void run(symRef.current, tfRef.current)
-  }, [run, symbol, tf])
+    if (reportRef.current) void run(symRef.current)
+  }, [run, symbol])
 
   // auto-refresh every 60s — only when a report is already loaded and idle
   useEffect(() => {
     const iv = setInterval(() => {
-      if (reportRef.current && !busyRef.current) void run(symRef.current, tfRef.current)
+      if (reportRef.current && !busyRef.current) void run(symRef.current)
     }, REFRESH_MS)
     return () => clearInterval(iv)
   }, [run])
@@ -245,7 +247,7 @@ export default function LiquidityLab() {
     setCustom('')
     setExtras((p) => (p.includes(v) ? p : [...p, v]))
     setSymbol(v)
-    if (reportRef.current === null) void run(v, tf) // otherwise the selection effect re-reads
+    if (reportRef.current === null) void run(v) // otherwise the selection effect re-reads
   }
 
   const pills = [...PINNED_SYMBOLS, ...extras]
@@ -258,9 +260,10 @@ export default function LiquidityLab() {
         <div>
           <h1 className="text-lg font-extrabold tracking-tight text-tv-ink">Liquidity Lab</h1>
           <p className="text-[11.5px] text-tv-muted">
-            Liquidity → Order flow → Price movement → Market structure → Trade entry. Combined Binance spot + Bybit perp
-            order books, open interest, taker flow, swing-level liquidity pools and estimated liquidation zones — crypto
-            only.
+            Liquidity → Order flow → Price movement → Market structure → Trade entry — on ONE locked 4H timeframe.
+            Combined Binance spot + Bybit perp order books, open interest, taker flow, swing-level liquidity pools and
+            estimated liquidation zones; every entry must clear the accuracy gates (structure + flow aligned,
+            discount/premium location, R:R ≥ 1:2, confidence ≥ 70%). Crypto only.
           </p>
         </div>
       </div>
@@ -306,28 +309,24 @@ export default function LiquidityLab() {
             </button>
           </div>
 
-          {/* timeframe pills */}
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Timeframe">
-            {TIMEFRAMES.map((t) => (
-              <button
-                key={t}
-                suppressHydrationWarning
-                onClick={() => setTf(t)}
-                aria-pressed={tf === t}
-                className={`btn rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold ${
-                  tf === t ? 'border-bull-line bg-bull-soft text-bull-ink' : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink'
-                }`}
-              >
-                {t}
-              </button>
-            ))}
+          {/* timeframe — LOCKED: one timeframe, one accurate signal (no multi-TF setups) */}
+          <div className="flex items-center gap-2" role="group" aria-label="Timeframe locked to 4H">
+            <Chip cls="border-bull-line bg-bull-soft text-bull-ink">
+              <Lock className="h-3 w-3" aria-hidden />
+              4H locked
+            </Chip>
+            <span className="text-[10px] leading-tight text-tv-muted2">
+              one timeframe · one signal
+              <br />
+              accuracy-gated entry
+            </span>
           </div>
 
           {/* run + freshness */}
           <div className="flex flex-wrap items-center gap-2.5 md:ml-auto">
             <button
               suppressHydrationWarning
-              onClick={() => void run(symbol, tf)}
+              onClick={() => void run(symbol)}
               disabled={loading}
               className="btn gap-1.5 rounded-xl bg-bull px-4 py-2 text-[12px] font-bold text-white hover:bg-bull-deep disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -358,7 +357,7 @@ export default function LiquidityLab() {
           <p className="min-w-0 flex-1 text-[11.5px] font-semibold text-warn">Liquidity read failed — {error}</p>
           <button
             suppressHydrationWarning
-            onClick={() => void run(symbol, tf)}
+            onClick={() => void run(symbol)}
             disabled={loading}
             className="btn rounded-xl border border-warn-line bg-tv-panel px-3 py-1.5 text-[11.5px] font-bold text-warn hover:bg-warn/10 disabled:opacity-50"
           >
@@ -855,6 +854,12 @@ function EntryView({ e }: { e: EntrySignal }) {
         <Chip cls={isLong ? 'border-bull/40 bg-bull/10 text-bull' : isShort ? 'border-bear/40 bg-bear/10 text-bear' : 'border-tv-line bg-tv-panel2 text-tv-muted'}>
           Confidence {Math.round(e.confidence)}%
         </Chip>
+        {tradeable && (
+          <Chip cls="border-bull-line bg-bull-soft text-bull-ink">
+            <Shield className="h-3 w-3" aria-hidden />
+            accuracy gate passed
+          </Chip>
+        )}
       </div>
 
       {tradeable ? (
