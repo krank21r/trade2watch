@@ -1181,3 +1181,20 @@ Work Log:
 
 Stage Summary:
 - Web app running and verified. .env.local now survives resets that leave unknown ignored files alone. Redaction commit pending push (PAT expired). Recommend rotating the kranthi password (it sat in public repo history + chat).
+
+---
+Task ID: 55
+Agent: main (Z.ai Code) + frontend-styling-expert subagent (55-b)
+Task: Build the Liquidity Intelligence module — the user's trading order: Liquidity → Order flow → Price movement → Market structure → Trade entry.
+
+Work Log:
+- Probed sources: Binance spot book (500 lv) OK, Bybit v5 linear book (200 lv) OK, fapi /futures/data OI-history + taker ratio OK, CoinGlass unofficial 404 (dead) → liquidation zones are model estimates (OI × leverage bands 100/50/25/10x + wick-cascade detection), honestly labeled.
+- 55-a types contract: src/lib/liquidity/types.ts (LiquidityReport: liquidity/flow/movement/structure/entry stages).
+- 55-b SUBAGENT delivered src/components/liquidity/LiquidityLab.tsx (919 lines): stage cards, imbalance gauge, liquidity ladder (resting walls around spot), pools list, liq zones, CVD/flow meter, premium-discount meter, entry card with trigger/invalidation/evidence chain. Lint+tsc clean, all tv-*/bull/bear/warn tokens verified.
+- 55-c backend: src/lib/liquidity/providers.ts (binance host rotation, bybit, spot klines WITH taker-buy field 9, futures flow, liq estimator) + engine.ts (cluster detection 4bps buckets, EQH/EQL multi-touch pools, PDH/PDL/PWH/PWL, round numbers, CVD slope, OI+price alignment, ATR percentile, displacement, FVG, swing pivots HH/HL/LH/LL, BOS/CHoCH (HH-break=BOS, LH-break=CHOCH), dealing range premium/discount, entry synthesis: sweep-reclaim / FVG-retest / continuation, targets = opposing liquidity pools, R:R gates, NO_TRADE with blockers) + /api/liquidity/analyze (auth via session, 45s report cache).
+- 55-d wired tab: page.tsx TABS += 🌊 Liquidity Lab (default-export fix).
+- 55-e bugs found+fixed in E2E: (1) BOS scan double-offset crash (swing idx already window-relative) — 502 fixed; (2) futures endpoints called via SPOT mirrors → always 404 → dedicated futuresGet to fapi.binance.com — OI/taker now live; (3) CVD units bug (coin delta vs USD normalizer → slope pinned ~0) → notional-weighted deltas, verified vs raw API math.
+- Verified: ETH 1h → LONG LIQUIDITY_SWEEP (entry 1795.20-1801.11, stop 1786.34, T1 1815.03/T2 1834.49 = opposing pools, RR 1:1.4/1:3.1, conf 87, trigger "sweep of equal lows ×2 at 1797.42 then reclaim"); BTC 4h → honest NO_TRADE (balanced flow) with blockers. Mobile 390px clean. Fresh reload zero console errors.
+
+Stage Summary:
+- Liquidity Lab shipped locally: 5-stage smart-money pipeline on live Binance+Bybit microstructure. NOT deployed (GitHub PAT invalid — push pending fresh token from user).

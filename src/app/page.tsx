@@ -6,15 +6,17 @@ import { TrendingUp } from 'lucide-react'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
 import { SetupBoard } from '@/components/setups/SetupBoard'
 import { TraderDesk } from '@/components/trader/TraderDesk'
+import LiquidityLab from '@/components/liquidity/LiquidityLab'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { UserMenu } from '@/components/user-menu'
 
-type Tab = 'setups' | 'signals' | 'trader'
+type Tab = 'setups' | 'signals' | 'trader' | 'liquidity'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'setups', label: 'Trade Setups' },
   { key: 'signals', label: '⚡ AI Signals' },
   { key: 'trader', label: '🧢 Trader Desk' },
+  { key: 'liquidity', label: '🌊 Liquidity Lab' },
 ]
 
 export default function Home() {
@@ -77,7 +79,7 @@ export default function Home() {
               className="inline-block w-2 h-2 rounded-full animate-pulse"
               style={{ background: 'var(--bull)' }}
             />
-            {tab === 'setups' ? 'Live setups + confirmations' : tab === 'signals' ? 'AI desk ready' : 'Paper trading desk ready'}
+            {tab === 'setups' ? 'Live setups + confirmations' : tab === 'signals' ? 'AI desk ready' : tab === 'liquidity' ? 'Liquidity pipeline armed' : 'Paper trading desk ready'}
           </span>
           <UserMenu />
           <ThemeToggle />
@@ -95,7 +97,7 @@ export default function Home() {
             transition={{ duration: 0.22, ease: 'easeOut' }}
             className="absolute inset-0 overflow-y-auto"
           >
-            {tab === 'setups' ? <SetupBoard /> : tab === 'signals' ? <SignalDashboard /> : <TraderDesk />}
+            {tab === 'setups' ? <SetupBoard /> : tab === 'signals' ? <SignalDashboard /> : tab === 'liquidity' ? <LiquidityLab /> : <TraderDesk />}
           </motion.div>
         </AnimatePresence>
       </main>
