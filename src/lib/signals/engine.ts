@@ -410,6 +410,25 @@ async function stageDecision(ctx: RunCtx, plan: TradePlan | null): Promise<void>
     finalPlan.riskReward = computeRr(finalPlan)
   }
 
+  // house rule: stop geometry is non-negotiable — the stop may never sit
+  // inside the entry zone (a mid-zone fill would be instantly stoppable) and
+  // the zone bounds may never be swapped. The PM's reasoning is preserved in
+  // artifacts; this only guards the level math before the R:R re-float below.
+  if (finalPlan && (finalDirection === 'LONG' || finalDirection === 'SHORT')) {
+    const atrVal = s.atr && s.atr > 0 ? s.atr : s.price * 0.02
+    if (finalPlan.entryLow > finalPlan.entryHigh) {
+      const lo = finalPlan.entryHigh
+      finalPlan.entryHigh = finalPlan.entryLow
+      finalPlan.entryLow = lo
+    }
+    if (finalDirection === 'LONG' && finalPlan.stop >= finalPlan.entryLow) {
+      finalPlan.stop = finalPlan.entryLow - 0.75 * atrVal
+    } else if (finalDirection === 'SHORT' && finalPlan.stop <= finalPlan.entryHigh) {
+      finalPlan.stop = finalPlan.entryHigh + 0.75 * atrVal
+    }
+    finalPlan.riskReward = computeRr(finalPlan)
+  }
+
   // house rule: risk management is non-negotiable — after any PM adjustment,
   // re-float targets so R:R stays ≥ 2.0 at T1 and ≥ 3.5 at T2. The PM's
   // reasoning is preserved in artifacts; this only guards the level math.
