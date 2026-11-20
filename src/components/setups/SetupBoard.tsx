@@ -9,7 +9,6 @@ import { fetchMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { scopedGet, scopedSet } from '@/lib/user-scope'
 import { ConfirmedSection } from '@/components/confirmed/ConfirmedBoard'
-import { EntryDecisions } from '@/components/entry/EntryDecisions'
 
 // Trade2watch design tokens (mirrors public/app.html)
 const C = {
@@ -281,7 +280,15 @@ function TradePlanCard({
   )
 }
 
-export function SetupBoard() {
+export function SetupBoard({
+  openSymbol,
+  onOpenConsumed,
+}: {
+  /** cross-tab request: open this symbol's setup detail on mount (from the Entry Decisions tab) */
+  openSymbol?: string | null
+  /** fired once the request has been applied so the shell can clear it */
+  onOpenConsumed?: () => void
+} = {}) {
   const [symbols, setSymbols] = useState<string[]>(DEFAULT_WATCHLIST)
   const [data, setData] = useState<SetupsPayload | null>(null)
   const [loading, setLoading] = useState(true)
@@ -346,6 +353,14 @@ export function SetupBoard() {
     window.addEventListener('t2w:trades-changed', h)
     return () => window.removeEventListener('t2w:trades-changed', h)
   }, [])
+
+  // cross-tab handoff — the Entry Decisions tab asked for this symbol's detail
+  useEffect(() => {
+    if (openSymbol) {
+      setSelected(openSymbol)
+      onOpenConsumed?.()
+    }
+  }, [openSymbol, onOpenConsumed])
 
   // persist watchlist so the Trade Confirmed section tracks the same symbols
   useEffect(() => {
@@ -469,9 +484,6 @@ export function SetupBoard() {
           </span>
         </div>
       </div>
-
-      {/* ── entry decisions — one fused call per symbol (setups × AI × liquidity tape) ── */}
-      <EntryDecisions symbols={symbols} onOpen={(s) => setSelected(s)} />
 
       {/* ── watchlist dropdown — click a symbol above, its trade setup drops down here ── */}
       <AnimatePresence initial={false} mode="wait">

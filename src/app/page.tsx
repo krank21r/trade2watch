@@ -1,24 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { TrendingUp } from 'lucide-react'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
 import { SetupBoard } from '@/components/setups/SetupBoard'
+import { EntryDecisionsTab } from '@/components/entry/EntryDecisionsTab'
 import LiquidityLab from '@/components/liquidity/LiquidityLab'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { UserMenu } from '@/components/user-menu'
 
-type Tab = 'setups' | 'signals' | 'liquidity'
+type Tab = 'setups' | 'decisions' | 'signals' | 'liquidity'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'setups', label: 'Trade Setups' },
+  { key: 'decisions', label: 'Entry Decisions' },
   { key: 'signals', label: 'AI Signals' },
   { key: 'liquidity', label: 'Liquidity Lab' },
 ]
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>('setups')
+  // cross-tab handoff — "Open full setup" on an Entry Decisions card switches
+  // to Trade Setups with that symbol's detail dropped open
+  const [openSymbol, setOpenSymbol] = useState<string | null>(null)
+  const openInSetups = useCallback((s: string) => {
+    setOpenSymbol(s)
+    setTab('setups')
+  }, [])
+  const consumeOpen = useCallback(() => setOpenSymbol(null), [])
 
   return (
     <div className="relative h-[100dvh] flex flex-col bg-tv-bg text-tv-ink overflow-hidden">
@@ -96,7 +106,15 @@ export default function Home() {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="absolute inset-0 overflow-y-auto"
           >
-            {tab === 'setups' ? <SetupBoard /> : tab === 'signals' ? <SignalDashboard /> : <LiquidityLab />}
+            {tab === 'setups' ? (
+              <SetupBoard openSymbol={openSymbol} onOpenConsumed={consumeOpen} />
+            ) : tab === 'decisions' ? (
+              <EntryDecisionsTab onOpen={openInSetups} />
+            ) : tab === 'signals' ? (
+              <SignalDashboard />
+            ) : (
+              <LiquidityLab />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
