@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { TrendingUp } from 'lucide-react'
+import { Bell, TrendingUp } from 'lucide-react'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
 import { SetupBoard } from '@/components/setups/SetupBoard'
 import { EntryDecisionsTab } from '@/components/entry/EntryDecisionsTab'
 import LiquidityLab from '@/components/liquidity/LiquidityLab'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { UserMenu } from '@/components/user-menu'
+import { useSignalNotifier } from '@/hooks/use-signal-notifier'
 
 type Tab = 'setups' | 'decisions' | 'signals' | 'liquidity'
 
@@ -21,6 +22,10 @@ const TABS: Array<{ key: Tab; label: string }> = [
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>('decisions')
+  // app-wide signal watcher — new desk results toast + desktop-notify on ANY
+  // tab and feed the header bell badge; the dashboard handles its own toasts
+  // while the AI Signals tab is open (the watcher stays quiet there)
+  const { unread, markSeen } = useSignalNotifier(tab === 'signals')
   // cross-tab handoff — "Open full setup" on an Entry Decisions card switches
   // to Trade Setups with that symbol's detail dropped open
   const [openSymbol, setOpenSymbol] = useState<string | null>(null)
@@ -29,6 +34,11 @@ export default function Home() {
     setTab('setups')
   }, [])
   const consumeOpen = useCallback(() => setOpenSymbol(null), [])
+
+  // opening AI Signals = everything up to now has been seen
+  useEffect(() => {
+    if (tab === 'signals') markSeen()
+  }, [tab, markSeen])
 
   return (
     <div className="relative h-[100dvh] flex flex-col bg-tv-bg text-tv-ink overflow-hidden">
@@ -86,6 +96,26 @@ export default function Home() {
 
         {/* status + account */}
         <div className="ml-auto flex items-center gap-2 sm:gap-2.5 text-xs text-tv-muted">
+          <button
+            onClick={() => {
+              markSeen()
+              setTab('signals')
+            }}
+            aria-label={`AI signal alerts${unread > 0 ? ` — ${unread} new` : ''}`}
+            title="AI signal alerts — the desk notifies you here the moment a new plan is ready"
+            className="relative inline-flex h-7 w-7 items-center justify-center rounded-lg border border-tv-line bg-tv-inset text-tv-muted transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+          >
+            <Bell className="h-3.5 w-3.5" aria-hidden />
+            {unread > 0 && (
+              <span
+                className="absolute inline-flex items-center justify-center rounded-full bg-bull px-1 text-[9px] font-bold leading-none text-white tabular-nums"
+                style={{ top: -4, right: -4, minWidth: 15, height: 15 }}
+                aria-hidden
+              >
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+          </button>
           <span className="hidden md:inline-flex items-center gap-2">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-bull" aria-hidden />
             <span className="tabular-nums">Live</span>
