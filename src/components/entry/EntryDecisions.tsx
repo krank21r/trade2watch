@@ -120,6 +120,26 @@ function DecisionCard({
   const dirCls = d.consensus === 'LONG' ? 'text-bull' : d.consensus === 'SHORT' ? 'text-bear' : 'text-tv-muted'
   const liveR = trackedTrade ? rNow(trackedTrade, d.price) : 0
 
+  // desk-vs-position state — a frozen trade never changes, but the desk keeps
+  // re-evaluating every poll. Surface whether the latest call still supports
+  // the open position (aligned / flipped / void) so the chip never lies.
+  const tradeDir = trackedTrade ? (trackedTrade.side === 'long' ? 'LONG' : 'SHORT') : null
+  const deskAligned = trackedTrade != null && d.consensus === tradeDir
+  const deskFlipped = trackedTrade != null && d.consensus !== 'NONE' && d.consensus !== tradeDir
+  const thesisVoid = trackedTrade != null && d.action === 'SKIP'
+  const trackedRowCls = deskFlipped
+    ? 'border-bear/40 bg-bear/5'
+    : thesisVoid
+      ? 'border-warn/40 bg-warn/5'
+      : 'border-bull/30 bg-bull/5'
+  const trackedBadgeCls = deskFlipped ? 'text-bear' : thesisVoid ? 'text-warn' : 'text-bull'
+  const dotCls = deskFlipped ? 'bg-bear' : thesisVoid ? 'bg-warn' : 'bg-bull'
+  const trackedLabel = deskFlipped
+    ? `TRACKED ${tradeDir} · desk flipped ${d.consensus}`
+    : thesisVoid
+      ? `TRACKED ${tradeDir} · thesis void`
+      : `TRACKED ${tradeDir}${deskAligned ? ' · desk aligned' : ''}`
+
   return (
     <motion.article
       initial={{ opacity: 0, y: 8 }}
@@ -226,40 +246,53 @@ function DecisionCard({
 
       {/* actions — tracked state / track-this-trade (TAKE) / open full setup */}
       {trackedTrade ? (
-        <div className="mt-auto flex flex-wrap items-center gap-2 rounded-xl border border-bull/30 bg-bull/5 px-2.5 py-1.5">
-          <span
-            className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold text-bull"
-            title={`Frozen plan · fill ${fmtPrice(trackedTrade.entryFill, trackedTrade.currency)} · SL ${fmtPrice(trackedTrade.stop, trackedTrade.currency)} · TP1 ${fmtPrice(trackedTrade.t1, trackedTrade.currency)} · TP2 ${fmtPrice(trackedTrade.t2, trackedTrade.currency)}`}
-          >
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-bull" aria-hidden />
-            TRACKED {trackedTrade.side.toUpperCase()}
-            {trackedTrade.tp1HitAt != null && <span className="text-tv-muted">· TP1 banked</span>}
-          </span>
-          <span
-            className={`text-[11px] font-semibold tabular-nums ${liveR >= 0 ? 'text-bull' : 'text-bear'}`}
-            title="Live R multiple — current price vs the frozen fill"
-          >
-            {liveR > 0 ? '+' : ''}
-            {liveR.toFixed(2)}R
-          </span>
-          <button
-            onClick={() => onCloseTrade(trackedTrade.id, d.price)}
-            suppressHydrationWarning
-            aria-label={`Close the ${trackedTrade.displayName} tracked trade`}
-            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-bear/40 px-2 py-1 text-[10.5px] font-semibold text-bear transition-colors hover:bg-bear/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bear/50"
-          >
-            <X className="h-3 w-3" aria-hidden />
-            Close
-          </button>
-          <button
-            onClick={() => onOpen(d.symbol)}
-            suppressHydrationWarning
-            aria-label={`Open the full ${d.displayName} trade setup`}
-            className="inline-flex items-center rounded-lg border border-tv-line bg-tv-panel2 px-2 py-1 text-[10.5px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
-          >
-            Plan
-            <ChevronDown className="h-3 w-3" aria-hidden />
-          </button>
+        <div className="mt-auto flex flex-col gap-1.5">
+          <div className={`flex flex-wrap items-center gap-2 rounded-xl border px-2.5 py-1.5 ${trackedRowCls}`}>
+            <span
+              className={`inline-flex items-center gap-1.5 text-[10.5px] font-semibold ${trackedBadgeCls}`}
+              title={`Frozen plan · fill ${fmtPrice(trackedTrade.entryFill, trackedTrade.currency)} · SL ${fmtPrice(trackedTrade.stop, trackedTrade.currency)} · TP1 ${fmtPrice(trackedTrade.t1, trackedTrade.currency)} · TP2 ${fmtPrice(trackedTrade.t2, trackedTrade.currency)}`}
+            >
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotCls}`} aria-hidden />
+              {trackedLabel}
+              {trackedTrade.tp1HitAt != null && <span className="text-tv-muted">· TP1 banked</span>}
+            </span>
+            <span
+              className={`text-[11px] font-semibold tabular-nums ${liveR >= 0 ? 'text-bull' : 'text-bear'}`}
+              title="Live R multiple — current price vs the frozen fill"
+            >
+              {liveR > 0 ? '+' : ''}
+              {liveR.toFixed(2)}R
+            </span>
+            <button
+              onClick={() => onCloseTrade(trackedTrade.id, d.price)}
+              suppressHydrationWarning
+              aria-label={`Close the ${trackedTrade.displayName} tracked trade`}
+              className={`ml-auto inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bear/50 ${
+                deskFlipped || thesisVoid
+                  ? 'border-bear bg-bear/10 text-bear hover:bg-bear/20'
+                  : 'border-bear/40 text-bear hover:bg-bear/10'
+              }`}
+            >
+              <X className="h-3 w-3" aria-hidden />
+              Close
+            </button>
+            <button
+              onClick={() => onOpen(d.symbol)}
+              suppressHydrationWarning
+              aria-label={`Open the full ${d.displayName} trade setup`}
+              className="inline-flex items-center rounded-lg border border-tv-line bg-tv-panel2 px-2 py-1 text-[10.5px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+            >
+              Plan
+              <ChevronDown className="h-3 w-3" aria-hidden />
+            </button>
+          </div>
+          <p className="text-[10.5px] leading-snug text-tv-muted">
+            {deskFlipped
+              ? `The desk now calls ${d.consensus} against your ${tradeDir} — the frozen plan still governs (TP1/TP2/SL exit automatically); press Close if the flip changes your mind.`
+              : thesisVoid
+                ? 'The desk voided this thesis — your frozen plan still governs; Close is yours to press if you agree with the tape.'
+                : `Levels above are the desk's live plan — your trade is frozen at fill ${fmtPrice(trackedTrade.entryFill, d.currency)} and managed by the plan automatically (bank half at TP1, stop to entry, close at TP2/SL).`}
+          </p>
         </div>
       ) : d.action === 'TAKE' && plan ? (
         <div className="mt-auto flex flex-wrap items-center gap-2">
@@ -304,10 +337,25 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const mounted = useRef(true)
-  const { openTrades, openBySymbol, trackDecision, closeTrade } = useTradeJournal()
+  const { openTrades, trackDecision, closeTrade } = useTradeJournal()
   const { toast } = useToast()
   // last seen action per symbol — a WAIT→TAKE flip while the tab is open fires a toast
   const prevActionsRef = useRef<Map<string, DecisionAction>>(new Map())
+
+  // which open trade a decision card should show: the one matching the desk's
+  // current consensus first (hedge case), else the newest
+  const openTradeFor = useCallback(
+    (symbol: string, consensus: 'LONG' | 'SHORT' | 'NONE') => {
+      const list = openTrades.filter((t) => t.symbol === symbol)
+      if (list.length === 0) return null
+      if (consensus !== 'NONE') {
+        const match = list.find((t) => (t.side === 'long' ? 'LONG' : 'SHORT') === consensus)
+        if (match) return match
+      }
+      return list[0]
+    },
+    [openTrades],
+  )
 
   useEffect(() => {
     mounted.current = true
@@ -387,7 +435,7 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
         <b className="text-bull">TAKE</b> = systems agree, the tape confirms and price is in the zone now — one press on{' '}
         <b className="text-tv-ink">Track this trade</b> freezes the plan into the tracker ·{' '}
         <b className="text-warn">WAIT</b> = direction agreed, entry not ready yet (the card says what must happen first) ·{' '}
-        <b className="text-bear">SKIP</b> = systems conflict · <b className="text-tv-ink">STAND ASIDE</b> = no edge. Tracked trades follow the plan: bank half at TP1, stop to entry, close at TP2/SL.
+        <b className="text-bear">SKIP</b> = systems conflict · <b className="text-tv-ink">STAND ASIDE</b> = no edge. Tracked trades follow the frozen plan — bank half at TP1, stop to entry, close at TP2/SL — new signals never rewrite a frozen plan.
       </p>
 
       {/* body */}
@@ -411,7 +459,7 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
               onOpen={onOpen}
               onTrack={trackDecision}
               onCloseTrade={closeTrade}
-              trackedTrade={openBySymbol.get(d.symbol) ?? null}
+              trackedTrade={openTradeFor(d.symbol, d.consensus)}
               index={i}
             />
           ))}
