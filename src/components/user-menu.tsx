@@ -40,7 +40,7 @@ export function UserMenu() {
         title={`Signed in as ${name || 'user'}`}
       >
         <span
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-bull-soft text-[11px] font-extrabold text-bull-ink"
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-tv-inset text-[11px] font-semibold text-tv-ink"
           aria-hidden="true"
         >
           {initial}

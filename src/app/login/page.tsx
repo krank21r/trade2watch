@@ -50,15 +50,15 @@ function LoginForm() {
       style={{ boxShadow: 'var(--hairline-shadow)' }}
     >
       <div className="mb-6 flex items-center gap-2.5">
-        <span className="btn inline-flex h-9 w-9 items-center justify-center rounded-xl bg-bull text-white shadow-sm hover:bg-bull-deep active:bg-bull-ink">
-          <TrendingUp className="h-4.5 w-4.5" aria-hidden />
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-tv-ink text-tv-bg">
+          <TrendingUp className="h-4 w-4" aria-hidden />
         </span>
-        <div className="text-lg font-extrabold tracking-tight leading-none">
-          Trade<b className="text-bull">2watch</b>
+        <div className="text-[15px] font-semibold tracking-tight leading-none">
+          Trade2watch
         </div>
       </div>
 
-      <h1 className="text-xl font-extrabold tracking-tight text-tv-ink">Sign in</h1>
+      <h1 className="text-lg font-semibold tracking-tight text-tv-ink">Sign in</h1>
       <p className="mt-1 text-[13px] leading-relaxed text-tv-muted">
         Your watchlist, position sizing and trade journal are kept private to your account.
       </p>
@@ -119,7 +119,6 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="relative flex min-h-[100dvh] flex-col items-center justify-center bg-tv-bg px-4 py-10 text-tv-ink">
-      <div aria-hidden className="t2w-grid-bg pointer-events-none absolute inset-0" />
       <Suspense fallback={null}>
         <LoginForm />
       </Suspense>

@@ -1,17 +1,32 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
+import {
+  Bot,
+  Check,
+  CircleCheck,
+  CircleX,
+  Clock,
+  Landmark,
+  Radio,
+  Ruler,
+  Search,
+  Shield,
+  Swords,
+} from 'lucide-react'
 import { STAGES, STAGE_ORDER } from './types'
 
-const STAGE_ICONS: Record<string, string> = {
-  queued: '⏱',
-  data: '📡',
-  analysts: '🔍',
-  debate: '⚔️',
-  plan: '📐',
-  risk: '🛡',
-  decision: '🏛',
-  done: '✅',
+// quiet lucide stage markers — semantic color is applied by the state ring below
+const STAGE_ICONS: Record<string, ReactNode> = {
+  queued: <Clock className="h-3.5 w-3.5" aria-hidden="true" />,
+  data: <Radio className="h-3.5 w-3.5" aria-hidden="true" />,
+  analysts: <Search className="h-3.5 w-3.5" aria-hidden="true" />,
+  debate: <Swords className="h-3.5 w-3.5" aria-hidden="true" />,
+  plan: <Ruler className="h-3.5 w-3.5" aria-hidden="true" />,
+  risk: <Shield className="h-3.5 w-3.5" aria-hidden="true" />,
+  decision: <Landmark className="h-3.5 w-3.5" aria-hidden="true" />,
+  done: <Check className="h-3.5 w-3.5" aria-hidden="true" />,
 }
 
 export function PipelinePanel({
@@ -37,8 +52,15 @@ export function PipelinePanel({
       className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5"
     >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold tracking-tight text-tv-ink">
-          {failed ? '❌ Analysis failed' : done ? '✅ Analysis complete' : '🤖 Agents at work'}
+        <h3 className="text-sm font-semibold tracking-tight text-tv-ink inline-flex items-center gap-2">
+          {failed ? (
+            <CircleX className="h-3.5 w-3.5 text-bear" aria-hidden="true" />
+          ) : done ? (
+            <CircleCheck className="h-3.5 w-3.5 text-bull" aria-hidden="true" />
+          ) : (
+            <Bot className="h-3.5 w-3.5 text-tv-muted" aria-hidden="true" />
+          )}
+          {failed ? 'Analysis failed' : done ? 'Analysis complete' : 'Agents at work'}
         </h3>
         <span className="text-sm font-bold tabular-nums text-tv-ink">{done ? '100%' : `${progress}%`}</span>
       </div>
@@ -48,7 +70,7 @@ export function PipelinePanel({
           className="h-full rounded-full transition-all duration-700"
           style={{
             width: `${done ? 100 : progress}%`,
-            background: failed ? 'var(--bear)' : 'linear-gradient(90deg, var(--bull), var(--info))',
+            background: failed ? 'var(--bear)' : 'var(--bull)',
           }}
         />
       </div>
@@ -61,16 +83,21 @@ export function PipelinePanel({
           return (
             <li key={s.key} className="flex items-center gap-3 py-1.5">
               <span
-                className="h-7 w-7 rounded-full border text-[11px] inline-flex items-center justify-center shrink-0"
+                className="h-7 w-7 rounded-full border inline-flex items-center justify-center shrink-0"
                 style={{
                   background: isDone ? 'var(--bull-soft)' : isCurrent ? 'var(--warn-soft)' : 'var(--tv-panel2)',
                   borderColor: isDone ? 'var(--bull-line)' : isCurrent ? 'var(--warn-line)' : 'var(--tv-line)',
+                  color: isDone ? 'var(--bull)' : isCurrent ? 'var(--warn)' : 'var(--tv-muted2)',
                 }}
               >
-                {isDone ? '✓' : STAGE_ICONS[s.key] ?? '•'}
+                {isDone ? (
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : (
+                  STAGE_ICONS[s.key] ?? <span className="h-1 w-1 rounded-full bg-tv-muted2" aria-hidden="true" />
+                )}
               </span>
               <span
-                className={`text-[13px] ${isCurrent ? 'font-bold' : 'font-medium'}`}
+                className={`text-[13px] ${isCurrent ? 'font-semibold' : 'font-medium'}`}
                 style={{ color: isDone ? 'var(--bull)' : isCurrent ? 'var(--warn)' : 'var(--tv-muted)' }}
               >
                 {s.label}

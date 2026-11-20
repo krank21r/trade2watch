@@ -13,8 +13,8 @@ type Tab = 'setups' | 'signals' | 'liquidity'
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'setups', label: 'Trade Setups' },
-  { key: 'signals', label: '⚡ AI Signals' },
-  { key: 'liquidity', label: '🌊 Liquidity Lab' },
+  { key: 'signals', label: 'AI Signals' },
+  { key: 'liquidity', label: 'Liquidity Lab' },
 ]
 
 export default function Home() {
@@ -22,26 +22,26 @@ export default function Home() {
 
   return (
     <div className="relative h-[100dvh] flex flex-col bg-tv-bg text-tv-ink overflow-hidden">
-      {/* design-canvas backdrop — faint 28px slate grid on white */}
-      <div aria-hidden className="t2w-grid-bg pointer-events-none absolute inset-0" />
-
-      {/* top bar */}
-      <nav className="relative z-10 shrink-0 flex items-center gap-2 sm:gap-3 flex-wrap px-3 sm:px-5 py-2.5 border-b border-tv-line bg-tv-panel/90 backdrop-blur-xl">
-        {/* brand — emerald logo tile, extrabold wordmark */}
-        <div className="flex items-center gap-2.5 mr-1 sm:mr-3">
-          <span className="btn inline-flex h-8 w-8 items-center justify-center rounded-xl bg-bull text-white shadow-sm hover:bg-bull-deep active:bg-bull-ink">
-            <TrendingUp className="h-4.5 w-4.5" aria-hidden />
+      {/* top bar — flat hairline chrome, color reserved for the data */}
+      <nav className="relative z-10 shrink-0 flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3 border-b border-tv-line">
+        {/* brand — ink monogram tile, quiet wordmark */}
+        <div className="flex items-center gap-2.5">
+          <span
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-tv-ink text-tv-bg"
+            aria-hidden
+          >
+            <TrendingUp className="h-4 w-4" aria-hidden />
           </span>
-          <div className="text-base sm:text-lg font-extrabold tracking-tight leading-none">
-            Trade<b className="text-bull">2watch</b>
+          <div className="text-[15px] font-semibold tracking-tight leading-none">
+            Trade2watch
           </div>
         </div>
 
-        {/* segmented tabs — .btn primitive, horizontally scrollable on narrow screens */}
+        {/* segmented tabs — neutral; active = ink on inset surface */}
         <div
           role="tablist"
           aria-label="Sections"
-          className="flex max-w-full items-center overflow-x-auto rounded-xl border border-tv-line bg-tv-panel2/70 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex max-w-full items-center overflow-x-auto rounded-lg border border-tv-line bg-tv-inset p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {TABS.map((t) => {
             const active = tab === t.key
@@ -53,16 +53,20 @@ export default function Home() {
                 aria-current={active ? 'page' : undefined}
                 onClick={() => setTab(t.key)}
                 suppressHydrationWarning
-                className="btn relative shrink-0 rounded-[0.5rem] px-3.5 sm:px-4 py-1.5 text-[12.5px] sm:text-[13px] font-semibold"
+                className="btn relative shrink-0 rounded-[0.4375rem] px-3 sm:px-3.5 py-1.5 text-[12.5px] sm:text-[13px]"
               >
                 {active && (
                   <motion.span
                     layoutId="tab-pill"
                     transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                    className="absolute inset-0 rounded-[0.5rem] border border-bull-line bg-bull-soft"
+                    className="absolute inset-0 rounded-[0.4375rem] border border-tv-line bg-tv-panel shadow-xs"
                   />
                 )}
-                <span className={`relative z-10 whitespace-nowrap transition-colors ${active ? 'text-bull-ink' : 'text-tv-muted hover:text-tv-ink'}`}>
+                <span
+                  className={`relative z-10 whitespace-nowrap transition-colors ${
+                    active ? 'text-tv-ink' : 'text-tv-muted hover:text-tv-ink'
+                  }`}
+                >
                   {t.label}
                 </span>
               </button>
@@ -70,14 +74,11 @@ export default function Home() {
           })}
         </div>
 
-        {/* status + theme */}
+        {/* status + account */}
         <div className="ml-auto flex items-center gap-2 sm:gap-2.5 text-xs text-tv-muted">
-          <span className="hidden sm:inline-flex items-center gap-1.5">
-            <span
-              className="inline-block w-2 h-2 rounded-full animate-pulse"
-              style={{ background: 'var(--bull)' }}
-            />
-            {tab === 'setups' ? 'Live setups + confirmations' : tab === 'signals' ? 'AI desk ready' : 'Liquidity pipeline armed'}
+          <span className="hidden md:inline-flex items-center gap-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-bull" aria-hidden />
+            <span className="tabular-nums">Live</span>
           </span>
           <UserMenu />
           <ThemeToggle />
@@ -89,10 +90,10 @@ export default function Home() {
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={tab}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
             className="absolute inset-0 overflow-y-auto"
           >
             {tab === 'setups' ? <SetupBoard /> : tab === 'signals' ? <SignalDashboard /> : <LiquidityLab />}
@@ -100,13 +101,10 @@ export default function Home() {
         </AnimatePresence>
       </main>
 
-      {/* status footer — always pinned to the bottom of the shell */}
-      <footer className="relative z-10 shrink-0 flex items-center justify-between gap-3 px-3 sm:px-5 py-2 border-t border-tv-line bg-tv-panel/90 backdrop-blur-xl text-[11px] text-tv-muted">
-        <span className="hidden sm:block truncate">
-          Live data · Bybit · Binance · Yahoo Finance · setups refresh every 45s
-        </span>
-        <span className="sm:hidden truncate">Trade2watch</span>
-        <span className="shrink-0">Research tool — not financial advice</span>
+      {/* status footer — pinned to the bottom of the shell */}
+      <footer className="relative z-10 mt-auto shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 py-2.5 border-t border-tv-line text-[11px] text-tv-muted2">
+        <span className="truncate">Research tool — not financial advice</span>
+        <span className="hidden sm:block shrink-0 tabular-nums">Bybit · Binance · Yahoo Finance</span>
       </footer>
     </div>
   )

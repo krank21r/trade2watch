@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
+import { ChevronDown, RefreshCw } from 'lucide-react'
 import { fmtPrice } from '@/components/signals/types'
 import type { DecisionAction, EntryDecision, EntryDecisionsPayload } from '@/lib/entry/decide'
 
@@ -26,14 +27,14 @@ const POLL_MS = 60_000
 
 const ACTION: Record<DecisionAction, { badge: string; glyph: string; label: string; ring: string }> = {
   TAKE: {
-    badge: 'bg-bull text-white border-bull shadow-[0_0_18px_var(--bull-soft)]',
+    badge: 'bg-bull text-white border-bull',
     glyph: '▶',
     label: 'TAKE — act now',
     ring: 'border-bull/50',
   },
   WAIT: {
-    badge: 'bg-warn/15 text-warn border-warn/45',
-    glyph: '⏳',
+    badge: 'bg-warn/10 text-warn border-warn/40',
+    glyph: '…',
     label: 'WAIT — set limits',
     ring: 'border-warn/40',
   },
@@ -77,7 +78,7 @@ function ScoreBar({ score }: { score: number }) {
           style={{ width: `${Math.max(3, score)}%` }}
         />
       </div>
-      <span className="text-[11px] font-bold tabular-nums text-tv-muted w-7 text-right">{score}</span>
+      <span className="text-[11px] font-semibold tabular-nums text-tv-muted w-7 text-right">{score}</span>
     </div>
   )
 }
@@ -87,7 +88,7 @@ function VoteChip({ system, vote, sub }: { system: string; vote: string; sub?: s
   return (
     <span
       title={`${system}: ${vote}${sub ? ` — ${sub}` : ''}`}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${VOTE_STYLE[vote] ?? VOTE_STYLE.NEUTRAL}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${VOTE_STYLE[vote] ?? VOTE_STYLE.NEUTRAL}`}
     >
       <span className="text-tv-muted font-semibold">{system}</span>
       {shown}
@@ -114,20 +115,20 @@ function DecisionCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(index * 0.04, 0.3) }}
-      className={`flex h-full flex-col gap-2.5 rounded-2xl border bg-tv-panel p-3.5 shadow-sm transition hover:shadow-md ${a.ring}`}
+      className={`flex h-full flex-col gap-2.5 rounded-2xl border bg-tv-panel p-3.5 shadow-xs transition-colors hover:bg-tv-panel2/40 ${a.ring}`}
     >
       {/* header — action + symbol + score */}
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-extrabold tracking-wide ${a.badge}`}>
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${a.badge}`}>
             <span aria-hidden="true">{a.glyph}</span>
             {d.action === 'STAND_ASIDE' ? 'STAND ASIDE' : d.action}
           </span>
           <div className="min-w-0">
             <div className="flex items-baseline gap-1.5">
-              <h3 className="text-[14px] font-extrabold tracking-tight text-tv-ink truncate">{d.pair}</h3>
+              <h3 className="text-[14px] font-semibold tracking-tight text-tv-ink truncate">{d.pair}</h3>
               {d.consensus !== 'NONE' && (
-                <span className={`text-[12px] font-extrabold ${dirCls}`}>
+                <span className={`text-[12px] font-bold ${dirCls}`}>
                   {d.consensus === 'LONG' ? '▲ BUY' : '▼ SELL'}
                 </span>
               )}
@@ -157,7 +158,7 @@ function DecisionCard({
         />
         <VoteChip system="Flow" vote={d.votes.flow} sub={d.market === 'stock' ? 'crypto only' : undefined} />
         {plan && (
-          <span className="ml-auto rounded-full border border-info/40 bg-info/15 px-2 py-0.5 text-[10px] font-bold text-info">
+          <span className="ml-auto rounded-full border border-info/40 bg-info/10 px-2 py-0.5 text-[10px] font-semibold text-info">
             plan: {plan.source}
           </span>
         )}
@@ -167,24 +168,24 @@ function DecisionCard({
       {plan ? (
         <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-tv-line bg-tv-panel2/60 p-2 text-[11px] sm:grid-cols-4" role="list" aria-label={`${d.pair} decision plan levels`}>
           <div role="listitem">
-            <div className="text-[9.5px] font-bold uppercase tracking-wider text-warn">Entry</div>
-            <div className="font-bold tabular-nums text-tv-ink">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-warn">Entry</div>
+            <div className="font-semibold tabular-nums text-tv-ink">
               {fmtPrice(plan.entryLow, d.currency)}–{fmtPrice(plan.entryHigh, d.currency)}
             </div>
           </div>
           <div role="listitem">
-            <div className="text-[9.5px] font-bold uppercase tracking-wider text-bear">Stop</div>
-            <div className="font-bold tabular-nums text-tv-ink">{fmtPrice(plan.stop, d.currency)}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-bear">Stop</div>
+            <div className="font-semibold tabular-nums text-tv-ink">{fmtPrice(plan.stop, d.currency)}</div>
           </div>
           <div role="listitem">
-            <div className="text-[9.5px] font-bold uppercase tracking-wider text-info">TP1 / TP2</div>
-            <div className="font-bold tabular-nums text-tv-ink">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-info">TP1 / TP2</div>
+            <div className="font-semibold tabular-nums text-tv-ink">
               {fmtPrice(plan.t1, d.currency)} / {fmtPrice(plan.t2, d.currency)}
             </div>
           </div>
           <div role="listitem">
-            <div className="text-[9.5px] font-bold uppercase tracking-wider text-tv-muted">R:R at T1</div>
-            <div className={`font-bold tabular-nums ${plan.rr >= 2 ? 'text-bull' : 'text-warn'}`}>1 : {plan.rr.toFixed(1)}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-tv-muted">R:R at T1</div>
+            <div className={`font-semibold tabular-nums ${plan.rr >= 2 ? 'text-bull' : 'text-warn'}`}>1 : {plan.rr.toFixed(1)}</div>
           </div>
         </div>
       ) : (
@@ -199,7 +200,7 @@ function DecisionCard({
           const gg = GATE_GLYPH[g.state]
           return (
             <li key={g.name} className="flex items-center gap-1 text-[10.5px]" title={`${g.name}: ${g.detail}`}>
-              <span aria-hidden="true" className={`font-extrabold ${gg.cls}`}>{gg.g}</span>
+              <span aria-hidden="true" className={`font-semibold ${gg.cls}`}>{gg.g}</span>
               <span className="text-tv-muted">{g.name}</span>
             </li>
           )
@@ -218,9 +219,10 @@ function DecisionCard({
         onClick={() => onOpen(d.symbol)}
         suppressHydrationWarning
         aria-label={`Open the full ${d.displayName} trade setup`}
-        className="mt-auto self-start rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11px] font-bold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+        className="mt-auto self-start rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
       >
-        Open full setup ▾
+        Open full setup
+        <ChevronDown className="h-3 w-3" aria-hidden />
       </button>
     </motion.article>
   )
@@ -272,10 +274,10 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
     <section aria-label="Entry decisions" className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-3.5 sm:p-4">
       {/* header */}
       <div className="flex flex-wrap items-center gap-2 mb-1">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-tv-muted">
           Entry decisions — <span className="text-tv-ink">one call per symbol</span>
         </h2>
-        <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-bold text-tv-muted">
+        <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-semibold text-tv-muted">
           Trade Setups × AI Signals × Liquidity Lab
         </span>
         <div className="ml-auto flex items-center gap-2">
@@ -290,9 +292,9 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
             onClick={() => { setLoading(true); load() }}
             suppressHydrationWarning
             aria-label="Refresh entry decisions"
-            className="rounded-xl border border-tv-line bg-tv-panel2 px-2.5 py-1.5 text-[11px] font-bold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+            className="inline-flex items-center rounded-xl border border-tv-line bg-tv-panel2 px-2.5 py-1.5 text-[11px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
           >
-            ⟳
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </button>
         </div>
       </div>

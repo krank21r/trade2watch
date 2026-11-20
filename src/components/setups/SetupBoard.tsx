@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Check, Copy, Crosshair, RefreshCw, ShieldX, Target, TriangleAlert } from 'lucide-react'
 import { fmtPrice } from '@/components/signals/types'
 import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
 import { fetchMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
@@ -20,13 +21,6 @@ const C = {
   red: 'text-bear',
   amber: 'text-warn',
   blue: 'text-info',
-}
-
-// soft icon-disc backgrounds per plan-ladder role (targets → info, entry → warn, stop → bear)
-const ICON_SOFT: Record<string, string> = {
-  [C.blue]: 'var(--info-soft)',
-  [C.amber]: 'var(--warn-soft)',
-  [C.red]: 'var(--bear-soft)',
 }
 
 const QUICK = ['BTC', 'ETH', 'SOL', 'AAPL', 'TSLA', 'NVDA']
@@ -69,14 +63,14 @@ function fmtWhen(t: number): string {
 
 function Badge({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-bold tabular-nums text-tv-muted whitespace-nowrap">{children}</span>
+    <span className="rounded-full border border-tv-line bg-tv-panel2 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-tv-muted whitespace-nowrap">{children}</span>
   )
 }
 
 function PlanRow({
   icon, label, sub, price, badges, cls, big, accent,
 }: {
-  icon: string
+  icon: ReactNode
   label: string
   sub?: string
   price: string
@@ -96,14 +90,14 @@ function PlanRow({
       className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-1.5 ${rowCls}`}
     >
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px]"
-        style={{ background: ICON_SOFT[cls] ?? 'var(--tv-panel2)' }}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-tv-muted"
+        style={{ background: 'var(--tv-inset)' }}
         aria-hidden="true"
       >
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-tv-muted">{label}</div>
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-tv-muted">{label}</div>
         {sub && <div className={`mt-0.5 truncate text-[10px] ${C.muted}`}>{sub}</div>}
       </div>
       <div className="shrink-0 text-right">
@@ -188,13 +182,13 @@ function TradePlanCard({
       { key: 'tp1', label: 'TP1 · Bank half', v: side.t1, sub: 'take half off, move stop to entry' },
     ].filter(Boolean) as Array<{ key: string; label: string; v: number; sub: string }>
   ).map((r) => (
-    <PlanRow key={r.key} icon="🎯" label={r.label} sub={r.sub} price={fmtPrice(r.v, currency)} cls={C.blue} badges={[pctFrom(mid, r.v), rMult(r.v, mid, risk)]} />
+    <PlanRow key={r.key} icon={<Target className="h-3.5 w-3.5" />} label={r.label} sub={r.sub} price={fmtPrice(r.v, currency)} cls={C.blue} badges={[pctFrom(mid, r.v), rMult(r.v, mid, risk)]} />
   ))
 
   const entryRow = (
     <PlanRow
       key="entry"
-      icon="▶"
+      icon={<Crosshair className="h-3.5 w-3.5" />}
       label="ENTRY — limit zone"
       sub={entrySub}
       price={`${fmtPrice(side.entryLow, currency)} – ${fmtPrice(side.entryHigh, currency)}`}
@@ -206,7 +200,7 @@ function TradePlanCard({
   const stopRow = (
     <PlanRow
       key="stop"
-      icon="🛑"
+      icon={<ShieldX className="h-3.5 w-3.5" />}
       label="STOP LOSS"
       sub={side.stopNote}
       price={fmtPrice(side.stop, currency)}
@@ -219,21 +213,21 @@ function TradePlanCard({
     <div
       className={`flex h-full flex-col gap-2.5 rounded-2xl border p-3.5 sm:p-4 ${
         preferred
-          ? 'border-warn/50 bg-tv-panel shadow-[0_0_28px_var(--warn-soft)]'
-          : 'border-tv-line bg-tv-panel shadow-sm'
+          ? 'border-warn/50 bg-tv-panel shadow-xs'
+          : 'border-tv-line bg-tv-panel shadow-xs'
       }`}
     >
       {/* header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className={`text-[15px] font-bold tracking-tight ${isLong ? C.green : C.red}`}>
+            <h3 className={`text-[15px] font-semibold tracking-tight ${isLong ? C.green : C.red}`}>
               {isLong ? '▲ LONG SETUP' : '▼ SHORT SETUP'}
             </h3>
             {preferred ? (
-              <span className="rounded-full bg-warn px-2.5 py-0.5 text-[11px] font-bold text-tv-bg shadow-[0_0_20px_var(--warn-soft)]">★ THE ACTIVE SETUP</span>
+              <span className="rounded-full border border-warn-line bg-warn-soft px-2.5 py-0.5 text-[10.5px] font-semibold tracking-wide text-warn">ACTIVE SETUP</span>
             ) : (
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${isLong ? chipCls.liveLong : chipCls.liveShort}`}>{side.tag}</span>
+              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${isLong ? chipCls.liveLong : chipCls.liveShort}`}>{side.tag}</span>
             )}
           </div>
           <p className={`text-[12.5px] font-semibold mt-1 ${C.text}`}>{side.strategy}</p>
@@ -245,9 +239,10 @@ function TradePlanCard({
             onClick={copyPlan}
             suppressHydrationWarning
             aria-label={`Copy ${pair} ${isLong ? 'long' : 'short'} plan to clipboard`}
-            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[11px] font-bold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[11px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
           >
-            {copied ? '✓ Copied' : '⧉ Copy plan'}
+            {copied ? <Check className="h-3.5 w-3.5 text-bull" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+            {copied ? 'Copied' : 'Copy plan'}
           </button>
         </div>
       </div>
@@ -274,7 +269,10 @@ function TradePlanCard({
         <span className={C.muted}>Risk : Reward</span>
         <span className={`font-bold tabular-nums ${C.green}`}>{side.rr}</span>
       </div>
-      <p className={`text-[11.5px] leading-relaxed ${C.red}`}>⛔ {side.invalidation}</p>
+      <p className={`flex items-center gap-1.5 text-[11.5px] leading-relaxed ${C.red}`}>
+        <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        {side.invalidation}
+      </p>
       <span className="sr-only">
         {pair} {isLong ? 'long' : 'short'} setup — entry {fmtPrice(side.entryLow, currency)} to {fmtPrice(side.entryHigh, currency)}, stop{' '}
         {fmtPrice(side.stop, currency)}, targets {fmtPrice(side.t1, currency)} and {fmtPrice(side.t2, currency)}
@@ -403,7 +401,7 @@ export function SetupBoard() {
     <div className="min-h-full mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6 sm:py-6">
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-3 sm:p-4">
-        <div className="mr-1 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Watchlist</div>
+        <div className="mr-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-tv-muted">Watchlist</div>
         {(data?.setups ?? []).map((s) => {
           const open = active?.symbol === s.symbol
           return (
@@ -440,17 +438,18 @@ export function SetupBoard() {
             onClick={addSymbol}
             suppressHydrationWarning
             aria-label="Add symbol to watchlist"
-            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
           >
             + Add
           </button>
           <button
             onClick={() => { setLoading(true); load() }}
             suppressHydrationWarning
-            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition hover:border-tv-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-tv-line bg-tv-panel2 px-3 py-2 text-[12px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
             aria-label="Refresh setups"
           >
-            ⟳ Refresh
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            Refresh
           </button>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 text-[11px] text-tv-muted">
@@ -490,15 +489,15 @@ export function SetupBoard() {
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                     <div className="flex items-center gap-2.5 flex-wrap">
-                      <h2 className="text-lg font-bold tracking-tight text-tv-ink">
+                      <h2 className="text-lg font-semibold tracking-tight text-tv-ink">
                         {active.displayName} — {active.pair}
                       </h2>
-                      <span className="rounded-full border border-info/40 bg-info/15 px-2.5 py-0.5 text-[11px] font-bold text-info">
+                      <span className="rounded-full border border-info/40 bg-info/10 px-2.5 py-0.5 text-[11px] font-semibold text-info">
                         {active.biasTag}
                       </span>
                     </div>
                     <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-tv-muted">
-                      <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-0.5 text-[11px] font-bold text-tv-muted">
+                      <span className="rounded-full border border-tv-line bg-tv-panel2 px-2.5 py-0.5 text-[11px] font-semibold text-tv-muted">
                         {active.regime.replace('_', ' ')}
                       </span>
                       <span>
@@ -515,7 +514,7 @@ export function SetupBoard() {
                       {fmtPrice(active.price, active.currency)}
                     </div>
                     <span
-                      className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold tabular-nums ${
+                      className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tabular-nums ${
                         active.change24h >= 0 ? 'bg-bull/10 text-bull border-bull/30' : 'bg-bear/10 text-bear border-bear/30'
                       }`}
                     >
@@ -560,7 +559,7 @@ export function SetupBoard() {
 
               {/* the trade plans — preferred side first */}
               <div className="flex flex-col gap-4">
-                <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-tv-muted">
                   Trade plans — <span className="text-warn">entry levels</span>, <span className="text-bear">stop loss</span> &amp;{' '}
                   <span className="text-info">targets</span>
                 </h2>
@@ -590,7 +589,7 @@ export function SetupBoard() {
 
               {/* sizing */}
               <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
-                <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Position sizing — risk-first</h3>
+                <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-tv-muted">Position sizing — risk-first</h3>
                 <div className="flex flex-wrap gap-3 mb-3">
                   <label className={`text-[12px] ${C.muted}`}>
                     <span className="block mb-1">Account ($)</span>
@@ -622,10 +621,10 @@ export function SetupBoard() {
                       const label = kind === 'long' ? 'LONG side' : 'SHORT side'
                       return (
                         <div key={kind} className="rounded-xl border border-tv-line bg-tv-panel2 p-2.5">
-                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-warn">{label}</div>
+                          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-warn">{label}</div>
                           {sz ? (
                             <>
-                              <div className="font-bold tabular-nums text-tv-ink">{sz.unitsTxt}</div>
+                              <div className="font-semibold tabular-nums text-tv-ink">{sz.unitsTxt}</div>
                               <div className="text-[11px] tabular-nums text-tv-muted">{sz.notionalTxt}</div>
                             </>
                           ) : (
@@ -640,7 +639,7 @@ export function SetupBoard() {
 
               {/* key levels */}
               <div className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4">
-                <h3 className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-tv-muted">Key levels — live structure</h3>
+                <h3 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-tv-muted">Key levels — live structure</h3>
                 <ul className="grid grid-cols-1 gap-x-6 gap-y-1 md:grid-cols-2">
                   {active.levels.map((l, i) => (
                     <li key={i} className="flex items-baseline gap-3 text-[12.5px]">
@@ -685,8 +684,8 @@ export function SetupBoard() {
             role="status"
             className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-warn/40 bg-warn/5 px-3.5 py-2.5 text-[12px]"
           >
-            <span className="font-bold text-warn">🎯 IN TRADE</span>
-            <span className="font-bold text-tv-ink">
+            <span className="font-semibold uppercase tracking-wide text-warn">IN TRADE</span>
+            <span className="font-semibold text-tv-ink">
               {t.pair} {t.side.toUpperCase()}
             </span>
             <span className="tabular-nums text-tv-muted">filled ≈ {fmtPrice(t.entryFill, t.currency)}</span>

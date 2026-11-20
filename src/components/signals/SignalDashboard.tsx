@@ -9,6 +9,7 @@ import { fmtPrice, type SignalRunDetail, type SignalRunRow } from './types'
 import { detailToRow, loadLocalRuns, persistRuns, saveRunsMerged, upsertLocalRun } from '@/lib/signals/run-store'
 import { useToast } from '@/hooks/use-toast'
 import { scopedGetJson, scopedSetJson } from '@/lib/user-scope'
+import { Bell, BellOff, Bitcoin, Bot, Clock, Crosshair, History, TrendingUp } from 'lucide-react'
 
 const QUICK_PICKS: Array<{ symbol: string; market: 'crypto' | 'stock'; label: string }> = [
   { symbol: 'BTC', market: 'crypto', label: 'BTC' },
@@ -22,13 +23,13 @@ const QUICK_PICKS: Array<{ symbol: string; market: 'crypto' | 'stock'; label: st
 function outcomeChip(outcome?: string | null): { label: string; color: string } {
   switch (outcome) {
     case 'TARGET1_HIT':
-      return { label: '🎯 T1 hit', color: 'var(--bull)' }
+      return { label: 'T1 hit', color: 'var(--bull)' }
     case 'TARGET2_HIT':
-      return { label: '🚀 T2 hit', color: 'var(--bull)' }
+      return { label: 'T2 hit', color: 'var(--bull)' }
     case 'STOP_HIT':
-      return { label: '🛑 Stopped', color: 'var(--bear)' }
+      return { label: 'Stopped', color: 'var(--bear)' }
     case 'INVALIDATED':
-      return { label: '⚠ Invalidated', color: 'var(--warn)' }
+      return { label: 'Invalidated', color: 'var(--warn)' }
     default:
       return { label: 'Open', color: 'var(--tv-muted)' }
   }
@@ -578,7 +579,7 @@ export function SignalDashboard() {
   const autoDesc = (() => {
     if (!auto) return 'Connecting to the auto desk…'
     if (auto.external)
-      return `On production the desk runs on a schedule: one watchlist symbol (${auto.symbols.join(', ')}) per tick, and it pings you the moment a plan is ready. Turn on 🔔 Alerts for pop-ups even when this tab is in the background.`
+      return `On production the desk runs on a schedule: one watchlist symbol (${auto.symbols.join(', ')}) per tick, and it pings you the moment a plan is ready. Turn on Alerts for pop-ups even when this tab is in the background.`
     const parts = [
       `Every ${Math.max(1, Math.round(auto.intervalMs / 60_000))} min it analyzes the stalest of ${auto.symbols.join(' / ')} and alerts you when price reaches an entry zone.`,
     ]
@@ -603,10 +604,10 @@ export function SignalDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <span
-                  className="h-8 w-8 rounded-xl bg-info/12 border border-info/30 text-info inline-flex items-center justify-center text-sm"
+                  className="h-8 w-8 rounded-xl bg-tv-panel2 border border-tv-line text-tv-muted inline-flex items-center justify-center"
                   aria-hidden="true"
                 >
-                  🤖
+                  <Bot className="h-4 w-4" />
                 </span>
                 <h3 className="text-sm font-semibold tracking-tight text-tv-ink">Auto desk</h3>
                 <span
@@ -614,7 +615,7 @@ export function SignalDashboard() {
                   aria-hidden="true"
                 />
                 <span
-                  className="text-[11px] font-bold"
+                  className="text-[11px] font-semibold"
                   style={{ color: auto?.enabled ? 'var(--bull)' : 'var(--tv-muted)' }}
                 >
                   {auto?.enabled ? 'ON' : 'PAUSED'}
@@ -626,13 +627,23 @@ export function SignalDashboard() {
                   suppressHydrationWarning
                   aria-pressed={desktopAlerts}
                   title="Browser notifications when a signal is ready or price reaches an entry zone"
-                  className={`rounded-full px-3 py-1 text-[11px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
                     desktopAlerts
                       ? 'border-info/45 bg-info/12 text-info'
                       : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink'
                   }`}
                 >
-                  {desktopAlerts ? '🔔 Alerts on' : '🔕 Alerts off'}
+                  {desktopAlerts ? (
+                    <>
+                      <Bell className="h-3.5 w-3.5" aria-hidden="true" />
+                      Alerts on
+                    </>
+                  ) : (
+                    <>
+                      <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
+                      Alerts off
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={() => void toggleAuto()}
@@ -662,10 +673,10 @@ export function SignalDashboard() {
           >
             <div className="flex items-center gap-2.5">
               <span
-                className="h-8 w-8 rounded-xl bg-bull/10 border border-bull/25 text-bull inline-flex items-center justify-center text-sm"
+                className="h-8 w-8 rounded-xl bg-tv-panel2 border border-tv-line text-tv-muted inline-flex items-center justify-center"
                 aria-hidden="true"
               >
-                🎯
+                <Crosshair className="h-4 w-4" />
               </span>
               <h3 className="text-sm font-semibold tracking-tight text-tv-ink">New analysis</h3>
             </div>
@@ -687,7 +698,7 @@ export function SignalDashboard() {
                       transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                     />
                   )}
-                  <span className="relative z-10">{m === 'crypto' ? '₿ Crypto' : ' Stocks'}</span>
+                  <span className="relative z-10">{m === 'crypto' ? 'Crypto' : 'Stocks'}</span>
                 </button>
               ))}
             </div>
@@ -730,7 +741,7 @@ export function SignalDashboard() {
               onClick={() => startRun(symbol, market)}
               disabled={busy || starting}
               suppressHydrationWarning
-              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-gradient-to-b from-bull to-bull-deep text-white hover:brightness-110 active:scale-[0.99] transition shadow-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 dark:text-emerald-950"
+              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-bull text-white hover:bg-bull-deep active:bg-bull-ink transition disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
             >
               {busy || starting ? 'Analysis running…' : 'Run multi-agent analysis'}
             </button>
@@ -758,10 +769,10 @@ export function SignalDashboard() {
           >
             <div className="flex items-center gap-2.5 mb-3">
               <span
-                className="h-8 w-8 rounded-xl bg-info/12 border border-info/30 text-info inline-flex items-center justify-center text-sm"
+                className="h-8 w-8 rounded-xl bg-tv-panel2 border border-tv-line text-tv-muted inline-flex items-center justify-center"
                 aria-hidden="true"
               >
-                📜
+                <History className="h-4 w-4" />
               </span>
               <h3 className="text-sm font-semibold tracking-tight text-tv-ink">Signal history</h3>
             </div>
@@ -786,16 +797,25 @@ export function SignalDashboard() {
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[13px] font-semibold text-tv-ink">
                         {h.symbol}
-                        <span className="ml-1.5 text-[10.5px] font-medium text-tv-muted">{h.market === 'crypto' ? '₿' : '📈'}</span>
+                        <span
+                          className="ml-1.5 inline-flex items-center align-[-2px] text-tv-muted2"
+                          aria-hidden="true"
+                        >
+                          {h.market === 'crypto' ? <Bitcoin className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                        </span>
                         {h.source === 'auto' && (
-                          <span className="ml-1 text-[10px]" title="Generated by the auto desk" suppressHydrationWarning>
-                            🤖
+                          <span
+                            className="ml-1 inline-flex items-center align-[-2px] text-tv-muted2"
+                            title="Generated by the auto desk"
+                            suppressHydrationWarning
+                          >
+                            <Bot className="h-3 w-3" aria-hidden="true" />
                           </span>
                         )}
                       </span>
                       {badge && (
                         <span
-                          className="px-2 py-0.5 rounded-full text-[10.5px] font-bold"
+                          className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold"
                           style={{ background: badge.bg, color: badge.fg, border: `1px solid ${badge.border}` }}
                         >
                           {badge.label}
@@ -806,8 +826,19 @@ export function SignalDashboard() {
                       <span>
                         {fmtPrice(h.priceAtRun)} · conf {h.confidence ?? '—'}%
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold" style={{ color: oc.color }}>
-                        {h.status === 'running' ? '⏳ running' : h.status === 'failed' ? '❌ failed' : oc.label}
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold inline-flex items-center gap-1.5"
+                        style={{ color: oc.color }}
+                      >
+                        <span
+                          className="h-1.5 w-1.5 rounded-full shrink-0"
+                          style={{
+                            background:
+                              h.status === 'running' ? 'var(--warn)' : h.status === 'failed' ? 'var(--bear)' : oc.color,
+                          }}
+                          aria-hidden="true"
+                        />
+                        {h.status === 'running' ? 'Running' : h.status === 'failed' ? 'Failed' : oc.label}
                       </span>
                     </div>
                   </motion.button>
@@ -823,9 +854,10 @@ export function SignalDashboard() {
             <div className="space-y-2" aria-label="Entry alerts">
               {alerts.active.slice(0, 3).map(({ run: r }) => {
                 const isLong = r.direction === 'LONG'
+                // soft-tinted alert chip — hover deepens the tint slightly (no brightness tricks)
                 const c = isLong
-                  ? { bg: 'var(--bull-soft)', fg: 'var(--bull)', bd: 'var(--bull-line)' }
-                  : { bg: 'var(--bear-soft)', fg: 'var(--bear)', bd: 'var(--bear-line)' }
+                  ? 'bg-bull-soft border-bull-line text-bull hover:bg-bull/15'
+                  : 'bg-bear-soft border-bear-line text-bear hover:bg-bear/15'
                 return (
                   <motion.button
                     key={r.id}
@@ -834,29 +866,29 @@ export function SignalDashboard() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.25, ease: 'easeOut' }}
-                    className="w-full text-left rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 shadow-sm hover:brightness-[1.03] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
-                    style={{ background: c.bg, borderColor: c.bd }}
+                    className={`w-full text-left rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${c}`}
                   >
                     <div className="min-w-0">
-                      <p className="text-[13px] font-bold truncate" style={{ color: c.fg }}>
-                        🎯 {r.symbol} {r.direction} — ENTRY ZONE ACTIVE
+                      <p className="text-[13px] font-semibold truncate">
+                        {r.symbol} {r.direction} — ENTRY ZONE ACTIVE
                       </p>
                       <p className="text-[11.5px] text-tv-muted mt-0.5 tabular-nums truncate">
                         entry {fmtPrice(r.entryLow)} – {fmtPrice(r.entryHigh)} · stop {fmtPrice(r.stop)} · T1{' '}
                         {fmtPrice(r.target1)} · conf {r.confidence ?? '—'}%
                       </p>
                     </div>
-                    <span className="text-[11px] font-bold shrink-0" style={{ color: c.fg }}>
-                      View plan →
-                    </span>
+                    <span className="text-[11px] font-semibold shrink-0">View plan →</span>
                   </motion.button>
                 )
               })}
               {(alerts.near.length > 0 || alerts.waiting > 0) && (
                 <div className="rounded-2xl border border-warn-line bg-warn-soft/40 px-4 py-2.5 space-y-0.5">
                   {alerts.near.slice(0, 2).map(({ run: r, pctAway }) => (
-                    <p key={r.id} className="text-[12px] text-warn font-medium">
-                      ⏳ {r.symbol} {r.direction} — price {pctAway.toFixed(1)}% from the entry zone
+                    <p key={r.id} className="flex items-center gap-1.5 text-[12px] text-warn font-medium">
+                      <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span>
+                        {r.symbol} {r.direction} — price {pctAway.toFixed(1)}% from the entry zone
+                      </span>
                     </p>
                   ))}
                   {alerts.waiting > 0 && (
@@ -876,8 +908,11 @@ export function SignalDashboard() {
               transition={{ duration: 0.25, ease: 'easeOut', delay: 0.1 }}
               className="rounded-2xl border border-dashed border-tv-line-strong bg-tv-panel2/50 p-10 text-center text-tv-muted"
             >
-              <p className="text-3xl mb-3">🤖📈</p>
-              <h2 className="text-lg font-bold tracking-tight mb-2 text-tv-ink">AI trade-setup desk</h2>
+              <div className="flex items-center justify-center gap-2 mb-3 text-tv-muted2" aria-hidden="true">
+                <Bot className="h-7 w-7" />
+                <TrendingUp className="h-7 w-7" />
+              </div>
+              <h2 className="text-lg font-semibold tracking-tight mb-2 text-tv-ink">AI trade-setup desk</h2>
               <p className="text-[13px] leading-relaxed max-w-md mx-auto">
                 A multi-agent system inspired by{' '}
                 <a

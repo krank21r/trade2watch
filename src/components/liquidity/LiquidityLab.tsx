@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Shield,
   Target,
+  TriangleAlert,
   Waves,
   Zap,
   type LucideIcon,
@@ -104,14 +105,14 @@ type VerdictTone = keyof typeof VERDICT_CLS
 
 function Chip({ children, cls = 'border-tv-line bg-tv-panel2 text-tv-muted' }: { children: ReactNode; cls?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold ${cls}`}>
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${cls}`}>
       {children}
     </span>
   )
 }
 
 function VerdictChip({ tone, children }: { tone: VerdictTone; children: ReactNode }) {
-  return <Chip cls={`px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wide ${VERDICT_CLS[tone]}`}>{children}</Chip>
+  return <Chip cls={`px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${VERDICT_CLS[tone]}`}>{children}</Chip>
 }
 
 /** one label/value line — flex justify-between, muted label, bold tabular value */
@@ -128,7 +129,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 function LevelCell({ label, value, cls = 'text-tv-ink', sub }: { label: string; value: string; cls?: string; sub?: string }) {
   return (
     <div className="rounded-lg border border-tv-line bg-tv-panel2/40 px-2.5 py-1.5">
-      <div className="text-[9px] font-bold uppercase tracking-wider text-tv-muted2">{label}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-tv-muted2">{label}</div>
       <div className={`text-[12.5px] font-bold tabular-nums ${cls}`}>{value}</div>
       {sub && <div className="text-[10px] tabular-nums text-tv-muted">{sub}</div>}
     </div>
@@ -156,11 +157,11 @@ function StageCard({
       <div className="mb-3 flex items-center gap-2">
         <span
           aria-hidden
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-tv-line bg-tv-panel2 text-[11px] font-extrabold text-tv-ink"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-tv-line bg-tv-panel2 text-[11px] font-bold text-tv-ink"
         >
           {n}
         </span>
-        <span className="text-[10.5px] font-bold uppercase tracking-wider text-tv-muted2">Stage {n} · {name}</span>
+        <span className="text-[10.5px] font-semibold uppercase tracking-wider text-tv-muted2">Stage {n} · {name}</span>
         <Icon className="ml-auto h-3.5 w-3.5 shrink-0 text-tv-muted2" aria-hidden />
       </div>
       {children}
@@ -254,11 +255,11 @@ export default function LiquidityLab() {
   const refreshing = loading && report !== null
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6 sm:py-6">
       {/* ── page header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-lg font-extrabold tracking-tight text-tv-ink">Liquidity Lab</h1>
+          <h1 className="text-lg font-semibold tracking-tight text-tv-ink">Liquidity Lab</h1>
           <p className="text-[11.5px] text-tv-muted">
             Liquidity → Order flow → Price movement → Market structure → Trade entry — on ONE locked 4H timeframe.
             Combined Binance spot + Bybit perp order books, open interest, taker flow, swing-level liquidity pools and
@@ -303,7 +304,7 @@ export default function LiquidityLab() {
             <button
               suppressHydrationWarning
               onClick={addCustom}
-              className="btn rounded-lg border border-tv-line bg-tv-panel2 px-2 py-1 text-[11px] font-bold text-tv-muted hover:text-tv-ink"
+              className="btn rounded-lg border border-tv-line bg-tv-panel2 px-2 py-1 text-[11px] font-semibold text-tv-muted hover:text-tv-ink"
             >
               Add
             </button>
@@ -328,7 +329,7 @@ export default function LiquidityLab() {
               suppressHydrationWarning
               onClick={() => void run(symbol)}
               disabled={loading}
-              className="btn gap-1.5 rounded-xl bg-bull px-4 py-2 text-[12px] font-bold text-white hover:bg-bull-deep disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn gap-1.5 rounded-xl bg-bull px-4 py-2 text-[12px] font-semibold text-white hover:bg-bull-deep active:bg-bull-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
               {loading ? 'Analyzing…' : 'Run analysis'}
@@ -347,7 +348,12 @@ export default function LiquidityLab() {
             </div>
           </div>
         </div>
-        {customErr && <p className="mt-2 text-[11px] font-semibold text-warn">⚠ {customErr}</p>}
+        {customErr && (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-warn">
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {customErr}
+          </p>
+        )}
       </div>
 
       {/* ── error — warn card; a prior report stays visible below ───────────── */}
@@ -359,7 +365,7 @@ export default function LiquidityLab() {
             suppressHydrationWarning
             onClick={() => void run(symbol)}
             disabled={loading}
-            className="btn rounded-xl border border-warn-line bg-tv-panel px-3 py-1.5 text-[11.5px] font-bold text-warn hover:bg-warn/10 disabled:opacity-50"
+            className="btn rounded-xl border border-warn-line bg-tv-panel px-3 py-1.5 text-[11.5px] font-semibold text-warn hover:bg-warn/10 disabled:opacity-50"
           >
             Retry
           </button>
@@ -430,8 +436,8 @@ function LiquidityView({ r }: { r: LiquidityReport }) {
       {/* book imbalance gauge — fill grows from the center marker */}
       <div className="mb-4">
         <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-          <span className="text-[10.5px] font-bold uppercase tracking-wider text-tv-muted2">Book imbalance · ±1%</span>
-          <span className={`text-[12.5px] font-extrabold tabular-nums ${imbTone}`}>
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider text-tv-muted2">Book imbalance · ±1%</span>
+          <span className={`text-[12.5px] font-bold tabular-nums ${imbTone}`}>
             {fmtPct(imb)} <span className="text-[10.5px] font-bold">({imbWord})</span>
           </span>
         </div>
@@ -450,7 +456,7 @@ function LiquidityView({ r }: { r: LiquidityReport }) {
 
       {/* liquidity ladder — resting walls, width ∝ notional vs the largest */}
       <div className="mb-4">
-        <div className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-tv-muted2">Liquidity ladder — resting order walls</div>
+        <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-tv-muted2">Liquidity ladder — resting order walls</div>
         {asks.length === 0 && bids.length === 0 ? (
           <p className="rounded-lg border border-dashed border-tv-line bg-tv-panel2/40 px-3 py-2.5 text-center text-[11px] text-tv-muted">
             No significant resting clusters in ±5%
@@ -463,8 +469,8 @@ function LiquidityView({ r }: { r: LiquidityReport }) {
 
             {/* spot price row between the ask and bid columns */}
             <div className="my-1 flex items-center justify-between gap-2 rounded-lg border border-tv-line bg-tv-panel2/60 px-2.5 py-1">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-tv-muted2">Spot</span>
-              <span className="text-[13px] font-extrabold tabular-nums tracking-tight text-tv-ink">{fmtPx(liq.book.spot)}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-tv-muted2">Spot</span>
+              <span className="text-[13px] font-bold tabular-nums tracking-tight text-tv-ink">{fmtPx(liq.book.spot)}</span>
               {r.change24hPct === null ? (
                 <span className="text-[10px] tabular-nums text-tv-muted2">24h —</span>
               ) : (
@@ -489,7 +495,7 @@ function LiquidityView({ r }: { r: LiquidityReport }) {
       {/* pools + estimated liquidation zones */}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="min-w-0">
-          <div className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-tv-muted2">Liquidity pools</div>
+          <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-tv-muted2">Liquidity pools</div>
           {liq.pools.length === 0 ? (
             <p className="rounded-lg border border-dashed border-tv-line bg-tv-panel2/40 px-3 py-2.5 text-center text-[11px] text-tv-muted">
               No pools mapped in this read
@@ -503,7 +509,7 @@ function LiquidityView({ r }: { r: LiquidityReport }) {
           )}
         </div>
         <div className="min-w-0">
-          <div className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-tv-muted2">Estimated liquidation zones</div>
+          <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-tv-muted2">Estimated liquidation zones</div>
           {liq.liquidations.length === 0 ? (
             <p className="rounded-lg border border-dashed border-tv-line bg-tv-panel2/40 px-3 py-2.5 text-center text-[11px] text-tv-muted">
               No liquidation zones estimated
@@ -573,7 +579,7 @@ function PoolRow({ p }: { p: LiqPool }) {
         {above ? '▲' : '▼'}
       </span>
       <span
-        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-wide ${
+        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${
           eqNear ? 'border-warn-line bg-warn-soft text-warn' : 'border-tv-line bg-tv-panel2 text-tv-muted'
         }`}
       >
@@ -598,7 +604,7 @@ function LiqRow({ z }: { z: LiquidationZone }) {
       className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-tv-line/60 bg-tv-panel2/40 px-2 py-1 text-[11.5px]"
     >
       <span
-        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9.5px] font-bold uppercase ${
+        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
           z.side === 'long' ? 'border-bear/40 bg-bear/10 text-bear' : 'border-bull/40 bg-bull/10 text-bull'
         }`}
       >
@@ -608,7 +614,7 @@ function LiqRow({ z }: { z: LiquidationZone }) {
         {fmtPx(z.priceFrom)}–{fmtPx(z.priceTo)}
       </span>
       <span className="shrink-0 tabular-nums text-tv-muted">{fmtUsd(z.estNotional)}</span>
-      <span className="ml-auto rounded border border-tv-line px-1 py-px text-[9.5px] font-bold uppercase tracking-wide text-tv-muted2">
+      <span className="ml-auto rounded border border-tv-line px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-tv-muted2">
         {z.source}
       </span>
     </li>
@@ -641,7 +647,7 @@ function FlowView({ f }: { f: FlowStage }) {
           <div className="absolute left-1/2 top-1/2 h-4 w-px -translate-y-1/2 bg-tv-line-strong" aria-hidden />
           <div className="absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-tv-ink" style={{ left: `${markerPct}%` }} aria-hidden />
         </div>
-        <div className="mt-1 flex justify-between text-[9px] font-bold uppercase tracking-wider text-tv-muted2">
+        <div className="mt-1 flex justify-between text-[10px] font-semibold uppercase tracking-wider text-tv-muted2">
           <span>−10 sellers</span>
           <span>0</span>
           <span>buyers +10</span>
@@ -780,7 +786,7 @@ function StructureView({ s, spot }: { s: StructureStage; spot: number }) {
       {/* premium / discount meter — bottom 40% discount (buy zone), top 40% premium (sell zone) */}
       <div className="mb-3">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-          <span className="text-[10.5px] font-bold uppercase tracking-wider text-tv-muted2">Premium / discount</span>
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider text-tv-muted2">Premium / discount</span>
           <Chip
             cls={
               s.zone === 'DISCOUNT'
@@ -795,7 +801,7 @@ function StructureView({ s, spot }: { s: StructureStage; spot: number }) {
         </div>
         <div className="relative mb-1 h-4">
           <span
-            className="absolute top-0 -translate-x-1/2 whitespace-nowrap rounded border border-tv-line bg-tv-panel2 px-1 py-px text-[9.5px] font-bold tabular-nums text-tv-ink"
+            className="absolute top-0 -translate-x-1/2 whitespace-nowrap rounded border border-tv-line bg-tv-panel2 px-1 py-px text-[10px] font-bold tabular-nums text-tv-ink"
             style={{ left: `${labelPct}%` }}
             title="spot price"
           >
@@ -813,7 +819,7 @@ function StructureView({ s, spot }: { s: StructureStage; spot: number }) {
             aria-hidden
           />
         </div>
-        <div className="mt-1 flex justify-between text-[9px] font-bold uppercase tracking-wider text-tv-muted2">
+        <div className="mt-1 flex justify-between text-[10px] font-semibold uppercase tracking-wider text-tv-muted2">
           <span>Discount — buy zone</span>
           <span>EQ</span>
           <span>Premium — sell zone</span>
@@ -845,7 +851,7 @@ function EntryView({ e }: { e: EntrySignal }) {
       borderCls={isLong ? 'border-bull-line' : isShort ? 'border-bear-line' : 'border-tv-line'}
     >
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className={`text-xl font-extrabold tracking-tight ${isLong ? 'text-bull' : isShort ? 'text-bear' : 'text-tv-ink'}`}>
+        <span className={`text-xl font-bold tracking-tight ${isLong ? 'text-bull' : isShort ? 'text-bear' : 'text-tv-ink'}`}>
           {e.direction === 'NO_TRADE' ? 'NO TRADE' : e.direction}
         </span>
         {e.model !== 'NONE' && (
@@ -901,7 +907,7 @@ function EntryView({ e }: { e: EntrySignal }) {
       {/* evidence chain — the pipeline itself, step by step */}
       {e.evidence.length > 0 && (
         <div className="mt-3">
-          <h4 className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-tv-muted2">
+          <h4 className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-tv-muted2">
             <ListOrdered className="h-3.5 w-3.5" aria-hidden /> Evidence chain — liquidity → flow → movement → structure
           </h4>
           <ol className="flex flex-col gap-1.5 border-l-2 border-tv-line pl-3">
@@ -909,7 +915,7 @@ function EntryView({ e }: { e: EntrySignal }) {
               <li key={i} className="flex items-start gap-2 text-[11.5px] leading-snug text-tv-muted">
                 <span
                   aria-hidden
-                  className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-tv-line bg-tv-panel2 text-[9px] font-extrabold text-tv-ink"
+                  className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-tv-line bg-tv-panel2 text-[10px] font-bold text-tv-ink"
                 >
                   {i + 1}
                 </span>

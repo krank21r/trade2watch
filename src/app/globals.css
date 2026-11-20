@@ -41,7 +41,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  /* Trade2watch palette (semantic tokens, theme-aware) — calm emerald-on-white SaaS */
+  /* Trade2watch palette (semantic tokens, theme-aware) — quiet minimal zinc-on-white */
   --color-tv-bg: var(--tv-bg);
   --color-tv-panel: var(--tv-panel);
   --color-tv-panel2: var(--tv-panel2);
@@ -66,146 +66,148 @@
   --color-warn-line: var(--warn-line);
   --color-info-soft: var(--info-soft);
   --color-info-line: var(--info-line);
-  /* ring-hair utility — every shadow-sm becomes the layered hairline shadow */
+  /* shadow-sm / shadow-xs resolve to a single whisper shadow — flat minimal surfaces */
   --shadow-sm: var(--hairline-shadow);
   --shadow-xs: var(--hairline-shadow);
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: #ffffff;
-  --foreground: #0f172a;
+  --radius: 0.75rem;
+  --background: #fafafa;
+  --foreground: #18181b;
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #18181b;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #10b981;
+  --popover-foreground: #18181b;
+  --primary: #059669;
   --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #d1fae5;
-  --accent-foreground: #065f46;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
   --destructive: #e11d48;
-  --border: #e2e8f0;
-  --input: rgba(15, 23, 42, 0.1);
-  --ring: #10b981;
-  --chart-1: #10b981;
-  --chart-2: #34d399;
+  --border: #e4e4e7;
+  --input: rgba(24, 24, 27, 0.09);
+  --ring: #059669;
+  --chart-1: #059669;
+  --chart-2: #10b981;
   --chart-3: #047857;
   --chart-4: #b45309;
   --chart-5: #e11d48;
   --sidebar: #ffffff;
-  --sidebar-foreground: #0f172a;
-  --sidebar-primary: #10b981;
+  --sidebar-foreground: #18181b;
+  --sidebar-primary: #059669;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f5f9;
-  --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #e2e8f0;
-  --sidebar-ring: #10b981;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #059669;
 
-  /* Trade2watch — LIGHT: white design canvas, slate ink, single emerald accent */
-  --tv-bg: #ffffff;
+  /* Trade2watch — LIGHT: quiet minimal. Neutral zinc surfaces, hairline borders,
+     semantic color (bull/bear/warn/info) reserved strictly for meaning. */
+  --tv-bg: #fafafa;
   --tv-panel: #ffffff;
-  --tv-panel2: #f8fafc;
-  --tv-line: #e2e8f0;
-  --tv-line-strong: #cbd5e1;
-  --tv-ink: #0f172a;
-  --tv-muted: #64748b;
-  --tv-muted2: #94a3b8;
-  --tv-div: rgba(15, 23, 42, 0.06);
-  --tv-inset: rgba(15, 23, 42, 0.03);
-  /* emerald scale: DEFAULT #10b981 · hover/deep #059669 · active/ink #047857 */
-  --bull: #10b981;
-  --bull-deep: #059669;
-  --bull-ink: #047857;
-  --bull-soft: rgba(16, 185, 129, 0.09);
-  --bull-line: rgba(16, 185, 129, 0.32);
+  --tv-panel2: #f4f4f5;
+  --tv-line: #e4e4e7;
+  --tv-line-strong: #d4d4d8;
+  --tv-ink: #18181b;
+  --tv-muted: #71717a;
+  --tv-muted2: #a1a1aa;
+  --tv-div: rgba(24, 24, 27, 0.055);
+  --tv-inset: rgba(24, 24, 27, 0.035);
+  /* emerald scale: DEFAULT #059669 · hover/deep #047857 · active/ink #065f46 */
+  --bull: #059669;
+  --bull-deep: #047857;
+  --bull-ink: #065f46;
+  --bull-soft: rgba(5, 150, 105, 0.07);
+  --bull-line: rgba(5, 150, 105, 0.28);
   --bear: #e11d48;
-  --bear-soft: rgba(225, 29, 72, 0.08);
-  --bear-line: rgba(225, 29, 72, 0.32);
+  --bear-soft: rgba(225, 29, 72, 0.06);
+  --bear-line: rgba(225, 29, 72, 0.28);
   --warn: #b45309;
-  --warn-soft: rgba(180, 83, 9, 0.08);
-  --warn-line: rgba(180, 83, 9, 0.32);
-  --info: #059669;
-  --info-soft: rgba(5, 150, 105, 0.09);
-  --info-line: rgba(5, 150, 105, 0.32);
-  /* surfaces + decoration — layered hairline shadows, 28px design-canvas grid */
-  --hairline-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 12px 24px -12px rgba(15, 23, 42, 0.08);
-  --card-glow: 0 24px 70px -30px rgba(16, 185, 129, 0.35);
-  --card-glow-bear: 0 24px 70px -30px rgba(225, 29, 72, 0.28);
-  --grid-line: rgba(15, 23, 42, 0.035);
-  --glob: rgba(209, 250, 229, 0.5);
-  --glow-top: radial-gradient(60% 100% at 50% 0%, rgba(209, 250, 229, 0.45), transparent 70%);
-  --focus-ring: 0 0 0 3px rgba(16, 185, 129, 0.35);
+  --warn-soft: rgba(180, 83, 9, 0.06);
+  --warn-line: rgba(180, 83, 9, 0.28);
+  --info: #047857;
+  --info-soft: rgba(4, 120, 87, 0.06);
+  --info-line: rgba(4, 120, 87, 0.28);
+  /* surfaces + decoration — one whisper shadow; grid/glow kept as inert vars so
+     legacy references resolve but render nothing */
+  --hairline-shadow: 0 1px 2px rgba(24, 24, 27, 0.04);
+  --card-glow: 0 0 rgba(0, 0, 0, 0);
+  --card-glow-bear: 0 0 rgba(0, 0, 0, 0);
+  --grid-line: transparent;
+  --glob: rgba(5, 150, 105, 0.05);
+  --glow-top: none;
+  --focus-ring: 0 0 0 3px rgba(5, 150, 105, 0.2);
 }
 
 .dark {
-  --background: #020617;
-  --foreground: #f1f5f9;
-  --card: #0f172a;
-  --card-foreground: #f1f5f9;
-  --popover: #0f172a;
-  --popover-foreground: #f1f5f9;
-  --primary: #34d399;
-  --primary-foreground: #022c22;
-  --secondary: #1e293b;
-  --secondary-foreground: #f1f5f9;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: rgba(52, 211, 153, 0.14);
-  --accent-foreground: #6ee7b7;
-  --destructive: #fb7185;
-  --border: rgba(148, 163, 184, 0.14);
-  --input: rgba(148, 163, 184, 0.18);
-  --ring: #34d399;
-  --chart-1: #34d399;
-  --chart-2: #6ee7b7;
-  --chart-3: #10b981;
-  --chart-4: #fbbf24;
-  --chart-5: #fb7185;
-  --sidebar: #0f172a;
-  --sidebar-foreground: #f1f5f9;
-  --sidebar-primary: #34d399;
-  --sidebar-primary-foreground: #022c22;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #f1f5f9;
-  --sidebar-border: rgba(148, 163, 184, 0.14);
-  --sidebar-ring: #34d399;
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --card: #111113;
+  --card-foreground: #f4f4f5;
+  --popover: #111113;
+  --popover-foreground: #f4f4f5;
+  --primary: #10b981;
+  --primary-foreground: #05130e;
+  --secondary: #18181b;
+  --secondary-foreground: #f4f4f5;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #18181b;
+  --accent-foreground: #f4f4f5;
+  --destructive: #f43f5e;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #10b981;
+  --chart-1: #10b981;
+  --chart-2: #34d399;
+  --chart-3: #059669;
+  --chart-4: #f59e0b;
+  --chart-5: #f43f5e;
+  --sidebar: #111113;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #10b981;
+  --sidebar-primary-foreground: #05130e;
+  --sidebar-accent: #18181b;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #10b981;
 
-  /* Trade2watch — DARK: slate-950 night variant of the same design language */
-  --tv-bg: #020617;
-  --tv-panel: #0f172a;
-  --tv-panel2: #172136;
-  --tv-line: rgba(148, 163, 184, 0.14);
-  --tv-line-strong: rgba(148, 163, 184, 0.28);
-  --tv-ink: #f1f5f9;
-  --tv-muted: #94a3b8;
-  --tv-muted2: #64748b;
-  --tv-div: rgba(255, 255, 255, 0.06);
-  --tv-inset: rgba(255, 255, 255, 0.03);
-  --bull: #34d399;
-  --bull-deep: #10b981;
-  --bull-ink: #059669;
-  --bull-soft: rgba(52, 211, 153, 0.12);
-  --bull-line: rgba(52, 211, 153, 0.4);
-  --bear: #fb7185;
-  --bear-soft: rgba(251, 113, 133, 0.12);
-  --bear-line: rgba(251, 113, 133, 0.4);
-  --warn: #fbbf24;
-  --warn-soft: rgba(251, 191, 36, 0.1);
-  --warn-line: rgba(251, 191, 36, 0.38);
-  --info: #6ee7b7;
-  --info-soft: rgba(110, 231, 183, 0.12);
-  --info-line: rgba(110, 231, 183, 0.38);
-  --hairline-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 24px -12px rgba(0, 0, 0, 0.5);
-  --card-glow: 0 24px 70px -30px rgba(52, 211, 153, 0.28);
-  --card-glow-bear: 0 24px 70px -30px rgba(251, 113, 133, 0.22);
-  --grid-line: rgba(148, 163, 184, 0.05);
-  --glob: rgba(52, 211, 153, 0.08);
-  --glow-top: radial-gradient(60% 100% at 50% 0%, rgba(52, 211, 153, 0.08), transparent 70%);
-  --focus-ring: 0 0 0 3px rgba(52, 211, 153, 0.35);
+  /* Trade2watch — DARK: neutral zinc night variant of the same minimal language */
+  --tv-bg: #09090b;
+  --tv-panel: #111113;
+  --tv-panel2: #18181b;
+  --tv-line: rgba(255, 255, 255, 0.08);
+  --tv-line-strong: rgba(255, 255, 255, 0.16);
+  --tv-ink: #f4f4f5;
+  --tv-muted: #a1a1aa;
+  --tv-muted2: #71717a;
+  --tv-div: rgba(255, 255, 255, 0.05);
+  --tv-inset: rgba(255, 255, 255, 0.04);
+  --bull: #10b981;
+  --bull-deep: #059669;
+  --bull-ink: #34d399;
+  --bull-soft: rgba(16, 185, 129, 0.1);
+  --bull-line: rgba(16, 185, 129, 0.32);
+  --bear: #f43f5e;
+  --bear-soft: rgba(244, 63, 94, 0.1);
+  --bear-line: rgba(244, 63, 94, 0.32);
+  --warn: #f59e0b;
+  --warn-soft: rgba(245, 158, 11, 0.09);
+  --warn-line: rgba(245, 158, 11, 0.32);
+  --info: #34d399;
+  --info-soft: rgba(52, 211, 153, 0.1);
+  --info-line: rgba(52, 211, 153, 0.32);
+  --hairline-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --card-glow: 0 0 rgba(0, 0, 0, 0);
+  --card-glow-bear: 0 0 rgba(0, 0, 0, 0);
+  --grid-line: transparent;
+  --glob: rgba(16, 185, 129, 0.06);
+  --glow-top: none;
+  --focus-ring: 0 0 0 3px rgba(16, 185, 129, 0.25);
 }
 
 @layer base {
@@ -217,7 +219,7 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  /* tight-tracked headings — Inter extrabold scale lives in component classes */
+  /* tight-tracked headings — Inter semibold scale lives in component classes */
   h1,
   h2,
   h3,
@@ -225,18 +227,18 @@
     letter-spacing: -0.02em;
   }
   ::selection {
-    background: #d1fae5;
-    color: #065f46;
+    background: rgba(5, 150, 105, 0.14);
+    color: inherit;
   }
   .dark ::selection {
-    background: rgba(52, 211, 153, 0.28);
-    color: #ecfdf5;
+    background: rgba(16, 185, 129, 0.24);
+    color: inherit;
   }
 }
 
 /* ─── style-system primitives ─────────────────────────────────────────────── */
 
-/* shared button primitive — 10px radius, 600 labels, 160ms ease, emerald ring */
+/* shared button primitive — 10px radius, 600 labels, 160ms ease, quiet ring */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -259,7 +261,7 @@
 .cell-label {
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--tv-muted2);
 }
@@ -270,11 +272,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* faint slate design-canvas grid — 28px, sits behind the app shell panels */
+/* inert — grid backdrop retired by the minimal redesign (kept for compat) */
 .t2w-grid-bg {
-  background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-image: none;
 }
-
-/* theme palette — calm emerald on white canvas */

@@ -2,6 +2,18 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
+import {
+  ChevronDown,
+  FileText,
+  Landmark,
+  Network,
+  Newspaper,
+  Scale,
+  Search,
+  Shield,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react'
 import type { Artifacts, SignalRunDetail } from './types'
 
 function verdictColor(v: string): string {
@@ -12,11 +24,13 @@ function stanceColor(s: string): string {
 }
 
 function Section({
+  icon,
   title,
   subtitle,
   children,
   defaultOpen = false,
 }: {
+  icon?: React.ReactNode
   title: string
   subtitle?: string
   children: React.ReactNode
@@ -27,20 +41,26 @@ function Section({
     <div className="border-b border-dashed border-tv-div last:border-0">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-3 py-3 text-left group rounded-lg px-1 hover:bg-tv-panel2/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+        className="w-full flex items-center justify-between gap-3 py-3 text-left rounded-lg px-1 hover:bg-tv-panel2/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
         aria-expanded={open}
         suppressHydrationWarning
       >
-        <span className="flex flex-col">
-          <span className="text-[13px] font-semibold text-tv-ink group-hover:text-bull transition-colors">{title}</span>
-          {subtitle && <span className="text-[11.5px] text-tv-muted mt-0.5">{subtitle}</span>}
+        <span className="flex items-center gap-2 min-w-0">
+          {icon && (
+            <span className="text-tv-muted shrink-0 inline-flex" aria-hidden="true">
+              {icon}
+            </span>
+          )}
+          <span className="flex flex-col min-w-0">
+            <span className="text-[13px] font-semibold text-tv-ink">{title}</span>
+            {subtitle && <span className="text-[11.5px] text-tv-muted mt-0.5">{subtitle}</span>}
+          </span>
         </span>
-        <span
-          className="text-xs transition-transform text-tv-muted"
+        <ChevronDown
+          className="h-3.5 w-3.5 text-tv-muted shrink-0 transition-transform"
           style={{ transform: open ? 'rotate(180deg)' : 'none' }}
-        >
-          ▼
-        </span>
+          aria-hidden="true"
+        />
       </button>
       {open && <div className="pb-4 text-[13px] leading-relaxed whitespace-pre-wrap">{children}</div>}
     </div>
@@ -64,16 +84,20 @@ export function ReportsPanel({ run }: { run: SignalRunDetail }) {
       className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm px-4 sm:px-5 py-2"
     >
       <h3 className="text-sm font-semibold tracking-tight text-tv-ink py-3.5 border-b border-tv-line">
-        📋 Agent transcripts
+        <span className="inline-flex items-center gap-2">
+          <FileText className="h-3.5 w-3.5 text-tv-muted" aria-hidden="true" />
+          Agent transcripts
+        </span>
       </h3>
 
       {analysts && (
         <>
           <Section
-            title="🔍 Technical analyst"
+            icon={<Search className="h-3.5 w-3.5" />}
+            title="Technical analyst"
             subtitle={`stance ${analysts.technical.stance} · confidence ${analysts.technical.confidence}%`}
           >
-            <p style={{ color: stanceColor(analysts.technical.stance) }} className="font-bold mb-1">
+            <p style={{ color: stanceColor(analysts.technical.stance) }} className="font-semibold mb-1">
               {analysts.technical.stance}
             </p>
             {analysts.technical.summary}
@@ -88,10 +112,11 @@ export function ReportsPanel({ run }: { run: SignalRunDetail }) {
             )}
           </Section>
           <Section
-            title="📰 News / sentiment analyst"
+            icon={<Newspaper className="h-3.5 w-3.5" />}
+            title="News / sentiment analyst"
             subtitle={`stance ${analysts.news.stance} · confidence ${analysts.news.confidence}%`}
           >
-            <p style={{ color: stanceColor(analysts.news.stance) }} className="font-bold mb-1">
+            <p style={{ color: stanceColor(analysts.news.stance) }} className="font-semibold mb-1">
               {analysts.news.stance}
             </p>
             {analysts.news.summary}
@@ -106,7 +131,7 @@ export function ReportsPanel({ run }: { run: SignalRunDetail }) {
             )}
             {a.news && a.news.length > 0 && (
               <div className="mt-3 pt-3 border-t border-tv-div">
-                <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-tv-muted2 mb-1.5">
+                <p className="text-[10.5px] font-semibold uppercase tracking-wide text-tv-muted2 mb-1.5">
                   Headlines reviewed
                 </p>
                 <ul className="space-y-1">
@@ -120,10 +145,11 @@ export function ReportsPanel({ run }: { run: SignalRunDetail }) {
             )}
           </Section>
           <Section
-            title="🏗 Market-structure analyst"
+            icon={<Network className="h-3.5 w-3.5" />}
+            title="Market-structure analyst"
             subtitle={`stance ${analysts.structure.stance} · confidence ${analysts.structure.confidence}%`}
           >
-            <p style={{ color: stanceColor(analysts.structure.stance) }} className="font-bold mb-1">
+            <p style={{ color: stanceColor(analysts.structure.stance) }} className="font-semibold mb-1">
               {analysts.structure.stance}
             </p>
             {analysts.structure.summary}
@@ -142,18 +168,19 @@ export function ReportsPanel({ run }: { run: SignalRunDetail }) {
 
       {debate && (
         <>
-          <Section title="🐂 Bull researcher">
+          <Section icon={<TrendingUp className="h-3.5 w-3.5" />} title="Bull researcher">
             <span className="text-tv-muted">{debate.bull}</span>
           </Section>
-          <Section title="🐻 Bear researcher">
+          <Section icon={<TrendingDown className="h-3.5 w-3.5" />} title="Bear researcher">
             <span className="text-tv-muted">{debate.bear}</span>
           </Section>
           <Section
-            title="🏛 Research manager"
+            icon={<Landmark className="h-3.5 w-3.5" />}
+            title="Research manager"
             subtitle={`verdict ${debate.manager.direction} · conviction ${debate.manager.conviction}%`}
             defaultOpen
           >
-            <p style={{ color: stanceColor(debate.manager.direction === 'LONG' ? 'BULLISH' : debate.manager.direction === 'SHORT' ? 'BEARISH' : 'NEUTRAL') }} className="font-bold mb-1">
+            <p style={{ color: stanceColor(debate.manager.direction === 'LONG' ? 'BULLISH' : debate.manager.direction === 'SHORT' ? 'BEARISH' : 'NEUTRAL') }} className="font-semibold mb-1">
               {debate.manager.direction}
             </p>
             {debate.manager.rationale}
@@ -171,11 +198,11 @@ export function ReportsPanel({ run }: { run: SignalRunDetail }) {
       )}
 
       {risk && (
-        <Section title="🛡 Risk committee">
+        <Section icon={<Shield className="h-3.5 w-3.5" />} title="Risk committee">
           <div className="space-y-3">
             {(['aggressive', 'conservative', 'neutral'] as const).map((who) => (
               <div key={who} className="rounded-xl bg-tv-panel2/60 border border-tv-line px-3 py-2.5 space-y-1">
-                <span className="font-bold" style={{ color: verdictColor(risk[who].verdict) }}>
+                <span className="font-semibold" style={{ color: verdictColor(risk[who].verdict) }}>
                   {who.toUpperCase()} — {risk[who].verdict}
                 </span>
                 <p className="text-tv-muted">{risk[who].note}</p>
@@ -186,8 +213,8 @@ export function ReportsPanel({ run }: { run: SignalRunDetail }) {
       )}
 
       {verdict && (
-        <Section title={`⚖️ Portfolio manager — ${verdict.decision}`} defaultOpen>
-          <p style={{ color: verdictColor(verdict.decision) }} className="font-bold mb-1">
+        <Section icon={<Scale className="h-3.5 w-3.5" />} title={`Portfolio manager — ${verdict.decision}`} defaultOpen>
+          <p style={{ color: verdictColor(verdict.decision) }} className="font-semibold mb-1">
             {verdict.decision} · confidence {verdict.confidence}%
           </p>
           {verdict.reasoning}
