@@ -14,17 +14,25 @@
 import { useEffect, useState } from 'react'
 import { Crosshair } from 'lucide-react'
 import { EntryDecisions } from '@/components/entry/EntryDecisions'
-import { DEFAULT_WATCHLIST, loadWatchlist } from '@/lib/watchlist'
+import { DEFAULT_WATCHLIST, loadWatchlist, fetchServerWatchlist } from '@/lib/watchlist'
 
 export function EntryDecisionsTab({ onOpen }: { onOpen: (symbol: string) => void }) {
   const [symbols, setSymbols] = useState<string[]>(DEFAULT_WATCHLIST)
 
   // restore the shared watchlist after mount — deliberately NOT a lazy useState
   // initializer: the persisted list is browser-only state, and reading it during
-  // the first render would produce server/client hydration mismatches.
+  // the first render would produce server/client hydration mismatches. The
+  // account's server list then wins when one exists (cross-device sync).
   useEffect(() => {
+    let cancelled = false
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSymbols(loadWatchlist())
+    void fetchServerWatchlist().then((server) => {
+      if (!cancelled && server) setSymbols(server)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (

@@ -72,3 +72,13 @@ model UserTradeStore {
 
   @@index([updatedAt])
 }
+
+// ─── Per-user synced preferences (cross-device profile) ──────────────────────
+// One JSON blob per account — currently { watchlist: string[] } — so the same
+// sign-in sees the same symbol list on every device (laptop / mobile / new
+// browser). Extensible for future prefs (sizing inputs, etc.) without churn.
+model UserPrefStore {
+  userId    String @id
+  data      String // JSON prefs document
+  updatedAt Float // ms epoch — last writer wins across devices
+}

@@ -23,7 +23,17 @@ const DDL: string[] = [
   `CREATE INDEX IF NOT EXISTS "UserTradeStore_updatedAt_idx" ON "UserTradeStore"("updatedAt")`,
 ]
 
+// per-user synced preferences (watchlist blob — cross-device profile)
+const PREF_DDL: string[] = [
+  `CREATE TABLE IF NOT EXISTS "UserPrefStore" (
+    "userId" TEXT NOT NULL PRIMARY KEY,
+    "data" TEXT NOT NULL,
+    "updatedAt" REAL NOT NULL
+  )`,
+]
+
 let done: Promise<void> | null = null
+let prefDone: Promise<void> | null = null
 
 async function run(): Promise<void> {
   for (const sql of DDL) {
@@ -40,4 +50,17 @@ export function ensureUserTradeTable(): Promise<void> {
     })
   }
   return done
+}
+
+/** Same self-heal contract as the trade store, for the prefs blob table. */
+export function ensureUserPrefTable(): Promise<void> {
+  if (!prefDone) {
+    prefDone = Promise.all(PREF_DDL.map((sql) => db.$executeRawUnsafe(sql)))
+      .then(() => {})
+      .catch((err) => {
+        prefDone = null
+        throw err
+      })
+  }
+  return prefDone
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Copy, Crosshair, RefreshCw, ShieldX, Target, TriangleAlert } from 'lucide-react'
 import { fmtPrice } from '@/components/signals/types'
-import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist } from '@/lib/watchlist'
+import { DEFAULT_WATCHLIST, loadWatchlist, saveWatchlist, saveWatchlistLocal, fetchServerWatchlist } from '@/lib/watchlist'
 import { fetchMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { scopedGet, scopedSet } from '@/lib/user-scope'
@@ -307,11 +307,21 @@ export function SetupBoard({
     setAcct(lsGet('tw_acct', ''))
     setRiskPct(lsGet('tw_risk', '1'))
     // restore the shared watchlist (also used by the Trade Confirmed board);
-    // loadWatchlist migrates the old crypto-only default to include stocks
+    // loadWatchlist migrates the old crypto-only default to include stocks.
+    // The account's server list then wins when one exists (cross-device sync) —
+    // the mount write is local-only so a stale cache can't clobber it in flight.
     const wl = loadWatchlist()
     setSymbols(wl)
-    saveWatchlist(wl)
+    saveWatchlistLocal(wl)
     wlLoaded.current = true
+    void fetchServerWatchlist().then((server) => {
+      if (!mounted.current || !server) return
+      // adopt the synced list, keeping anything added locally while in flight
+      setSymbols((prev) => {
+        const added = prev.filter((s) => !server.includes(s))
+        return [...server, ...added].slice(0, 8)
+      })
+    })
     return () => {
       mounted.current = false
     }
@@ -386,6 +396,13 @@ export function SetupBoard({
     setInput('')
   }
 
+  // drop a symbol from the watchlist — the persist effect below mirrors the
+  // change to the account's synced prefs (server PUT), then the poll refetches
+  const removeSymbol = (sym: string) => {
+    setSymbols((prev) => prev.filter((x) => x !== sym))
+    setSelected((prev) => (prev === sym ? null : prev))
+  }
+
   const savePct = (x: number, min: number, max: number) => Math.min(max, Math.max(min, x))
 
   const sizingFor = (side: SideSetup | null) => {
@@ -420,23 +437,33 @@ export function SetupBoard({
         {(data?.setups ?? []).map((s) => {
           const open = active?.symbol === s.symbol
           return (
-            <button
-              key={s.symbol}
-              onClick={() => setSelected((prev) => (prev === s.symbol ? null : s.symbol))}
-              suppressHydrationWarning
-              aria-expanded={open}
-              title={`${open ? 'Hide' : 'Show'} the ${s.displayName} trade setup`}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
-                open
-                  ? 'border-bull/40 bg-bull/10 text-bull'
-                  : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink hover:border-tv-line-strong'
-              }`}
-            >
-              {s.symbol}
-              <span aria-hidden="true" className={`text-[9px] leading-none transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
-                ▾
-              </span>
-            </button>
+            <span key={s.symbol} className="inline-flex items-center">
+              <button
+                onClick={() => setSelected((prev) => (prev === s.symbol ? null : s.symbol))}
+                suppressHydrationWarning
+                aria-expanded={open}
+                title={`${open ? 'Hide' : 'Show'} the ${s.displayName} trade setup`}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50 ${
+                  open
+                    ? 'border-bull/40 bg-bull/10 text-bull'
+                    : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink hover:border-tv-line-strong'
+                }`}
+              >
+                {s.symbol}
+                <span aria-hidden="true" className={`text-[9px] leading-none transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+                  ▾
+                </span>
+              </button>
+              <button
+                onClick={() => removeSymbol(s.symbol)}
+                suppressHydrationWarning
+                aria-label={`Remove ${s.symbol} from the watchlist`}
+                title={`Remove ${s.symbol} from the watchlist`}
+                className="-ml-1 mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] leading-none text-tv-muted2 transition-colors hover:bg-bear/10 hover:text-bear focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bear/50"
+              >
+                ×
+              </button>
+            </span>
           )
         })}
         <div className="ml-auto flex flex-wrap items-center gap-2">
