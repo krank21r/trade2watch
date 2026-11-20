@@ -13,14 +13,14 @@ import { UserMenu } from '@/components/user-menu'
 type Tab = 'setups' | 'decisions' | 'signals' | 'liquidity'
 
 const TABS: Array<{ key: Tab; label: string }> = [
-  { key: 'setups', label: 'Trade Setups' },
   { key: 'decisions', label: 'Entry Decisions' },
+  { key: 'setups', label: 'Trade Setups' },
   { key: 'signals', label: 'AI Signals' },
   { key: 'liquidity', label: 'Liquidity Lab' },
 ]
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>('setups')
+  const [tab, setTab] = useState<Tab>('decisions')
   // cross-tab handoff — "Open full setup" on an Entry Decisions card switches
   // to Trade Setups with that symbol's detail dropped open
   const [openSymbol, setOpenSymbol] = useState<string | null>(null)
