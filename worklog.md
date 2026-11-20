@@ -1234,3 +1234,17 @@ Work Log:
 
 Stage Summary:
 - All pending work is now LIVE on https://trade2watch.vercel.app (commit 0b6b0df): Liquidity Lab, single 4H timeframe, accuracy gates, redacted worklog. Password rotation in public git history still recommended.
+
+---
+Task ID: 58
+Agent: main (Z.ai Code)
+Task: Remove the Trader Desk menu page from the dashboard.
+
+Work Log:
+- Root dependency sweep first: TraderDesk was referenced only by src/app/page.tsx; its only API (/api/trader/screen) and src/lib/trader helpers served nothing else; the CopycatPanel inside it was the sole consumer of /api/copycat/* and src/lib/copycat (13F EDGAR desk) - all orphaned after the tab removal.
+- src/app/page.tsx: removed TraderDesk import, 'trader' Tab key + TABS entry, ternary branches (render + status text), and the footer "paper desk never places real orders" phrase.
+- Deleted dead code: src/components/trader/ (TraderDesk, CopycatPanel, ScreenerPanel, types), src/app/api/trader/ (screen route), src/lib/trader/ (desk, screener), src/app/api/copycat/ (filers/plan/analyze), src/lib/copycat/ (edgar, size, risk, tickers, filers).
+- Lint clean. E2E (agent-browser, signed-in): nav now shows exactly 3 tabs (Trade Setups / AI Signals / Liquidity Lab); each tab exercised and rendering live data; zero page/console errors; footer sticky and updated.
+
+Stage Summary:
+- Platform is now 3 tabs: Trade Setups, AI Signals, Liquidity Lab. Trader Desk (screener + copycat 13F) fully removed from UI, API and libs.
