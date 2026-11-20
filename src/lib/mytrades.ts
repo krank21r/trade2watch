@@ -2,9 +2,10 @@ import type { Candle } from '@/lib/market/indicators'
 import { scopedGetJson, scopedSetJson } from '@/lib/user-scope'
 
 // ─── "I took this trade" — personal trade tracker ────────────────────────────
-// When the user takes a confirmed setup, the plan is FROZEN here: entry fill
-// (zone mid), stop, TP1, TP2 never change even though the app keeps regenerating
-// zones from live structure. From that moment the tracker checks real candles
+// When the user takes a confirmed setup (Trade Setups button, or the Entry
+// Decisions "Track this trade" press on a desk-TAKE card), the plan is FROZEN
+// here: entry fill (zone mid), stop, TP1, TP2 never change even though the app
+// keeps regenerating zones from live structure. From that moment the tracker checks real candles
 // against the frozen plan:
 //   TP1 hit  → half banked, stop moves to entry (the plan's own rule)
 //   TP2 hit  → trade closed, full win
@@ -36,7 +37,7 @@ export interface MyTrade {
   rr: string
   confirmedAt: number // when the setup confirmed (zone hit / wick)
   confirmedPrice: number
-  via: 'spot' | 'wick'
+  via: 'spot' | 'wick' | 'decision' // decision = tracked from an Entry Decisions TAKE card
   takenAt: number // when the user pressed "I took this trade"
   status: TradeStatus
   tp1HitAt: number | null
@@ -217,6 +218,18 @@ export function trackTrade(t: MyTrade, candles: Candle[]): MyTrade {
     return t
   }
   return { ...t, tp1HitAt, tp2HitAt, slHitAt, status, outcome, closedAt, closePrice }
+}
+
+/** Where the frozen plan came from — used for journal row labels. */
+export function viaTxt(t: MyTrade): string {
+  switch (t.via) {
+    case 'decision':
+      return 'desk-take entry'
+    case 'wick':
+      return 'wick-confirmed entry'
+    default:
+      return 'spot-confirmed entry'
+  }
 }
 
 /** Outcome badge text for a closed trade. */

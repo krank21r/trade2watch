@@ -15,7 +15,7 @@ import { motion } from 'framer-motion'
 import { Check, CheckCircle2, Copy, Crosshair, Hand, Play } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { fmtPrice } from '@/components/signals/types'
-import { loadMyTrades, saveMyTrades, fetchMyTrades, trackTrade, zoneMid, rNow, netR, netRTxt, outcomeTxt, type MyTrade } from '@/lib/mytrades'
+import { loadMyTrades, saveMyTrades, fetchMyTrades, trackTrade, zoneMid, rNow, netR, netRTxt, outcomeTxt, viaTxt, type MyTrade } from '@/lib/mytrades'
 import type { Candle } from '@/lib/market/indicators'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { APP_LAUNCH_MS } from '@/lib/setups/generate'
@@ -369,7 +369,7 @@ function OpenTradeCard({
 
       <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-tv-div pt-2">
         <div className="min-w-0 text-[10.5px] text-tv-muted">
-          {t.via === 'wick' ? 'wick-confirmed entry' : 'spot-confirmed entry'} · tracked against real candles every 45s
+          {viaTxt(t)} · tracked against real candles every 45s
         </div>
         <button
           onClick={onRemove}

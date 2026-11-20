@@ -17,9 +17,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronDown, RefreshCw } from 'lucide-react'
+import { ChevronDown, Play, RefreshCw, X } from 'lucide-react'
 import { fmtPrice } from '@/components/signals/types'
 import type { DecisionAction, EntryDecision, EntryDecisionsPayload } from '@/lib/entry/decide'
+import { rNow, type MyTrade } from '@/lib/mytrades'
+import { useToast } from '@/hooks/use-toast'
+import { useTradeJournal } from '@/hooks/use-trade-journal'
 
 const POLL_MS = 60_000
 
@@ -100,15 +103,22 @@ function VoteChip({ system, vote, sub }: { system: string; vote: string; sub?: s
 function DecisionCard({
   d,
   onOpen,
+  onTrack,
+  onCloseTrade,
+  trackedTrade,
   index,
 }: {
   d: EntryDecision
   onOpen: (symbol: string) => void
+  onTrack: (d: EntryDecision) => void
+  onCloseTrade: (id: string, livePrice: number) => void
+  trackedTrade: MyTrade | null
   index: number
 }) {
   const a = ACTION[d.action]
   const plan = d.plan
   const dirCls = d.consensus === 'LONG' ? 'text-bull' : d.consensus === 'SHORT' ? 'text-bear' : 'text-tv-muted'
+  const liveR = trackedTrade ? rNow(trackedTrade, d.price) : 0
 
   return (
     <motion.article
@@ -214,16 +224,75 @@ function DecisionCard({
       )}
       {d.action === 'TAKE' && <p className="text-[11px] leading-snug font-semibold text-bull">{d.becomesTake}</p>}
 
-      {/* open full setup */}
-      <button
-        onClick={() => onOpen(d.symbol)}
-        suppressHydrationWarning
-        aria-label={`Open the full ${d.displayName} trade setup`}
-        className="mt-auto self-start rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
-      >
-        Open full setup
-        <ChevronDown className="h-3 w-3" aria-hidden />
-      </button>
+      {/* actions — tracked state / track-this-trade (TAKE) / open full setup */}
+      {trackedTrade ? (
+        <div className="mt-auto flex flex-wrap items-center gap-2 rounded-xl border border-bull/30 bg-bull/5 px-2.5 py-1.5">
+          <span
+            className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold text-bull"
+            title={`Frozen plan · fill ${fmtPrice(trackedTrade.entryFill, trackedTrade.currency)} · SL ${fmtPrice(trackedTrade.stop, trackedTrade.currency)} · TP1 ${fmtPrice(trackedTrade.t1, trackedTrade.currency)} · TP2 ${fmtPrice(trackedTrade.t2, trackedTrade.currency)}`}
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-bull" aria-hidden />
+            TRACKED {trackedTrade.side.toUpperCase()}
+            {trackedTrade.tp1HitAt != null && <span className="text-tv-muted">· TP1 banked</span>}
+          </span>
+          <span
+            className={`text-[11px] font-semibold tabular-nums ${liveR >= 0 ? 'text-bull' : 'text-bear'}`}
+            title="Live R multiple — current price vs the frozen fill"
+          >
+            {liveR > 0 ? '+' : ''}
+            {liveR.toFixed(2)}R
+          </span>
+          <button
+            onClick={() => onCloseTrade(trackedTrade.id, d.price)}
+            suppressHydrationWarning
+            aria-label={`Close the ${trackedTrade.displayName} tracked trade`}
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-bear/40 px-2 py-1 text-[10.5px] font-semibold text-bear transition-colors hover:bg-bear/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bear/50"
+          >
+            <X className="h-3 w-3" aria-hidden />
+            Close
+          </button>
+          <button
+            onClick={() => onOpen(d.symbol)}
+            suppressHydrationWarning
+            aria-label={`Open the full ${d.displayName} trade setup`}
+            className="inline-flex items-center rounded-lg border border-tv-line bg-tv-panel2 px-2 py-1 text-[10.5px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+          >
+            Plan
+            <ChevronDown className="h-3 w-3" aria-hidden />
+          </button>
+        </div>
+      ) : d.action === 'TAKE' && plan ? (
+        <div className="mt-auto flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onTrack(d)}
+            suppressHydrationWarning
+            aria-label={`Track the ${d.displayName} ${d.consensus} trade in your journal`}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-bull px-3 py-1.5 text-[11px] font-semibold text-white shadow-xs transition-colors hover:bg-bull/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+          >
+            <Play className="h-3 w-3" aria-hidden />
+            Track this trade
+          </button>
+          <button
+            onClick={() => onOpen(d.symbol)}
+            suppressHydrationWarning
+            aria-label={`Open the full ${d.displayName} trade setup`}
+            className="rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+          >
+            Open full setup
+            <ChevronDown className="h-3 w-3" aria-hidden />
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => onOpen(d.symbol)}
+          suppressHydrationWarning
+          aria-label={`Open the full ${d.displayName} trade setup`}
+          className="mt-auto self-start rounded-xl border border-tv-line bg-tv-panel2 px-3 py-1.5 text-[11px] font-semibold text-tv-ink transition-colors hover:bg-tv-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+        >
+          Open full setup
+          <ChevronDown className="h-3 w-3" aria-hidden />
+        </button>
+      )}
     </motion.article>
   )
 }
@@ -235,6 +304,10 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const mounted = useRef(true)
+  const { openTrades, openBySymbol, trackDecision, closeTrade } = useTradeJournal()
+  const { toast } = useToast()
+  // last seen action per symbol — a WAIT→TAKE flip while the tab is open fires a toast
+  const prevActionsRef = useRef<Map<string, DecisionAction>>(new Map())
 
   useEffect(() => {
     mounted.current = true
@@ -252,12 +325,24 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
       if (!mounted.current) return
       setData(d)
       setError(null)
+      // WAIT→TAKE transition while the tab is open — surface it immediately
+      const prev = prevActionsRef.current
+      for (const x of d.decisions) {
+        const before = prev.get(x.symbol)
+        if (x.action === 'TAKE' && before && before !== 'TAKE') {
+          toast({
+            title: `⚡ ${x.pair} — now TAKE`,
+            description: `${x.consensus} confirmed and price is in the zone — freeze it into the tracker from the card.`,
+          })
+        }
+      }
+      prevActionsRef.current = new Map(d.decisions.map((x) => [x.symbol, x.action]))
     } catch (e) {
       if (mounted.current) setError(String(e).slice(0, 120))
     } finally {
       if (mounted.current) setLoading(false)
     }
-  }, [symbols])
+  }, [symbols, toast])
 
   useEffect(() => {
     setLoading(true)
@@ -269,7 +354,6 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
   const decisions = data?.decisions ?? []
   const takeCount = decisions.filter((x) => x.action === 'TAKE').length
   const waitCount = decisions.filter((x) => x.action === 'WAIT').length
-
   return (
     <section aria-label="Entry decisions" className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-3.5 sm:p-4">
       {/* header */}
@@ -285,6 +369,7 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
             <span className="text-[10.5px] tabular-nums text-tv-muted">
               {takeCount > 0 && <b className="text-bull">{takeCount} take · </b>}
               {waitCount > 0 && <b className="text-warn">{waitCount} wait · </b>}
+              {openTrades.length > 0 && <b className="text-info">{openTrades.length} tracked · </b>}
               updated {new Date(data.updatedAt).toLocaleTimeString()}
             </span>
           )}
@@ -299,9 +384,10 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
         </div>
       </div>
       <p className="text-[11px] text-tv-muted mb-3">
-        <b className="text-bull">TAKE</b> = systems agree, the tape confirms and price is in the zone now ·{' '}
+        <b className="text-bull">TAKE</b> = systems agree, the tape confirms and price is in the zone now — one press on{' '}
+        <b className="text-tv-ink">Track this trade</b> freezes the plan into the tracker ·{' '}
         <b className="text-warn">WAIT</b> = direction agreed, entry not ready yet (the card says what must happen first) ·{' '}
-        <b className="text-bear">SKIP</b> = systems conflict · <b className="text-tv-ink">STAND ASIDE</b> = no edge. Click a card for the full plan.
+        <b className="text-bear">SKIP</b> = systems conflict · <b className="text-tv-ink">STAND ASIDE</b> = no edge. Tracked trades follow the plan: bank half at TP1, stop to entry, close at TP2/SL.
       </p>
 
       {/* body */}
@@ -319,7 +405,15 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
           {decisions.map((d, i) => (
-            <DecisionCard key={d.symbol} d={d} onOpen={onOpen} index={i} />
+            <DecisionCard
+              key={d.symbol}
+              d={d}
+              onOpen={onOpen}
+              onTrack={trackDecision}
+              onCloseTrade={closeTrade}
+              trackedTrade={openBySymbol.get(d.symbol) ?? null}
+              index={i}
+            />
           ))}
         </div>
       )}
