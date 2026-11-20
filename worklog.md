@@ -1248,3 +1248,18 @@ Work Log:
 
 Stage Summary:
 - Platform is now 3 tabs: Trade Setups, AI Signals, Liquidity Lab. Trader Desk (screener + copycat 13F) fully removed from UI, API and libs.
+
+---
+Task ID: 59
+Agent: main (Z.ai Code)
+Task: Entry Decision Desk — fuse the three systems into one actionable call per symbol.
+
+Work Log:
+- Research first (user asked which system is most powerful): read all three engines, pulled track records from DB (AI Signals: 93 runs, 70% NEUTRAL, 9 resolved -> 3 T1 / 6 stop; Trade Setups: 2 user-marked trades), ran all three live side-by-side on BTC/ETH/SOL. Verdict: AI Signals primary call, Trade Setups execution layer, Liquidity Lab veto. This feature productizes that workflow.
+- NEW src/lib/entry/decide.ts: per symbol votes from board bias (generateSetups), latest completed SignalRun (AI direction + confidence + plan levels, stale >24h flagged), liquidity tape (buildLiquidityReport via 120s TTL cache + 25s timeout race; crypto only - stocks honest "n/a"). Majority consensus (board can anchor alone; single AI vote cannot), conflict detection, 5 named gates (desk agreement, liquidity tape, entry zone, R:R>=2, desk confidence vs 70 bar), score 0-100 (consensus 40, tape 30, location 15, reward 10, confidence 5). Actions: TAKE (agreed + tape confirms + price in zone NOW), WAIT (direction agreed, not actionable - card states the exact "becomes TAKE when..." fixes), SKIP (conflict/void zone), STAND_ASIDE (no edge). Plan levels priority: liquidity entry zone > AI desk plan > board zone.
+- NEW GET /api/entry-decision (session-gated like liquidity route, maxDuration 60, 45s response cache).
+- NEW components/entry/EntryDecisions.tsx: ranked card grid (TAKE > WAIT > SKIP > STAND_ASIDE, score desc) on the Trade Setups tab above the setup dropdown; each card = action badge + score bar, Setup/AI/Flow vote chips, execution levels (entry/stop/TP1/TP2/R:R), 5-gate checklist with tooltips, why + becomes-TAKE lines, "Open full setup" button wired to the existing dropdown. Polls 60s, legend strip explains the action hierarchy. Mobile single-column verified.
+- API test: 6 symbols -> 6 WAIT cards (BTC/ETH/SOL SHORT 57/53/54 with NO_TRADE tape caps; AAPL LONG 63; TSLA SHORT 49; NVDA SHORT 41 AI-neutral note). Stocks no longer told to "wait for liquidity check". Browser E2E: cards render, click opens full setup detail, zero console/page errors, footer sticky, lint clean.
+
+Stage Summary:
+- Trade Setups tab now opens with Entry Decisions: the platform's own answer to "which trade do I take, when, and at what levels" - fusing structure zones, the AI desk call and the liquidity tape into one ranked view with named gates instead of three tabs to reconcile by hand.

@@ -8,6 +8,7 @@ import { fetchMyTrades, rNow, type MyTrade } from '@/lib/mytrades'
 import type { BoardSetup, SetupsPayload, SideSetup } from '@/lib/setups/generate'
 import { scopedGet, scopedSet } from '@/lib/user-scope'
 import { ConfirmedSection } from '@/components/confirmed/ConfirmedBoard'
+import { EntryDecisions } from '@/components/entry/EntryDecisions'
 
 // Trade2watch design tokens (mirrors public/app.html)
 const C = {
@@ -469,6 +470,9 @@ export function SetupBoard() {
           </span>
         </div>
       </div>
+
+      {/* ── entry decisions — one fused call per symbol (setups × AI × liquidity tape) ── */}
+      <EntryDecisions symbols={symbols} onOpen={(s) => setSelected(s)} />
 
       {/* ── watchlist dropdown — click a symbol above, its trade setup drops down here ── */}
       <AnimatePresence initial={false} mode="wait">
