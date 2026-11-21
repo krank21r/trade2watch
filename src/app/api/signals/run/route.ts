@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, ensureTables } from '@/lib/db'
 import { runSignalPipeline } from '@/lib/signals/engine'
+import { mirrorConfigured, mirrorRun } from '@/lib/signals/mirror'
 import { CRYPTO_HINT } from '@/lib/market/providers'
 
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: `"${rawSymbol}" is not a recognized Binance pair base. Try BTC, ETH, SOL... or switch to Stocks.` },
         { status: 400 },
+      )
+    }
+
+    // Mirror mode: execute the analysis ON the published desk so both sites
+    // stay row-for-row identical (the finished row is mirrored back here).
+    if (mirrorConfigured()) {
+      const m = await mirrorRun(rawSymbol, market)
+      if (m.ok && m.run) {
+        return NextResponse.json({ runId: m.runId, run: m.run }, { status: 200 })
+      }
+      return NextResponse.json(
+        { error: m.error ?? 'The published desk could not run this analysis.' },
+        { status: 502 },
       )
     }
 

@@ -331,16 +331,23 @@ export function SignalDashboard() {
       const res = await fetch('/api/signals/auto/tick', { method: 'POST' })
       const d = await res.json()
       if (d.ran) {
-        toast({
-          title: `🤖 Auto desk — ${d.symbol} ${d.direction ?? d.status}`,
-          description:
-            d.status === 'completed'
-              ? d.direction === 'NEUTRAL'
-                ? `No edge detected — the desk stands aside on ${d.symbol}.`
-                : `${d.direction} @ confidence ${d.confidence ?? '—'}% — the plan is in the signal view.`
-              : `The ${d.symbol} analysis failed — the desk will retry.`,
-          variant: d.status === 'completed' ? undefined : 'destructive',
-        })
+        toast(
+          d.mirrored
+            ? {
+                title: `🪞 Desk synced — ${d.pulled ?? 0} signals mirrored`,
+                description: 'This instance mirrors the published desk: history, cards and alerts match row-for-row.',
+              }
+            : {
+                title: `🤖 Auto desk — ${d.symbol} ${d.direction ?? d.status}`,
+                description:
+                  d.status === 'completed'
+                    ? d.direction === 'NEUTRAL'
+                      ? `No edge detected — the desk stands aside on ${d.symbol}.`
+                      : `${d.direction} @ confidence ${d.confidence ?? '—'}% — the plan is in the signal view.`
+                    : `The ${d.symbol} analysis failed — the desk will retry.`,
+                variant: d.status === 'completed' ? undefined : 'destructive',
+              },
+        )
       }
     } catch {
       /* keep quiet — status poll will reflect reality */

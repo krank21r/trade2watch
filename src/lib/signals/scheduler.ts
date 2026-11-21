@@ -10,6 +10,9 @@
  *  - one symbol per tick keeps LLM usage sane: with a 20 min interval and 3
  *    symbols every symbol is refreshed once per hour
  *  - state lives on globalThis so HMR / route imports share one instance
+ *  - MIRROR MODE: when SIGNALS_MIRROR_BASE_URL is set the desk does not run
+ *    local pipelines at all — every tick is a full-history sync from the
+ *    published site (see lib/signals/mirror.ts) so both stay row-for-row
  *
  * Runtime notes:
  *  - local / long-running hosts: fully automatic (interval loop)
@@ -81,6 +84,7 @@ export interface TickOutcome {
   status?: string
   direction?: string | null
   confidence?: number | null
+  pulled?: number // mirror mode — rows synced from the published desk
 }
 
 /** Run one scheduled analysis for the stalest watchlist symbol. */
@@ -90,6 +94,46 @@ export async function autoTick(force = false): Promise<TickOutcome> {
   const s = state()
   if (s.busy) return { ran: false, skipped: 'busy' }
   if (!s.enabled && !force) return { ran: false, skipped: 'disabled' }
+
+  // mirror mode: this instance shows the PUBLISHED site's desk instead of
+  // running its own — a tick is a full-history sync, not a local pipeline
+  const { mirrorConfigured, mirrorPull } = await import('./mirror')
+  if (mirrorConfigured()) {
+    s.busy = true
+    try {
+      await ensureTables()
+      const pull = await mirrorPull()
+      s.lastTickAt = new Date().toISOString()
+      s.runCount++
+      s.lastError = pull.ok ? null : `mirror pull failed: ${pull.error ?? 'unknown'}`
+      s.lastResult = {
+        symbol: 'mirror',
+        status: pull.ok ? 'completed' : 'failed',
+        direction: null,
+        confidence: null,
+        runId: 'mirror-sync',
+        at: s.lastTickAt,
+      }
+      return {
+        ran: pull.ok,
+        skipped: pull.ok ? undefined : 'mirror-pull-failed',
+        symbol: 'mirror',
+        runId: 'mirror-sync',
+        status: s.lastResult.status,
+        direction: null,
+        confidence: null,
+        pulled: pull.pulled,
+      }
+    } catch (e) {
+      s.lastError = String(e).slice(0, 200)
+      return { ran: false, skipped: 'error' }
+    } finally {
+      s.busy = false
+      if (s.enabled && s.timer) {
+        s.nextTickAt = new Date(Date.now() + intervalMs()).toISOString()
+      }
+    }
+  }
 
   s.busy = true
   try {
@@ -193,6 +237,12 @@ function bootCatchUp(): void {
     void (async () => {
       try {
         await ensureTables()
+        const { mirrorConfigured, mirrorPull } = await import('./mirror')
+        if (mirrorConfigured()) {
+          // mirror mode: one sync at boot covers every symbol at once
+          await mirrorPull()
+          return
+        }
         const list = symbols()
         const last = await db.signalRun.groupBy({
           by: ['symbol'],
