@@ -9,8 +9,8 @@
  *
  * Actions (the answer to "what do I do right now?"):
  *   TAKE         — systems agree, price is inside the displayed entry zone at
- *                  this moment, and the tape confirms (or there is no tape —
- *                  stocks, vendor outage) — act now.
+ *                  this moment, the tape confirms (or there is no tape —
+ *                  stocks, vendor outage), and R:R ≥ 1:2 — act now.
  *   WAIT         — direction is agreed, but the entry is not actionable yet
  *                  (tape unconfirmed / price away from the zone) — the card
  *                  spells out exactly what must happen first.

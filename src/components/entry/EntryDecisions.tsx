@@ -432,7 +432,8 @@ export function EntryDecisions({ symbols, onOpen }: { symbols: string[]; onOpen:
         </div>
       </div>
       <p className="text-[11px] text-tv-muted mb-3">
-        <b className="text-bull">TAKE</b> = systems agree, the tape confirms and price is in the zone now — one press on{' '}
+        <b className="text-bull">TAKE</b> = direction agreed, tape confirms (or n/a for stocks), price is in the zone{' '}
+        <i>right now</i> and R:R ≥ 1:2 — one press on{' '}
         <b className="text-tv-ink">Track this trade</b> freezes the plan into the tracker ·{' '}
         <b className="text-warn">WAIT</b> = direction agreed, entry not ready yet (the card says what must happen first) ·{' '}
         <b className="text-bear">SKIP</b> = systems conflict · <b className="text-tv-ink">STAND ASIDE</b> = no edge. Tracked trades follow the frozen plan — bank half at TP1, stop to entry, close at TP2/SL — new signals never rewrite a frozen plan.
