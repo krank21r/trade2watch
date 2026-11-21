@@ -25,7 +25,7 @@ export default function Home() {
   // app-wide signal watcher — new desk results toast + desktop-notify on ANY
   // tab and feed the header bell badge; the dashboard handles its own toasts
   // while the AI Signals tab is open (the watcher stays quiet there)
-  const { unread, markSeen } = useSignalNotifier(tab === 'signals')
+  const { unread, markSeen } = useSignalNotifier(tab === 'signals', tab === 'decisions')
   // cross-tab handoff — "Open full setup" on an Entry Decisions card switches
   // to Trade Setups with that symbol's detail dropped open
   const [openSymbol, setOpenSymbol] = useState<string | null>(null)

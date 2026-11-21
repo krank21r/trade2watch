@@ -14,6 +14,11 @@
  *     bell) clears it
  *   - "price is IN the entry zone" desktop alert on every tab, driven by the
  *     server-side outcome prices already returned by the history endpoint
+ *   - 🎯 TAKE watcher: polls the entry-decision engine for the user's watchlist
+ *     and alerts the moment a card flips to TAKE (all five gates green —
+ *     agreement + tape + zone LIVE + R:R + no conflict). Transitions only: a
+ *     persisting TAKE stays silent, and while the Entry Decisions tab is open
+ *     the on-screen card IS the notification (desktop still fires if enabled).
  *
  * Suppression: while the AI Signals tab is open the dashboard itself toasts
  * richer detail — the watcher stays quiet there (the badge still stays
@@ -25,6 +30,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SignalRunRow } from '@/components/signals/types'
 import { fmtPrice } from '@/components/signals/types'
+import type { EntryDecision } from '@/lib/entry/decide'
+import { loadWatchlist } from '@/lib/watchlist'
 import { scopedGetJson, scopedSetJson } from '@/lib/user-scope'
 import { useToast } from '@/hooks/use-toast'
 
@@ -62,13 +69,16 @@ function fireDesktop(title: string, body: string): void {
   }
 }
 
-export function useSignalNotifier(onSignalsTab: boolean) {
+export function useSignalNotifier(onSignalsTab: boolean, onDecisionsTab = false) {
   const { toast } = useToast()
   const [unread, setUnread] = useState(0)
   const tabRef = useRef(onSignalsTab)
   tabRef.current = onSignalsTab
+  const decTabRef = useRef(onDecisionsTab)
+  decTabRef.current = onDecisionsTab
   const seenRef = useRef<Set<string> | null>(null)
   const zoneSeenRef = useRef<Set<string> | null>(null)
+  const takeRef = useRef<Map<string, true> | null>(null)
   const mountedAt = useRef(Date.now())
 
   /** Persist "everything up to now is read" and clear the badge. */
@@ -127,7 +137,7 @@ export function useSignalNotifier(onSignalsTab: boolean) {
         zone.add(r.id)
         fireDesktop(
           `🚀 ${r.symbol} is IN the entry zone`,
-          `${r.direction} · entry ${fmtPrice(r.entryLow)} – ${fmtPrice(r.entryHigh)} · stop ${fmtPrice(r.stop)} — check the plan now.`,
+          `${r.direction} · entry ${fmtPrice(r.entryLow)} – ${fmtPrice(r.entryHigh)} · stop ${fmtPrice(r.stop)} — location is live; enter only when the card says TAKE.`,
         )
       }
       zoneSeenRef.current = zone
@@ -155,11 +165,63 @@ export function useSignalNotifier(onSignalsTab: boolean) {
       }
     }
 
+    // TAKE watcher — the entry-timing alert. Independent of the signals poll
+    // so a failed signals fetch never delays a TAKE. Polls the same fusion
+    // engine the Entry Decisions cards render, so "TAKE" here is exactly what
+    // the card shows. First poll seeds silently (an active TAKE at mount is
+    // visible on the default tab anyway); transitions alert on every tab.
+    const takeTick = async () => {
+      try {
+        const syms = loadWatchlist()
+        if (!syms.length) return
+        const res = await fetch(`/api/entry-decision?symbols=${syms.join(',')}`, { cache: 'no-store' })
+        const d = (await res.json().catch(() => null)) as { decisions?: EntryDecision[] } | null
+        if (!d || !Array.isArray(d.decisions) || stop) return
+        const decisions = d.decisions
+        const okSymbols = new Set(decisions.map((x) => x.symbol))
+        const takes = decisions.filter((x) => x.action === 'TAKE')
+
+        if (takeRef.current === null) {
+          takeRef.current = new Map(takes.map((x) => [x.symbol, true as const]))
+          return
+        }
+        const active = takeRef.current
+        for (const x of takes) {
+          if (active.has(x.symbol)) continue
+          active.set(x.symbol, true)
+          const dir = x.consensus === 'LONG' ? 'LONG' : 'SHORT'
+          const levels = x.plan
+            ? `Entry ${fmtPrice(x.plan.entryLow)} – ${fmtPrice(x.plan.entryHigh)} · stop ${fmtPrice(x.plan.stop)} · T1 ${fmtPrice(x.plan.t1)}`
+            : 'All five gates green'
+          if (!decTabRef.current) {
+            setUnread((u) => u + 1)
+            toast({
+              title: `🎯 TAKE — ${x.symbol} ${dir}`,
+              description: `${levels} · conf ${x.aiConfidence ?? '—'}% — all gates green, act now.`,
+            })
+          }
+          fireDesktop(
+            `🎯 TAKE — ${x.symbol} ${dir}`,
+            `${levels} — open Entry Decisions and manage by the plan.`,
+          )
+        }
+        for (const s of [...active.keys()]) {
+          if (!okSymbols.has(s)) continue // symbol failed this poll — keep its state
+          if (!takes.some((x) => x.symbol === s)) active.delete(s) // left TAKE — a re-flip re-alerts
+        }
+      } catch {
+        /* transient — retry on the next tick */
+      }
+    }
+
     void tick()
+    void takeTick()
     const iv = setInterval(() => void tick(), POLL_MS)
+    const takeIv = setInterval(() => void takeTick(), POLL_MS)
     return () => {
       stop = true
       clearInterval(iv)
+      clearInterval(takeIv)
     }
   }, [markSeen, toast])
 

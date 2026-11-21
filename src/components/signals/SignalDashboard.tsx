@@ -322,7 +322,7 @@ export function SignalDashboard() {
     desktopAlertsRef.current = true
     setDesktopAlerts(true)
     scopedSetJson('desktop-alerts', true)
-    fireDesktopNotification('🔔 Desktop alerts on', 'You will be notified when a trade plan is ready and when price reaches an entry zone.')
+    fireDesktopNotification('🔔 Desktop alerts on', 'You will be notified when a trade plan is ready, when price reaches an entry zone, and the moment a card flips to TAKE.')
   }, [toast, fireDesktopNotification])
 
   const runAutoNow = useCallback(async () => {
@@ -633,7 +633,7 @@ export function SignalDashboard() {
                   onClick={() => void toggleDesktopAlerts()}
                   suppressHydrationWarning
                   aria-pressed={desktopAlerts}
-                  title="Browser notifications when a signal is ready or price reaches an entry zone"
+                  title="Browser notifications when a signal is ready, price reaches an entry zone, or a card flips to TAKE"
                   className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
                     desktopAlerts
                       ? 'border-info/45 bg-info/12 text-info'
