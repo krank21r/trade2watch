@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (pgbouncer) — used by serverless runtime
+  directUrl = env("DIRECT_URL") // direct connection — used by migrations / db push
 }
 
 // ─── AI Signal Engine (TradingAgents adaptation) ────────────────────────────
