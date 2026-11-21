@@ -1263,3 +1263,20 @@ Work Log:
 
 Stage Summary:
 - Trade Setups tab now opens with Entry Decisions: the platform's own answer to "which trade do I take, when, and at what levels" - fusing structure zones, the AI desk call and the liquidity tape into one ranked view with named gates instead of three tabs to reconcile by hand.
+
+---
+Task ID: 60
+Agent: main (Z.ai Code)
+Task: Entry-decision correctness fix (gate measured the wrong zone) + TAKE notification watcher.
+
+Work Log:
+- User reported: BTC price wicked into the displayed entry zone but the card still said WAIT. Root cause found in src/lib/entry/decide.ts: the Entry-zone gate evaluated the Trade Setups board's own swing zone (side.state) while the card DISPLAYS the AI desk plan zone - two different levels. BTC spot $60,101 sat inside the displayed zone ($60,100-$61,929) while the gate graded an invisible zone.
+- Fix: new plan-zone state machine (step 7b) evaluates the zone the card actually displays (Liquidity Lab > AI desk > board). Reuses detectZoneTouch on candles so a wick into the zone between polls registers as HIT ("entry triggered, manage by the plan" - PASS) per the board's own decision rule, instead of the contradictory "wait for a fresh retest" warn. VOID = spot beyond the plan stop; WAITING = untouched with honest dist% to the displayed zone. Payload zoneState/zoneDistPct now describe the displayed plan (components never consumed the board values).
+- TAKE reachability fix: stocks could never fire TAKE because the crypto-only tape is always ABSENT for them. ABSENT (no tape system / vendor outage) no longer vetoes TAKE - board+AI agreement + zone LIVE + rr>=2 suffice; an explicit NO_TRADE still vetoes. Desk confidence gate no longer grades a neutral/absent desk ("na - no directional call to grade") instead of a misleading "FAIL 0% weak conviction".
+- TAKE watcher in use-signal-notifier (app root): polls /api/entry-decision for the user's watchlist every 60s (independent of the signals poll), and the moment a card flips to TAKE fires toast + desktop notification + bell badge on ANY tab. Transition-only (persisting TAKE silent; leaving and re-entering re-alerts; failed symbol poll keeps state). While the Entry Decisions tab is open the on-screen card IS the notification (toast+badge suppressed, desktop still fires). First poll seeds silently - an active TAKE at mount is visible on the default tab anyway.
+- Zone alert reworded ("location is live; enter only when the card says TAKE") so the pre-TAKE location alert cannot cause early entries - user's stated workflow is "enter only on TAKE signals". Legend strip + engine doc now state the full rule: direction agreed, tape confirms (or n/a for stocks), price in the zone right now, R:R >= 1:2.
+- Verification: 24-symbol sweep - BTC zone LIVE (spot inside the displayed plan zone, 4/5 gates green; tape NO_TRADE the only blocker, market-wide balanced flow); ETH/SOL wicks registered as HIT; earlier full-watchlist sweep showed every zone gate now PASS/WAITING honestly (no phantom WAITs). Watcher polling confirmed in dev.log (60s cadence, all 200s). Lint clean. Browser E2E clean.
+- Deployment notes: production remains the platform Function Compute deployment (persistent SQLite disk). vercel.json exists (cron 45 2 * * * -> /api/signals/auto/tick; route accepts Authorization: Bearer $CRON_SECRET so Vercel cron works) but the sandbox has no GitHub/Vercel credentials for push/deploy, and SQLite on Vercel serverless is ephemeral - a real Vercel production deploy needs a hosted database first.
+
+Stage Summary:
+- Entry decisions now measure the zone they display; TAKE is genuinely reachable (stocks included) and is announced on every tab the moment it fires. The user's "enter only on TAKE" workflow is fully supported by the alert path: toast + desktop + badge on the flip, transitions only, no early-entry ambiguity from location alerts.
