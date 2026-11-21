@@ -28,6 +28,17 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // Vercel's built-in Cron sends `x-vercel-cron: 1` and cannot set custom
+  // auth headers — accept it for the tick path so the configured daily cron
+  // (vercel.json) reaches the desk. Worst case a spoofer triggers one extra
+  // analysis run; no data is exposed.
+  if (
+    pathname === '/api/signals/auto/tick' &&
+    req.headers.get('x-vercel-cron') === '1'
+  ) {
+    return NextResponse.next()
+  }
+
   // fail-safe token verification — verifyToken itself never throws, but the
   // try/catch guards against anything unexpected in this edge context
   let session: SessionPayload | null = null
