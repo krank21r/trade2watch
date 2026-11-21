@@ -13,11 +13,11 @@ import { useSignalNotifier } from '@/hooks/use-signal-notifier'
 
 type Tab = 'setups' | 'decisions' | 'signals' | 'liquidity'
 
-const TABS: Array<{ key: Tab; label: string }> = [
-  { key: 'decisions', label: 'Entry Decisions' },
-  { key: 'setups', label: 'Trade Setups' },
-  { key: 'signals', label: 'AI Signals' },
-  { key: 'liquidity', label: 'Liquidity Lab' },
+const TABS: Array<{ key: Tab; label: string; short: string }> = [
+  { key: 'decisions', label: 'Entry Decisions', short: 'Decisions' },
+  { key: 'setups', label: 'Trade Setups', short: 'Setups' },
+  { key: 'signals', label: 'AI Signals', short: 'Signals' },
+  { key: 'liquidity', label: 'Liquidity Lab', short: 'Liquidity' },
 ]
 
 export default function Home() {
@@ -42,26 +42,63 @@ export default function Home() {
 
   return (
     <div className="relative h-[100dvh] flex flex-col bg-tv-bg text-tv-ink overflow-hidden">
-      {/* top bar — flat hairline chrome, color reserved for the data */}
-      <nav className="relative z-10 shrink-0 flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3 border-b border-tv-line">
-        {/* brand — ink monogram tile, quiet wordmark */}
-        <div className="flex items-center gap-2.5">
-          <span
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-tv-ink text-tv-bg"
-            aria-hidden
-          >
-            <TrendingUp className="h-4 w-4" aria-hidden />
-          </span>
-          <div className="text-[15px] font-semibold tracking-tight leading-none">
-            Trade2watch
+      {/* top bar — flat hairline chrome, color reserved for the data.
+          mobile: two rows (brand+account, then tabs); sm+: single row */}
+      <nav className="relative z-10 shrink-0 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 px-4 sm:px-6 py-3 border-b border-tv-line">
+        {/* mobile row 1 = brand + status/account; sm:contents dissolves the
+            wrapper so its children become direct nav flex items again */}
+        <div className="flex w-full items-center justify-between sm:contents">
+          {/* brand — ink monogram tile, quiet wordmark */}
+          <div className="flex items-center gap-2.5 sm:order-1">
+            <span
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-tv-ink text-tv-bg"
+              aria-hidden
+            >
+              <TrendingUp className="h-4 w-4" aria-hidden />
+            </span>
+            <div className="text-[15px] font-semibold tracking-tight leading-none">
+              Trade2watch
+            </div>
+          </div>
+
+          {/* status + account */}
+          <div className="flex items-center gap-2 sm:gap-2.5 text-xs text-tv-muted sm:order-3 sm:ml-auto">
+            <button
+              onClick={() => {
+                markSeen()
+                setTab('signals')
+              }}
+              aria-label={`AI signal alerts${unread > 0 ? ` — ${unread} new` : ''}`}
+              title="AI signal alerts — the desk notifies you here the moment a new plan is ready"
+              className="relative inline-flex h-7 w-7 items-center justify-center rounded-lg border border-tv-line bg-tv-inset text-tv-muted transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
+            >
+              <Bell className="h-3.5 w-3.5" aria-hidden />
+              {unread > 0 && (
+                <span
+                  className="absolute inline-flex items-center justify-center rounded-full bg-bull px-1 text-[9px] font-bold leading-none text-white tabular-nums"
+                  style={{ top: -4, right: -4, minWidth: 15, height: 15 }}
+                  aria-hidden
+                >
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+            </button>
+            <span className="hidden md:inline-flex items-center gap-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-bull" aria-hidden />
+              <span className="tabular-nums">Live</span>
+            </span>
+            <UserMenu />
+            <ThemeToggle />
           </div>
         </div>
 
-        {/* segmented tabs — neutral; active = ink on inset surface */}
+        {/* segmented tabs — neutral; active = ink on inset surface.
+            mobile: full-width row 2 with short labels so all four fit at 390px;
+            overflow-x-auto stays as a safety net for ~320px screens */}
         <div
           role="tablist"
           aria-label="Sections"
-          className="flex max-w-full items-center overflow-x-auto rounded-lg border border-tv-line bg-tv-inset p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex w-full sm:w-auto sm:order-2 max-w-full items-center overflow-x-auto rounded-lg border border-tv-line bg-tv-inset p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {TABS.map((t) => {
             const active = tab === t.key
@@ -87,41 +124,14 @@ export default function Home() {
                     active ? 'text-tv-ink' : 'text-tv-muted hover:text-tv-ink'
                   }`}
                 >
-                  {t.label}
+                  {/* short label on mobile; display:none spans are excluded
+                      from the a11y tree so the accessible name is correct */}
+                  <span className="sm:hidden">{t.short}</span>
+                  <span className="hidden sm:inline">{t.label}</span>
                 </span>
               </button>
             )
           })}
-        </div>
-
-        {/* status + account */}
-        <div className="ml-auto flex items-center gap-2 sm:gap-2.5 text-xs text-tv-muted">
-          <button
-            onClick={() => {
-              markSeen()
-              setTab('signals')
-            }}
-            aria-label={`AI signal alerts${unread > 0 ? ` — ${unread} new` : ''}`}
-            title="AI signal alerts — the desk notifies you here the moment a new plan is ready"
-            className="relative inline-flex h-7 w-7 items-center justify-center rounded-lg border border-tv-line bg-tv-inset text-tv-muted transition hover:text-tv-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
-          >
-            <Bell className="h-3.5 w-3.5" aria-hidden />
-            {unread > 0 && (
-              <span
-                className="absolute inline-flex items-center justify-center rounded-full bg-bull px-1 text-[9px] font-bold leading-none text-white tabular-nums"
-                style={{ top: -4, right: -4, minWidth: 15, height: 15 }}
-                aria-hidden
-              >
-                {unread > 9 ? '9+' : unread}
-              </span>
-            )}
-          </button>
-          <span className="hidden md:inline-flex items-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-bull" aria-hidden />
-            <span className="tabular-nums">Live</span>
-          </span>
-          <UserMenu />
-          <ThemeToggle />
         </div>
       </nav>
 
