@@ -175,15 +175,51 @@ export async function autoTick(force = false): Promise<TickOutcome> {
   }
 }
 
+/**
+ * Boot catch-up — after downtime (a suspended sandbox / sleeping host) every
+ * watchlist symbol is stale and the plain 20-min interval would take a full
+ * cycle per symbol to catch up. If any symbol's newest run is older than the
+ * staleness gate, run back-to-back ticks (capped) so the desk is current
+ * within minutes of boot. When data is already fresh (normal dev restart) it
+ * degrades to the old single 45s first pass. SIGNALS_AUTO_CATCHUP=0 disables.
+ */
+function bootCatchUp(): void {
+  if (process.env.SIGNALS_AUTO_CATCHUP === '0') return
+  const g = globalThis as unknown as { __t2wBootCatchUpRan?: boolean }
+  if (g.__t2wBootCatchUpRan) return // HMR / re-import safety — once per process
+  g.__t2wBootCatchUpRan = true
+  const staleGateMs = 45 * 60_000 // anything newer = fresh, no catch-up needed
+  setTimeout(() => {
+    void (async () => {
+      try {
+        await ensureTables()
+        const list = symbols()
+        const last = await db.signalRun.groupBy({
+          by: ['symbol'],
+          where: { symbol: { in: list } },
+          _max: { createdAt: true },
+        })
+        const lastAt = new Map(last.map((r) => [r.symbol, r._max.createdAt?.getTime() ?? 0]))
+        const stale = list.filter((s) => Date.now() - (lastAt.get(s) ?? 0) > staleGateMs).length
+        const passes = stale === 0 ? 1 : Math.min(stale, 4)
+        for (let i = 0; i < passes; i++) {
+          const out = await autoTick()
+          if (!out.ran) break // busy / disabled / in-flight manual run — stop hammering
+          if (i < passes - 1) await new Promise((r) => setTimeout(r, 20_000)) // breather between full pipelines
+        }
+      } catch {
+        /* best-effort — the interval loop keeps the desk running regardless */
+      }
+    })()
+  }, 45_000)
+}
+
 /** Start the interval loop (no-op on Vercel — use the tick endpoint there). */
 export function startAutoDesk(): void {
   const s = state()
   if (s.timer || process.env.VERCEL) return
   const iv = intervalMs()
-  // first automatic pass 45s after boot so a fresh dev server settles first
-  setTimeout(() => {
-    void autoTick().catch(() => {})
-  }, 45_000)
+  bootCatchUp()
   s.timer = setInterval(() => {
     void autoTick().catch(() => {})
   }, iv)
