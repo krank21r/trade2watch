@@ -8,8 +8,9 @@
  *   Liquidity Lab  — order-book tape: flow, pools, accuracy gates (crypto only)
  *
  * Actions (the answer to "what do I do right now?"):
- *   TAKE         — systems agree, the tape confirms, AND price is inside the
- *                  entry zone at this moment — act now.
+ *   TAKE         — systems agree, price is inside the displayed entry zone at
+ *                  this moment, and the tape confirms (or there is no tape —
+ *                  stocks, vendor outage) — act now.
  *   WAIT         — direction is agreed, but the entry is not actionable yet
  *                  (tape unconfirmed / price away from the zone) — the card
  *                  spells out exactly what must happen first.
@@ -26,7 +27,14 @@
  */
 
 import { db } from '@/lib/db'
-import { generateSetups, type BoardSetup, type SideSetup } from '@/lib/setups/generate'
+import {
+  detectZoneTouch,
+  generateSetups,
+  type BoardSetup,
+  type SideSetup,
+  type SideState,
+} from '@/lib/setups/generate'
+import { getCandles } from '@/lib/market/providers'
 import { buildLiquidityReport, LiquidityError } from '@/lib/liquidity/engine'
 import type { LiquidityReport } from '@/lib/liquidity/types'
 
@@ -182,6 +190,10 @@ function rrAtT1(side: { entryLow: number; entryHigh: number; stop: number; t1: n
   return Math.abs(side.t1 - mid) / risk
 }
 
+function fmtPrice(v: number): string {
+  return '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : String(Math.round(v * 100) / 100))
+}
+
 // ─── per-symbol fusion ───────────────────────────────────────────────────────
 
 async function decideOne(rawSymbol: string): Promise<EntryDecision> {
@@ -335,6 +347,33 @@ async function decideOne(rawSymbol: string): Promise<EntryDecision> {
     }
   }
 
+  // 7b. plan-zone state — the gate must measure the zone the card actually
+  // displays (Liquidity Lab / AI desk / board levels). Before this, the gate
+  // checked the board's own swing zone while the card showed the AI desk's
+  // plan — so price could sit inside the DISPLAYED zone (even wicked into it)
+  // and the card still said WAIT. Wick detection reuses the board's candle
+  // rule: a wick into the zone triggers the entry even after price moves out.
+  let planZoneState: SideState | null = null
+  let planZoneDistPct: number | null = null
+  let planZoneTouch: { at: number; price: number } | null = null
+  if (plan) {
+    const isLong = plan.side === 'LONG'
+    const px = setup.price
+    if (isLong ? px <= plan.stop : px >= plan.stop) {
+      planZoneState = 'VOID'
+    } else if (px >= plan.entryLow && px <= plan.entryHigh) {
+      planZoneState = 'LIVE'
+    } else {
+      const candles = await getCandles(setup.symbol, market, setup.timeframe).catch(() => [])
+      planZoneTouch = candles.length ? detectZoneTouch(candles, plan, isLong) : null
+      planZoneState = planZoneTouch ? 'HIT' : 'WAITING'
+      if (planZoneState === 'WAITING') {
+        const dist = isLong ? px - plan.entryHigh : plan.entryLow - px
+        planZoneDistPct = (Math.abs(dist) / px) * 100
+      }
+    }
+  }
+
   // 8. gates
   const zoneState = side?.state ?? null
   const zoneDistPct = side?.distPct ?? null
@@ -360,13 +399,15 @@ async function decideOne(rawSymbol: string): Promise<EntryDecision> {
           : { name: 'Liquidity tape', state: 'na', detail: flowDetail }
 
   const zoneGate: DecisionGate =
-    zoneState === 'LIVE'
+    planZoneState === 'LIVE'
       ? { name: 'Entry zone', state: 'pass', detail: 'price is inside the entry zone right now' }
-      : zoneState === 'HIT'
-        ? { name: 'Entry zone', state: 'warn', detail: 'zone swept already — wait for a fresh retest' }
-        : zoneState === 'WAITING'
-          ? { name: 'Entry zone', state: 'warn', detail: `${(zoneDistPct ?? 0).toFixed(1)}% away — set limits and wait` }
-          : { name: 'Entry zone', state: 'fail', detail: 'zone void — thesis dead on this side' }
+      : planZoneState === 'HIT'
+        ? { name: 'Entry zone', state: 'pass', detail: `zone wicked to ${fmtPrice(planZoneTouch?.price ?? 0)} — entry triggered, manage by the plan` }
+        : planZoneState === 'WAITING'
+          ? { name: 'Entry zone', state: 'warn', detail: `${(planZoneDistPct ?? 0).toFixed(1)}% away — set limits and wait` }
+          : planZoneState === 'VOID'
+            ? { name: 'Entry zone', state: 'fail', detail: 'zone void — price is beyond the plan stop' }
+            : { name: 'Entry zone', state: 'fail', detail: 'no actionable plan levels' }
 
   const rrGate: DecisionGate =
     rr >= 2
@@ -378,11 +419,13 @@ async function decideOne(rawSymbol: string): Promise<EntryDecision> {
   const confGate: DecisionGate =
     aiConfidence == null
       ? { name: 'Desk confidence', state: 'na', detail: 'no AI run yet — start one from the AI Signals tab' }
-      : aiConfidence >= 70
-        ? { name: 'Desk confidence', state: 'pass', detail: `${aiConfidence}% — above the 70% accuracy bar` }
-        : aiConfidence >= 55
-          ? { name: 'Desk confidence', state: 'warn', detail: `${aiConfidence}% — below the 70% accuracy bar` }
-          : { name: 'Desk confidence', state: 'fail', detail: `${aiConfidence}% — weak conviction` }
+      : !aiMatches
+        ? { name: 'Desk confidence', state: 'na', detail: `AI desk is ${aiVote.toLowerCase()} — no directional call to grade` }
+        : aiConfidence >= 70
+          ? { name: 'Desk confidence', state: 'pass', detail: `${aiConfidence}% — above the 70% accuracy bar` }
+          : aiConfidence >= 55
+            ? { name: 'Desk confidence', state: 'warn', detail: `${aiConfidence}% — below the 70% accuracy bar` }
+            : { name: 'Desk confidence', state: 'fail', detail: `${aiConfidence}% — weak conviction` }
 
   const gates = [agreementGate, flowGate, zoneGate, rrGate, confGate]
 
@@ -394,21 +437,25 @@ async function decideOne(rawSymbol: string): Promise<EntryDecision> {
   if (flowMatches) score += 30
   else if (flowVote === 'NO_TRADE') score += 5
   else if (flowVote === 'ABSENT') score += 12
-  if (zoneState === 'LIVE') score += 15
-  else if (zoneState === 'HIT') score += 8
-  else if (zoneState === 'WAITING') score += 4
+  if (planZoneState === 'LIVE') score += 15
+  else if (planZoneState === 'HIT') score += 8
+  else if (planZoneState === 'WAITING') score += 4
   if (rr >= 3.5) score += 10
   else if (rr >= 2.5) score += 8
   else if (rr >= 2) score += 6
   else if (rr >= 1.5) score += 3
   score = Math.round(Math.min(100, Math.max(0, score)))
 
-  // 10. action — conflict or void zone veto first, then tape cap, then zone
+  // 10. action — conflict or void zone veto first, then tape cap, then zone.
+  // Tape rule: an explicit NO_TRADE vetoes TAKE; an ABSENT tape (stocks have
+  // no order-book pipeline, vendor outage) must not — otherwise stocks could
+  // never reach TAKE at all. ABSENT stays a named, visible gate either way.
+  const tapeOk = flowMatches || flowVote === 'ABSENT'
   let action: DecisionAction
   if (conflict && score < 50) action = 'SKIP'
-  else if (zoneState === 'VOID') action = 'SKIP'
+  else if (planZoneState === 'VOID') action = 'SKIP'
   else if (flowVote === opposite) action = 'SKIP'
-  else if (zoneState === 'LIVE' && flowMatches && !conflict && rr >= 2) action = 'TAKE'
+  else if (planZoneState === 'LIVE' && tapeOk && !conflict && rr >= 2) action = 'TAKE'
   else action = 'WAIT'
 
   // 11. why + becomes-take
@@ -418,18 +465,19 @@ async function decideOne(rawSymbol: string): Promise<EntryDecision> {
       : action === 'SKIP'
         ? conflict
           ? `Evidence conflicts: ${conflict.toLowerCase()} signals against this ${dir.toLowerCase()} — do not force it.`
-          : zoneState === 'VOID'
+          : planZoneState === 'VOID'
             ? `The ${dir.toLowerCase()} zone is void (stop-side invalidated) — wait for fresh structure.`
             : `The tape contradicts the ${dir.toLowerCase()} — skip until flow and structure agree.`
-        : `${dir} direction is set (${[boardVote === dir ? 'structure' : null, aiMatches ? 'AI desk' : null, flowMatches ? 'tape' : null].filter(Boolean).join(' + ')}), but the entry is not actionable yet.`
+        : planZoneState === 'HIT'
+          ? `${dir} entry zone was wicked to ${fmtPrice(planZoneTouch?.price ?? 0)} — the entry triggered, but the remaining gates are not clear yet.`
+          : `${dir} direction is set (${[boardVote === dir ? 'structure' : null, aiMatches ? 'AI desk' : null, flowMatches ? 'tape' : null].filter(Boolean).join(' + ')}), but the entry is not actionable yet.`
 
   let becomesTake: string
   if (action === 'WAIT') {
     const fixes: string[] = []
-    if (zoneState === 'WAITING') fixes.push(`price reaches the zone (${(zoneDistPct ?? 0).toFixed(1)}% away)`)
-    if (zoneState === 'HIT') fixes.push('a fresh retest of the zone holds')
+    if (planZoneState === 'WAITING') fixes.push(`price reaches the entry zone (${(planZoneDistPct ?? 0).toFixed(1)}% away)`)
+    if (planZoneState === 'HIT') fixes.push('price re-enters the zone for a fresh fill')
     if (flowVote === 'NO_TRADE') fixes.push('order flow aligns with the direction')
-    if (flowVote === 'ABSENT' && market === 'crypto') fixes.push('the liquidity check completes')
     if (conflict) fixes.push(`the ${conflict.toLowerCase()} evidence flips or expires`)
     if (!aiMatches && aiVote === 'ABSENT') fixes.push('a fresh AI desk call confirms')
     if (rr < 2 && plan) fixes.push('targets stretch to the 1:2 floor')
@@ -456,8 +504,8 @@ async function decideOne(rawSymbol: string): Promise<EntryDecision> {
     aiFresh,
     aiRunAt,
     liquidityBlockers,
-    zoneState,
-    zoneDistPct,
+    zoneState: planZoneState ?? zoneState,
+    zoneDistPct: planZoneDistPct ?? zoneDistPct,
     plan,
     gates,
     why,
