@@ -27,12 +27,21 @@ const FLOAT_COLS = new Set([
 
 function toDateTime(v: unknown): Date | null {
   if (v === null || v === undefined || v === '') return null
-  if (v instanceof Date) return v
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v
+  if (typeof v === 'number') return new Date(v)
   const s = String(v)
+  // Prisma's SQLite connector stores DateTime as epoch milliseconds —
+  // sometimes surfaced as a numeric string. 10 digits = seconds.
+  if (/^\d{10}$/.test(s)) return new Date(Number(s) * 1000)
+  if (/^\d{11,14}$/.test(s)) return new Date(Number(s))
   // Prisma writes ISO-8601 ("2025-01-01T12:34:56.789Z"); SQLite
   // CURRENT_TIMESTAMP writes "2025-01-01 12:34:56" in UTC.
-  if (s.includes('T')) return new Date(s)
-  return new Date(s.replace(' ', 'T') + 'Z')
+  if (s.includes('T')) {
+    const d = new Date(s)
+    return isNaN(d.getTime()) ? null : d
+  }
+  const d = new Date(s.replace(' ', 'T') + 'Z')
+  return isNaN(d.getTime()) ? null : d
 }
 
 function convert(col: string, v: unknown): unknown {
