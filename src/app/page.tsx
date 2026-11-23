@@ -1,39 +1,27 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, TrendingUp } from 'lucide-react'
 import { SignalDashboard } from '@/components/signals/SignalDashboard'
-import { SetupBoard } from '@/components/setups/SetupBoard'
-import { EntryDecisionsTab } from '@/components/entry/EntryDecisionsTab'
 import LiquidityLab from '@/components/liquidity/LiquidityLab'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { UserMenu } from '@/components/user-menu'
 import { useSignalNotifier } from '@/hooks/use-signal-notifier'
 
-type Tab = 'setups' | 'decisions' | 'signals' | 'liquidity'
+type Tab = 'signals' | 'liquidity'
 
 const TABS: Array<{ key: Tab; label: string; short: string }> = [
-  { key: 'decisions', label: 'Entry Decisions', short: 'Decisions' },
-  { key: 'setups', label: 'Trade Setups', short: 'Setups' },
   { key: 'signals', label: 'AI Signals', short: 'Signals' },
   { key: 'liquidity', label: 'Liquidity Lab', short: 'Liquidity' },
 ]
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>('decisions')
+  const [tab, setTab] = useState<Tab>('signals')
   // app-wide signal watcher — new desk results toast + desktop-notify on ANY
   // tab and feed the header bell badge; the dashboard handles its own toasts
   // while the AI Signals tab is open (the watcher stays quiet there)
-  const { unread, markSeen } = useSignalNotifier(tab === 'signals', tab === 'decisions')
-  // cross-tab handoff — "Open full setup" on an Entry Decisions card switches
-  // to Trade Setups with that symbol's detail dropped open
-  const [openSymbol, setOpenSymbol] = useState<string | null>(null)
-  const openInSetups = useCallback((s: string) => {
-    setOpenSymbol(s)
-    setTab('setups')
-  }, [])
-  const consumeOpen = useCallback(() => setOpenSymbol(null), [])
+  const { unread, markSeen } = useSignalNotifier(tab === 'signals')
 
   // opening AI Signals = everything up to now has been seen
   useEffect(() => {
@@ -93,8 +81,7 @@ export default function Home() {
         </div>
 
         {/* segmented tabs — neutral; active = ink on inset surface.
-            mobile: full-width row 2 with short labels so all four fit at 390px;
-            overflow-x-auto stays as a safety net for ~320px screens */}
+            mobile: full-width row 2 with short labels; both tabs fit at 390px */}
         <div
           role="tablist"
           aria-label="Sections"
@@ -146,15 +133,7 @@ export default function Home() {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="absolute inset-0 overflow-y-auto"
           >
-            {tab === 'setups' ? (
-              <SetupBoard openSymbol={openSymbol} onOpenConsumed={consumeOpen} />
-            ) : tab === 'decisions' ? (
-              <EntryDecisionsTab onOpen={openInSetups} />
-            ) : tab === 'signals' ? (
-              <SignalDashboard />
-            ) : (
-              <LiquidityLab />
-            )}
+            {tab === 'signals' ? <SignalDashboard /> : <LiquidityLab />}
           </motion.div>
         </AnimatePresence>
       </main>

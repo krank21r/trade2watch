@@ -17,8 +17,8 @@
  *   - 🎯 TAKE watcher: polls the entry-decision engine for the user's watchlist
  *     and alerts the moment a card flips to TAKE (all five gates green —
  *     agreement + tape + zone LIVE + R:R + no conflict). Transitions only: a
- *     persisting TAKE stays silent, and while the Entry Decisions tab is open
- *     the on-screen card IS the notification (desktop still fires if enabled).
+ *     persisting TAKE stays silent. There is no dedicated decisions page —
+ *     the alert itself carries the plan levels.
  *
  * Suppression: while the AI Signals tab is open the dashboard itself toasts
  * richer detail — the watcher stays quiet there (the badge still stays
@@ -69,13 +69,11 @@ function fireDesktop(title: string, body: string): void {
   }
 }
 
-export function useSignalNotifier(onSignalsTab: boolean, onDecisionsTab = false) {
+export function useSignalNotifier(onSignalsTab: boolean) {
   const { toast } = useToast()
   const [unread, setUnread] = useState(0)
   const tabRef = useRef(onSignalsTab)
   tabRef.current = onSignalsTab
-  const decTabRef = useRef(onDecisionsTab)
-  decTabRef.current = onDecisionsTab
   const seenRef = useRef<Set<string> | null>(null)
   const zoneSeenRef = useRef<Set<string> | null>(null)
   const takeRef = useRef<Map<string, true> | null>(null)
@@ -193,16 +191,14 @@ export function useSignalNotifier(onSignalsTab: boolean, onDecisionsTab = false)
           const levels = x.plan
             ? `Entry ${fmtPrice(x.plan.entryLow)} – ${fmtPrice(x.plan.entryHigh)} · stop ${fmtPrice(x.plan.stop)} · T1 ${fmtPrice(x.plan.t1)}`
             : 'All five gates green'
-          if (!decTabRef.current) {
-            setUnread((u) => u + 1)
-            toast({
-              title: `🎯 TAKE — ${x.symbol} ${dir}`,
-              description: `${levels} · conf ${x.aiConfidence ?? '—'}% — all gates green, act now.`,
-            })
-          }
+          setUnread((u) => u + 1)
+          toast({
+            title: `🎯 TAKE — ${x.symbol} ${dir}`,
+            description: `${levels} · conf ${x.aiConfidence ?? '—'}% — all gates green, act now.`,
+          })
           fireDesktop(
             `🎯 TAKE — ${x.symbol} ${dir}`,
-            `${levels} — open Entry Decisions and manage by the plan.`,
+            `${levels} — manage by the plan in AI Signals.`,
           )
         }
         for (const s of [...active.keys()]) {
