@@ -374,6 +374,11 @@ export function SignalDashboard() {
             setHistory([...localRef.current])
             loadHistory()
             void evalLocalOutcomes()
+          } else {
+            // async desk: live stage/progress while the pipeline executes
+            // post-response — real server data replaces the placeholder climb
+            missesRef.current = 0
+            setRun((r) => (r && r.id === d.run.id ? (d.run as SignalRunDetail) : r))
           }
         } else {
           // 404 / tracking lost (server restart, serverless instance swap) —
@@ -464,10 +469,11 @@ export function SignalDashboard() {
       setFormError(null)
       setStarting(true)
       missesRef.current = 0
-      // Show the pipeline panel immediately: the POST now runs the whole
-      // analysis server-side (serverless-safe — there is no runId to poll
-      // until it finishes). A gentle progress climb keeps the panel alive
-      // while the request is in flight; real stage data replaces it at the end.
+      // Show the pipeline panel immediately. The POST answers instantly with
+      // a running row + runId (the desk executes the pipeline post-response,
+      // serverless-safe via after/waitUntil). A gentle progress climb keeps
+      // the panel alive until the first poll returns real stage data.
+      let keepBusy = false
       setRun(placeholderRun(sym, mkt))
       stopPolling()
       pollRef.current = setInterval(() => {
@@ -497,9 +503,8 @@ export function SignalDashboard() {
           )
           return
         }
-        if (d.run) {
-          // authoritative: the server ran the pipeline inside the request and
-          // returns the finished row (works on Vercel serverless + local dev)
+        if (d.run && d.run.status !== 'running') {
+          // authoritative finished row (mirror mode / legacy in-request desks)
           stopPolling()
           setRun(d.run)
           // persist the finished run locally so it survives reloads / instance swaps
@@ -508,7 +513,9 @@ export function SignalDashboard() {
           loadHistory()
           void evalLocalOutcomes()
         } else if (d.runId) {
-          // legacy async server — poll for the result
+          // async desk — poll for the result; keep the button disabled until
+          // the poller observes a terminal state (pollRun clears `starting`)
+          keepBusy = true
           setRun((r) => (r ? { ...r, id: d.runId } : r))
           stopPolling()
           pollRef.current = setInterval(() => pollRun(d.runId), 2500)
@@ -525,7 +532,7 @@ export function SignalDashboard() {
           'Network error starting the analysis. If the button does nothing after a recent update, hard-refresh the page (Ctrl+Shift+R / Cmd+Shift+R) and try again.',
         )
       } finally {
-        setStarting(false)
+        if (!keepBusy) setStarting(false)
       }
     },
     [pollRun, loadHistory, stopPolling, evalLocalOutcomes],

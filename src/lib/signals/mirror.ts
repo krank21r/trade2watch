@@ -184,18 +184,34 @@ export async function mirrorRun(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol, market }),
       },
-      280_000, // remote pipeline runs inside the request — give it room
+      30_000, // async contract — the remote desk answers immediately with a running row
     )
     const d = (await res.json().catch(() => null)) as
-      | { run?: Record<string, unknown>; error?: string }
+      | { run?: Record<string, unknown>; runId?: string; error?: string }
       | null
-    if (!res.ok || !d?.run) {
+    if (!res.ok || !d?.run || !d.runId) {
       return { ok: false, error: d?.error ?? `The published desk answered HTTP ${res.status}.` }
     }
 
-    const data = rowToData(d.run)
+    let current = d.run
+    // The desk now executes the pipeline after answering (after/waitUntil) —
+    // poll the remote run row until it reaches a terminal state (bounded
+    // ~5.5 min, matching the desk's maxDuration window).
+    if (String((current as { status?: string }).status ?? '') === 'running') {
+      const deadline = Date.now() + 330_000
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 3_000))
+        const p = await authedFetch(c, `/api/signals/run/${d.runId}`, { method: 'GET' }, 20_000)
+        const pd = (await p.json().catch(() => null)) as { run?: Record<string, unknown> } | null
+        if (!pd?.run) continue
+        current = pd.run
+        if (String((current as { status?: string }).status ?? '') !== 'running') break
+      }
+    }
+
+    const data = rowToData(current)
     await db.signalRun.upsert({ where: { id: data.id }, update: { ...data, id: undefined }, create: data })
-    return { ok: true, runId: data.id, run: d.run }
+    return { ok: true, runId: data.id, run: current }
   } catch (e) {
     return { ok: false, error: String(e).slice(0, 160) }
   }

@@ -1,21 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db, ensureTables } from '@/lib/db'
 import { runSignalPipeline } from '@/lib/signals/engine'
 import { mirrorConfigured, mirrorRun } from '@/lib/signals/mirror'
 import { CRYPTO_HINT } from '@/lib/market/providers'
 
 export const dynamic = 'force-dynamic'
-// The multi-agent pipeline runs INSIDE this request. On Vercel serverless a
-// fire-and-forget task is frozen the moment the 202 response is sent, and the
-// /tmp SQLite database is per-instance — so background execution plus polling
-// a second request can neither progress the run nor even find its row (the
-// "Run multi-agent analysis not running" bug). Keeping the whole pipeline
-// request-scoped makes it work identically in dev and on production. 300s
-// covers ~10 LLM calls including rate-limit backoffs.
+// The pipeline runs AFTER the response via after() (waitUntil on Vercel fluid
+// compute) — the POST answers instantly with the runId and the client polls
+// GET /api/signals/run/[id], which reads live stage/progress from the shared
+// Neon database. The old design ran the whole pipeline inside the request —
+// correct in the /tmp-SQLite era when a second request could not even find
+// the row — but on Vercel the LLM egress is slower and hits rate-limit
+// backoffs, so the request held its connection for 3-5 minutes and browsers/
+// the edge proxy gave up before the engine finished ("Run multi-agent
+// analysis not working on production"). maxDuration keeps the full 300s
+// window available to the post-response pipeline.
 export const maxDuration = 300
 
-// POST /api/signals/run — start a new multi-agent analysis and run it to
-// completion within this request; returns the finished run row.
+// POST /api/signals/run — start a new multi-agent analysis; returns the
+// running row immediately (client polls /api/signals/run/[id] to completion).
 export async function POST(req: NextRequest) {
   try {
     await ensureTables()
@@ -53,18 +56,16 @@ export async function POST(req: NextRequest) {
       data: { symbol: rawSymbol, market, status: 'running', stage: 'queued', progress: 2, source: 'manual' },
     })
 
-    // Await the full pipeline — it catches its own errors and marks the row
-    // 'failed', so this always returns a usable run for the client to render
-    // without a second request having to find it (which serverless /tmp
-    // SQLite cannot guarantee across instances).
-    await runSignalPipeline(run.id, rawSymbol, market)
+    // Schedule the pipeline for after this response is sent. after() keeps
+    // the serverless instance alive (waitUntil) until it finishes, inside the
+    // maxDuration window. The engine catches its own errors and marks the row
+    // 'failed', so the poller always observes a terminal state even on crash.
+    after(async () => {
+      await runSignalPipeline(run.id, rawSymbol, market)
+    })
 
-    const finished = await db.signalRun.findUnique({ where: { id: run.id } })
-    if (!finished) {
-      return NextResponse.json({ error: 'Failed to load the finished analysis.' }, { status: 500 })
-    }
-
-    return NextResponse.json({ runId: run.id, run: finished }, { status: 200 })
+    const fresh = await db.signalRun.findUnique({ where: { id: run.id } })
+    return NextResponse.json({ runId: run.id, run: fresh ?? run }, { status: 200 })
   } catch (e) {
     console.error('[api/signals/run] error:', e)
     return NextResponse.json({ error: 'Failed to start analysis.' }, { status: 500 })
