@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic'
 
 const OUTCOME_REFRESH_MS = 15 * 60 * 1000 // re-evaluate open outcomes at most every 15 min
 const MAX_EVALUATIONS = 6 // per request, to stay polite with data vendors
+const STALE_MS = 6 * 60 * 1000 // a run stuck >6min is considered dead (same as run/[id] poll)
 
 /**
  * Lazy outcome evaluation: for completed directional signals, compare the
@@ -63,6 +64,15 @@ async function evaluateOutcomes(
 export async function GET(req: NextRequest) {
   try {
     await ensureTables()
+
+    // self-heal zombie rows (engine stall / serverless kill mid-run) so the
+    // history list never shows endless "Running" entries — same sweep as the
+    // per-run poll endpoint, just applied to the whole list on every read
+    await db.signalRun.updateMany({
+      where: { status: 'running', createdAt: { lt: new Date(Date.now() - STALE_MS) } },
+      data: { status: 'failed', error: 'Run timed out (server restart or engine stall).', completedAt: new Date() },
+    })
+
     const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get('limit') ?? 20)))
     const runs = await db.signalRun.findMany({
       orderBy: { createdAt: 'desc' },

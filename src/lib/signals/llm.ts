@@ -1,10 +1,14 @@
 /**
  * LLM wrapper for the signal engine — z-ai-web-dev-sdk (backend only).
  *
- * Two protective mechanisms:
+ * Three protective mechanisms:
  *  1. Global call queue with minimum spacing — the z-ai API throttles bursts,
  *     so parallel agent calls are spaced ~1.6s apart instead of fired at once.
  *  2. Rate-limit retry with escalating backoff (5s → 30s).
+ *  3. Per-call hard deadline — the SDK's fetch cannot be aborted, so each
+ *     call is raced against a 90s deadline; a stalled provider surfaces as a
+ *     thrown error and lands in the engine's per-stage fallbacks instead of
+ *     hanging the run forever.
  *
  * JSON responses are extracted robustly: fenced-code stripping, brace
  * matching, and a self-correcting retry that feeds the parse error back.
@@ -85,23 +89,48 @@ async function acquireSlot(): Promise<void> {
   release()
 }
 
+/**
+ * Hard deadline for a single SDK call. The z-ai SDK does a bare fetch with
+ * NO AbortSignal support and no internal timeout — a provider-side stall
+ * would otherwise produce a promise that never settles, which bypasses every
+ * per-stage fallback (.catch → degraded verdict) and leaves the run hanging
+ * until the zombie sweep marks it failed ~6 min later. Racing the call
+ * against a deadline guarantees the throw path is always reachable; the
+ * losing fetch is abandoned and left to GC.
+ */
+function withDeadline<T>(p: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(
+      () => reject(new Error(`LLM call stalled — no response within ${Math.round(timeoutMs / 1000)}s`)),
+      timeoutMs,
+    )
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(t)
+        reject(e instanceof Error ? e : new Error(String(e)))
+      },
+    )
+  })
+}
+
 async function chatOnce(messages: ChatMessage[], timeoutMs: number): Promise<string> {
   const zai = await client()
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), timeoutMs)
-  try {
-    const model = process.env.ZAI_MODEL?.trim()
-    const completion = await zai.chat.completions.create({
+  const model = process.env.ZAI_MODEL?.trim()
+  const completion = await withDeadline(
+    zai.chat.completions.create({
       ...(model ? { model } : {}),
       messages,
       thinking: { type: 'disabled' },
-    })
-    const content = completion.choices[0]?.message?.content ?? ''
-    if (!content.trim()) throw new Error('Empty LLM response')
-    return content
-  } finally {
-    clearTimeout(t)
-  }
+    }),
+    timeoutMs,
+  )
+  const content = completion.choices[0]?.message?.content ?? ''
+  if (!content.trim()) throw new Error('Empty LLM response')
+  return content
 }
 
 async function chat(messages: ChatMessage[], timeoutMs = 90_000): Promise<string> {
