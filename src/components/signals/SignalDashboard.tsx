@@ -42,21 +42,7 @@ function dirBadge(direction?: string | null): { label: string; bg: string; fg: s
   return null
 }
 
-// ─── auto desk + entry alerts (client helpers) ──────────────────────────────
-
-interface AutoStatus {
-  enabled: boolean
-  running: boolean
-  intervalMs: number
-  symbols: string[]
-  bootedAt: string
-  lastTickAt: string | null
-  nextTickAt: string | null
-  lastResult: { symbol: string; status: string; direction: string | null; confidence: number | null; runId: string; at: string } | null
-  lastError: string | null
-  runCount: number
-  external: boolean
-}
+// ─── entry alerts (client helpers) ────────────────────────────────────────
 
 const ALERT_FRESH_MS = 36 * 60 * 60 * 1000 // signals older than 36h stop alerting
 const NEAR_ZONE_PCT = 0.75 // "close to entry" threshold (% from zone edge)
@@ -99,23 +85,6 @@ function entryAlertViews(history: SignalRunRow[]): { active: EntryAlertView[]; n
   return { active, near, waiting }
 }
 
-function fmtAgo(iso: string | null, now: number): string {
-  if (!iso || !now) return ''
-  const diff = now - new Date(iso).getTime()
-  if (diff < 90_000) return 'just now'
-  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`
-  if (diff < 48 * 3_600_000) return `${Math.round(diff / 3_600_000)}h ago`
-  return `${Math.round(diff / (24 * 3_600_000))}d ago`
-}
-
-function fmtIn(iso: string | null, now: number): string {
-  if (!iso || !now) return ''
-  const diff = new Date(iso).getTime() - now
-  if (diff <= 0) return 'due now'
-  if (diff < 3_600_000) return `~${Math.max(1, Math.round(diff / 60_000))}m`
-  return `~${Math.round(diff / 3_600_000)}h`
-}
-
 function placeholderRun(sym: string, mkt: 'crypto' | 'stock'): SignalRunDetail {
   return {
     id: 'pending',
@@ -154,17 +123,12 @@ export function SignalDashboard() {
   const [history, setHistory] = useState<SignalRunRow[]>([])
   const [starting, setStarting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [auto, setAuto] = useState<AutoStatus | null>(null)
-  const [autoBusy, setAutoBusy] = useState(false)
   const [desktopAlerts, setDesktopAlerts] = useState(false)
-  const [clock, setClock] = useState(0) // client time for countdowns (avoids hydration drift)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const missesRef = useRef(0)
-  const seenRef = useRef<Set<string> | null>(null) // run ids already toasted/seen
   const zoneSeenRef = useRef<Set<string> | null>(null) // entry-zone activations already notified
   const desktopAlertsRef = useRef(false)
   const localRef = useRef<SignalRunRow[]>([]) // browser-local run store mirror (survives reloads)
-  const mountedAt = useRef(Date.now())
   const { toast } = useToast()
 
   const stopPolling = useCallback(() => {
@@ -250,30 +214,6 @@ export function SignalDashboard() {
     }
   }, [])
 
-  const loadAuto = useCallback(async () => {
-    try {
-      const res = await fetch('/api/signals/auto', { cache: 'no-store' })
-      const d = await res.json()
-      if (d.status) setAuto(d.status)
-    } catch {
-      /* auto status is non-critical */
-    }
-  }, [])
-
-  const toggleAuto = useCallback(async () => {
-    try {
-      const res = await fetch('/api/signals/auto', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !(auto?.enabled ?? true) }),
-      })
-      const d = await res.json()
-      if (d.status) setAuto(d.status)
-    } catch {
-      /* non-critical */
-    }
-  }, [auto?.enabled])
-
   const fireDesktopNotification = useCallback((title: string, body: string) => {
     if (!desktopAlertsRef.current) return
     try {
@@ -325,39 +265,6 @@ export function SignalDashboard() {
     fireDesktopNotification('🔔 Desktop alerts on', 'You will be notified when a trade plan is ready, when price reaches an entry zone, and the moment a card flips to TAKE.')
   }, [toast, fireDesktopNotification])
 
-  const runAutoNow = useCallback(async () => {
-    setAutoBusy(true)
-    try {
-      const res = await fetch('/api/signals/auto/tick', { method: 'POST' })
-      const d = await res.json()
-      if (d.ran) {
-        toast(
-          d.mirrored
-            ? {
-                title: `🪞 Desk synced — ${d.pulled ?? 0} signals mirrored`,
-                description: 'This instance mirrors the published desk: history, cards and alerts match row-for-row.',
-              }
-            : {
-                title: `🤖 Auto desk — ${d.symbol} ${d.direction ?? d.status}`,
-                description:
-                  d.status === 'completed'
-                    ? d.direction === 'NEUTRAL'
-                      ? `No edge detected — the desk stands aside on ${d.symbol}.`
-                      : `${d.direction} @ confidence ${d.confidence ?? '—'}% — the plan is in the signal view.`
-                    : `The ${d.symbol} analysis failed — the desk will retry.`,
-                variant: d.status === 'completed' ? undefined : 'destructive',
-              },
-        )
-      }
-    } catch {
-      /* keep quiet — status poll will reflect reality */
-    } finally {
-      setAutoBusy(false)
-      void loadAuto()
-      void loadHistory()
-    }
-  }, [toast, loadAuto, loadHistory])
-
   const pollRun = useCallback(
     async (id: string) => {
       try {
@@ -406,63 +313,22 @@ export function SignalDashboard() {
     // is per-instance ephemeral, so this cache is what makes results survive reloads
     localRef.current = loadLocalRuns()
     if (localRef.current.length > 0) setHistory([...localRef.current])
-    setClock(Date.now())
     // restore the desktop-alerts preference after first paint (no hydration drift)
     const savedAlerts = scopedGetJson('desktop-alerts', false)
     desktopAlertsRef.current = savedAlerts
     setDesktopAlerts(savedAlerts)
     void loadHistory()
     void evalLocalOutcomes()
-    void loadAuto()
-    // live desk: refresh history + outcomes + auto status every 60s, countdown clock every 30s
+    // refresh history + outcomes every 60s (entry-zone watcher keeps working)
     const h = setInterval(() => {
       void loadHistory()
       void evalLocalOutcomes()
     }, 60_000)
-    const a = setInterval(() => void loadAuto(), 60_000)
-    const c = setInterval(() => setClock(Date.now()), 30_000)
     return () => {
       stopPolling()
       clearInterval(h)
-      clearInterval(a)
-      clearInterval(c)
     }
-  }, [stopPolling, loadAuto, loadHistory, evalLocalOutcomes])
-
-  // toast new AUTO results that complete while the page is open
-  useEffect(() => {
-    if (seenRef.current === null) {
-      seenRef.current = new Set(history.map((r) => r.id)) // first paint — seed silently
-      return
-    }
-    const seen = seenRef.current
-    for (const r of history) {
-      if (seen.has(r.id)) continue
-      seen.add(r.id)
-      if (r.source !== 'auto' || new Date(r.createdAt).getTime() < mountedAt.current) continue
-      if (r.status === 'completed') {
-        toast({
-          title: `🤖 Auto signal — ${r.symbol} ${r.direction ?? ''}`,
-          description:
-            r.direction === 'NEUTRAL'
-              ? `No edge detected — the desk stands aside on ${r.symbol}.`
-              : `${r.direction} @ ${fmtPrice(r.priceAtRun)} · confidence ${r.confidence ?? '—'}% — the full plan is in this view.`,
-        })
-        if (r.direction === 'LONG' || r.direction === 'SHORT') {
-          fireDesktopNotification(
-            `🎯 ${r.symbol} ${r.direction} signal ready`,
-            `Entry ${fmtPrice(r.entryLow)} – ${fmtPrice(r.entryHigh)} · stop ${fmtPrice(r.stop)} · T1 ${fmtPrice(r.target1)} · conf ${r.confidence ?? '—'}%`,
-          )
-        }
-      } else if (r.status === 'failed') {
-        toast({
-          title: `🤖 Auto run failed — ${r.symbol}`,
-          description: 'The desk will retry on its next tick.',
-          variant: 'destructive',
-        })
-      }
-    }
-  }, [history, toast, fireDesktopNotification])
+  }, [stopPolling, loadHistory, evalLocalOutcomes])
 
   const startRun = useCallback(
     async (sym: string, mkt: 'crypto' | 'stock') => {
@@ -590,109 +456,50 @@ export function SignalDashboard() {
     }
   }, [alerts.active, fireDesktopNotification])
 
-  const autoDesc = (() => {
-    if (!auto) return 'Connecting to the auto desk…'
-    if (auto.external)
-      return `On production the desk runs on a schedule: one watchlist symbol (${auto.symbols.join(', ')}) per tick, and it pings you the moment a plan is ready. Turn on Alerts for pop-ups even when this tab is in the background.`
-    const parts = [
-      `Every ${Math.max(1, Math.round(auto.intervalMs / 60_000))} min it analyzes the stalest of ${auto.symbols.join(' / ')} and alerts you when price reaches an entry zone.`,
-    ]
-    const next = auto.enabled && auto.nextTickAt ? ` Next tick ${fmtIn(auto.nextTickAt, clock)}.` : ''
-    const last = auto.lastResult
-      ? ` Last: ${auto.lastResult.symbol} ${auto.lastResult.direction ?? auto.lastResult.status}${auto.lastResult.confidence ? ` ${auto.lastResult.confidence}%` : ''}${fmtAgo(auto.lastResult.at, clock) ? ` · ${fmtAgo(auto.lastResult.at, clock)}` : ''}.`
-      : ''
-    return parts.join('') + next + last
-  })()
-
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-5 sm:py-6">
       <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5 items-start">
-        {/* ── left column: auto desk + form + history ── */}
+        {/* ── left column: new analysis + history ── */}
         <div className="space-y-5 order-2 lg:order-1">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-            className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5 space-y-3"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <span
-                  className="h-8 w-8 rounded-xl bg-tv-panel2 border border-tv-line text-tv-muted inline-flex items-center justify-center"
-                  aria-hidden="true"
-                >
-                  <Bot className="h-4 w-4" />
-                </span>
-                <h3 className="text-sm font-semibold tracking-tight text-tv-ink">Auto desk</h3>
-                <span
-                  className={`h-2 w-2 rounded-full ${auto?.enabled ? 'bg-bull' : 'bg-tv-muted2'}`}
-                  aria-hidden="true"
-                />
-                <span
-                  className="text-[11px] font-semibold"
-                  style={{ color: auto?.enabled ? 'var(--bull)' : 'var(--tv-muted)' }}
-                >
-                  {auto?.enabled ? 'ON' : 'PAUSED'}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => void toggleDesktopAlerts()}
-                  suppressHydrationWarning
-                  aria-pressed={desktopAlerts}
-                  title="Browser notifications when a signal is ready, price reaches an entry zone, or a card flips to TAKE"
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
-                    desktopAlerts
-                      ? 'border-info/45 bg-info/12 text-info'
-                      : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink'
-                  }`}
-                >
-                  {desktopAlerts ? (
-                    <>
-                      <Bell className="h-3.5 w-3.5" aria-hidden="true" />
-                      Alerts on
-                    </>
-                  ) : (
-                    <>
-                      <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
-                      Alerts off
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => void toggleAuto()}
-                  suppressHydrationWarning
-                  className="rounded-full px-3 py-1 text-[11px] font-semibold border border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bull/50"
-                >
-                  {auto?.enabled ? 'Pause' : 'Resume'}
-                </button>
-              </div>
-            </div>
-            <p className="text-[11.5px] leading-relaxed text-tv-muted">{autoDesc}</p>
-            <button
-              onClick={() => void runAutoNow()}
-              disabled={autoBusy || auto?.running}
-              suppressHydrationWarning
-              className="w-full rounded-xl px-3 py-2 text-[12.5px] font-semibold border border-info/35 bg-info/10 text-info hover:bg-info/15 transition disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50"
-            >
-              {autoBusy || auto?.running ? 'Desk analyzing…' : 'Run a desk analysis now'}
-            </button>
-          </motion.div>
-
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: 'easeOut' }}
             className="rounded-2xl border border-tv-line bg-tv-panel shadow-sm p-4 sm:p-5 space-y-4"
           >
-            <div className="flex items-center gap-2.5">
-              <span
-                className="h-8 w-8 rounded-xl bg-tv-panel2 border border-tv-line text-tv-muted inline-flex items-center justify-center"
-                aria-hidden="true"
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="h-8 w-8 rounded-xl bg-tv-panel2 border border-tv-line text-tv-muted inline-flex items-center justify-center"
+                  aria-hidden="true"
+                >
+                  <Crosshair className="h-4 w-4" />
+                </span>
+                <h3 className="text-sm font-semibold tracking-tight text-tv-ink">New analysis</h3>
+              </div>
+              <button
+                onClick={() => void toggleDesktopAlerts()}
+                suppressHydrationWarning
+                aria-pressed={desktopAlerts}
+                title="Browser notifications when a signal is ready, price reaches an entry zone, or a card flips to TAKE"
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/50 ${
+                  desktopAlerts
+                    ? 'border-info/45 bg-info/12 text-info'
+                    : 'border-tv-line bg-tv-panel2 text-tv-muted hover:text-tv-ink'
+                }`}
               >
-                <Crosshair className="h-4 w-4" />
-              </span>
-              <h3 className="text-sm font-semibold tracking-tight text-tv-ink">New analysis</h3>
+                {desktopAlerts ? (
+                  <>
+                    <Bell className="h-3.5 w-3.5" aria-hidden="true" />
+                    Alerts on
+                  </>
+                ) : (
+                  <>
+                    <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
+                    Alerts off
+                  </>
+                )}
+              </button>
             </div>
 
             <div className="bg-tv-panel2 rounded-full p-1 flex">
@@ -907,7 +714,7 @@ export function SignalDashboard() {
                   ))}
                   {alerts.waiting > 0 && (
                     <p className="text-[11.5px] text-tv-muted">
-                      {alerts.waiting} open signal{alerts.waiting > 1 ? 's' : ''} waiting for entry — the desk re-analyzes on schedule.
+                      {alerts.waiting} open signal{alerts.waiting > 1 ? 's' : ''} waiting for entry — run an analysis to refresh the plan.
                     </p>
                   )}
                 </div>

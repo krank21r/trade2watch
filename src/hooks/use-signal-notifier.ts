@@ -24,7 +24,7 @@
  * richer detail — the watcher stays quiet there (the badge still stays
  * honest). NEUTRAL desk results are deliberately silent here: they only
  * matter when you are looking at the signal list, and a standing "no edge"
- * would otherwise spam the app every desk tick.
+ * would otherwise spam the app on every manual run.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
